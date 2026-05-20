@@ -104,8 +104,8 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     tft.setCursor((LEFT_W - hlw) / 2, hiLblY);
     tft.print("HI");
 
-    // HI value — font 7, centered in left column
-    tft.setTextFont(7);
+    // HI value — font 7 on display, FONT_LG in 8-bit sprite (font 7 corrupts 8-bit buffer)
+    tft.setTextFont(g_spriteCapture ? FONT_LG : 7);
     tft.setTextColor(COL_WHITE, COL_BG);
     snprintf(numBuf, sizeof(numBuf), "%d", (int)roundf(g_current.today_max));
     int hiW = tft.textWidth(numBuf);
@@ -119,8 +119,8 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     tft.setCursor((LEFT_W - llw) / 2, loLblY);
     tft.print("LO");
 
-    // LO value — font 7, centered
-    tft.setTextFont(7);
+    // LO value — font 7 on display, FONT_LG in 8-bit sprite
+    tft.setTextFont(g_spriteCapture ? FONT_LG : 7);
     tft.setTextColor(COL_WHITE, COL_BG);
     snprintf(numBuf, sizeof(numBuf), "%d", (int)roundf(g_current.today_min));
     int loW = tft.textWidth(numBuf);
@@ -130,7 +130,7 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     // ── RIGHT: large temperature ─────────────────────────────────────────
     char buf[24];
     snprintf(buf, sizeof(buf), "%d", (int)roundf(g_current.temp));
-    tft.setTextFont(7);
+    tft.setTextFont(g_spriteCapture ? FONT_LG : 7);
     tft.setTextColor(COL_WHITE, COL_BG);
     tft.setCursor(DX, CONTENT_Y + 12);
     tft.print(buf);

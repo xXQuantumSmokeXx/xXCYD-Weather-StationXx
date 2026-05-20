@@ -45,6 +45,9 @@
 #define CONTENT_Y  (TOPBAR_H + 1)
 #define CONTENT_H  (SCREEN_H - TOPBAR_H - BOTBAR_H - 2)
 
+// Set true during 8-bit sprite capture; screens use FONT_LG instead of font 7
+extern bool g_spriteCapture;
+
 // ── App settings ─────────────────────────────────────────────────────────
 #define WEATHER_REFRESH_MS  (15UL * 60UL * 1000UL)   // 15 minutes
 #define HOURLY_COUNT        12

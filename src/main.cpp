@@ -22,6 +22,9 @@
 
 static TFT_eSPI tft;
 
+// Set true during 8-bit sprite capture so screens can swap font 7 -> FONT_LG
+bool g_spriteCapture = false;
+
 // ── App state ─────────────────────────────────────────────────────────────
 static int           s_screen         = 0;
 static bool          s_needsRedraw    = true;
@@ -219,6 +222,7 @@ void setup() {
 
     ledSet(false, false, false);
     s_needsRedraw = true;
+    Serial.println("READY");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -281,13 +285,16 @@ void loop() {
     // Serial commands: '0'-'3' = switch screen, 'S' = capture current screen
     if (Serial.available()) {
         int cmd = Serial.read();
+        if (cmd == 'R' || cmd == 'r') {
+            Serial.println("READY");
+        }
         if (cmd >= '0' && cmd <= '3') {
             gotoScreen(cmd - '0');
             redraw();
         }
         if (cmd == 'S' || cmd == 's') {
             TFT_eSprite spr(&tft);
-            spr.setColorDepth(8);   // 76 KB — fits; raw RGB332 buffer sent to PC
+            spr.setColorDepth(8);
             uint8_t *fb = (uint8_t*)spr.createSprite(SCREEN_W, SCREEN_H);
             if (!fb) {
                 Serial.print("OOM:");
@@ -295,8 +302,10 @@ void loop() {
                 Serial.print(",max:");
                 Serial.println(ESP.getMaxAllocHeap());
             } else {
+                g_spriteCapture = true;
                 redrawTo(spr);
-                Serial.print("RGB332:");   // Python converts RGB332 -> BGR24 BMP
+                g_spriteCapture = false;
+                Serial.print("RGB332:");
                 Serial.write(fb, SCREEN_W * SCREEN_H);
                 Serial.flush();
                 spr.deleteSprite();

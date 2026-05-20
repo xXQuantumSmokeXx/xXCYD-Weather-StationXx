@@ -1,23 +1,16 @@
 """
-CYD-Weather screenshot capture — saves all 4 screens as BMP files.
-Usage:  python screenshot.py [COM_PORT]
+CYD-Weather screenshot capture — captures whatever screen is currently showing.
+Usage:  python screenshot.py [COM_PORT] [OUTPUT_FILE]
 Default port: COM11
-
-Saves: screen_now.bmp, screen_hourly.bmp, screen_forecast.bmp, screen_settings.bmp
+Default file: screen.bmp
 """
 
 import serial, struct, sys, time
 
-PORT = sys.argv[1] if len(sys.argv) > 1 else "COM11"
-BAUD = 115200
-W, H = 320, 240
-
-SCREENS = [
-    ('0', 'screen_now.bmp'),
-    ('1', 'screen_hourly.bmp'),
-    ('2', 'screen_forecast.bmp'),
-    ('3', 'screen_settings.bmp'),
-]
+PORT     = sys.argv[1] if len(sys.argv) > 1 else "COM11"
+OUTFILE  = sys.argv[2] if len(sys.argv) > 2 else "screen.bmp"
+BAUD     = 115200
+W, H     = 320, 240
 
 def read_exact(ser, n, timeout=30):
     data = b''
@@ -53,70 +46,12 @@ def write_bmp(filename, pixels_bgr24):
     hdr[10]    = 54
     hdr[14]    = 40
     hdr[18:22] = struct.pack('<I', W)
-    hdr[22:26] = struct.pack('<i', -H)   # negative = top-down
+    hdr[22:26] = struct.pack('<i', -H)
     hdr[26:28] = struct.pack('<H', 1)
     hdr[28:30] = struct.pack('<H', 24)
     with open(filename, 'wb') as f:
         f.write(hdr)
         f.write(pixels_bgr24)
-
-def capture(ser, filename):
-    ser.reset_input_buffer()
-    ser.write(b'S')
-
-    marker, _ = wait_for_marker(ser, [b'RGB332:', b'BMP:', b'OOM:'])
-
-    if marker is None:
-        print("  No response from device.")
-        return False
-
-    if marker == b'OOM:':
-        info = ser.readline().decode('ascii', errors='replace').strip()
-        print(f"  OOM: {info}")
-        return False
-
-    start = time.time()
-
-    if marker == b'RGB332:':
-        # 8-bit RGB332: 1 byte per pixel, RRRGGGBB
-        total = W * H
-        data = read_exact(ser, total)
-        if len(data) < total:
-            print(f"  Transfer stalled at {len(data)}/{total} bytes.")
-            return False
-        elapsed = time.time() - start
-        print(f"  Done in {elapsed:.1f}s          ")
-        # Convert RGB332 (RRRGGGBB) -> BGR24 for BMP
-        pixels = bytearray(W * H * 3)
-        for i, c in enumerate(data):
-            r3 = (c >> 5) & 0x07
-            g3 = (c >> 2) & 0x07
-            b2 = c & 0x03
-            r8 = (r3 << 5) | (r3 << 2) | (r3 >> 1)
-            g8 = (g3 << 5) | (g3 << 2) | (g3 >> 1)
-            b8 = (b2 << 6) | (b2 << 4) | (b2 << 2) | b2
-            pixels[i*3+0] = b8
-            pixels[i*3+1] = g8
-            pixels[i*3+2] = r8
-
-    else:  # BMP: — legacy 16-bit RGB565 path
-        total = W * H * 2
-        data = read_exact(ser, total)
-        if len(data) < total:
-            print(f"  Transfer stalled at {len(data)}/{total} bytes.")
-            return False
-        elapsed = time.time() - start
-        print(f"  Done in {elapsed:.1f}s          ")
-        pixels = bytearray(W * H * 3)
-        for i in range(W * H):
-            c = struct.unpack_from('<H', data, i * 2)[0]
-            pixels[i*3+0] = (c & 0x1F) << 3           # B
-            pixels[i*3+1] = ((c >> 5) & 0x3F) << 2    # G
-            pixels[i*3+2] = (c >> 11) << 3             # R
-
-    write_bmp(filename, pixels)
-    print(f"  Saved {filename}")
-    return True
 
 print(f"Opening {PORT} (no reset)...")
 try:
@@ -130,12 +65,57 @@ except serial.SerialException as e:
 time.sleep(0.3)
 ser.reset_input_buffer()
 
-for screen_cmd, filename in SCREENS:
-    print(f"Screen {screen_cmd} -> {filename}")
-    ser.write(screen_cmd.encode())
-    time.sleep(0.8)
-    if not capture(ser, filename):
-        print(f"  FAILED -- skipping")
+# Send 'R' — firmware responds READY after setup() completes.
+# If device is already running, READY comes back within milliseconds.
+# If device is still booting, we wait up to 90s.
+print("Waiting for device (send R)...")
+ser.write(b'R')
+ready, _ = wait_for_marker(ser, [b'READY'], timeout=90)
+if ready:
+    print("Device ready.")
+else:
+    print("No READY received — proceeding anyway.")
+time.sleep(0.3)
+ser.reset_input_buffer()
 
+ser.write(b'S')
+
+marker, _ = wait_for_marker(ser, [b'RGB332:', b'OOM:'], timeout=20)
+
+if marker is None:
+    print("No response from device.")
+    ser.close()
+    sys.exit(1)
+
+if marker == b'OOM:':
+    info = ser.readline().decode('ascii', errors='replace').strip()
+    print(f"OOM: {info}")
+    ser.close()
+    sys.exit(1)
+
+start = time.time()
+total = W * H
+data = read_exact(ser, total)
 ser.close()
-print("\nDone. Open the .bmp files in Windows Photos or Paint.")
+
+if len(data) < total:
+    print(f"Transfer stalled at {len(data)}/{total} bytes.")
+    sys.exit(1)
+
+elapsed = time.time() - start
+print(f"  Done in {elapsed:.1f}s          ")
+
+pixels = bytearray(W * H * 3)
+for i, c in enumerate(data):
+    r3 = (c >> 5) & 0x07
+    g3 = (c >> 2) & 0x07
+    b2 = c & 0x03
+    r8 = (r3 << 5) | (r3 << 2) | (r3 >> 1)
+    g8 = (g3 << 5) | (g3 << 2) | (g3 >> 1)
+    b8 = (b2 << 6) | (b2 << 4) | (b2 << 2) | b2
+    pixels[i*3+0] = b8
+    pixels[i*3+1] = g8
+    pixels[i*3+2] = r8
+
+write_bmp(OUTFILE, pixels)
+print(f"Saved {OUTFILE}")
