@@ -88,10 +88,10 @@ void drawBottombar(TFT_eSPI &tft, const char *label, int activeScreen, int total
     if (batt >= 0) {
         char bbuf[8];
         snprintf(bbuf, sizeof(bbuf), "%d%%", batt);
-        tft.setTextFont(FONT_SM);
+        tft.setTextFont(FONT_MD);
         int bw = tft.textWidth(bbuf);
-        tft.setTextColor(g_themeColor, COL_BG);
-        tft.setCursor(rarrowX - bw - 4, my - 4);
+        tft.setTextColor(COL_WHITE, COL_BG);
+        tft.setCursor(rarrowX - bw - 4, my - 8);
         tft.print(bbuf);
     }
 
@@ -111,10 +111,10 @@ void drawBottombar(TFT_eSPI &tft, const char *label, int activeScreen, int total
     }
 
     if (label && label[0]) {
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(g_themeColor, COL_BG);
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(COL_WHITE, COL_BG);
         int lw = tft.textWidth(label);
-        tft.setCursor((SCREEN_W - lw) / 2, my - 4);
+        tft.setCursor((SCREEN_W - lw) / 2, my - 8);
         tft.print(label);
     }
 }

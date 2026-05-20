@@ -14,28 +14,17 @@
 
 // Column layout; CONTENT_H = 194px
 #define OFF_DAY   2    // FONT_MD 16px → ends 18
-#define OFF_ICON  54   // icon center, r=20 (top=34, bot=74)
+#define OFF_ICON  54   // icon center, r=20
 #define OFF_HI    90   // FONT_LG 26px → ends 116
 #define OFF_LO    120  // FONT_LG 26px → ends 146
 #define OFF_WIND  152  // FONT_MD 16px → ends 168
 #define OFF_COND  174  // FONT_SM 8px  → ends 182
 
-static void drawWindLegend(TFT_eSPI &tft) {
-    tft.setTextFont(FONT_SM);
-    int ly = SCREEN_H - BOTBAR_H + (BOTBAR_H - 8) / 2;
-    const char *txt = "WIND";
-    int tw = tft.textWidth(txt);
-    int lx = (SCREEN_W - (5 + 2 + tw)) / 2;
-    tft.fillRect(lx, ly, 5, 8, COL_WIND);
-    tft.setTextColor(COL_WIND, COL_BG);
-    tft.setCursor(lx + 7, ly);
-    tft.print(txt);
-}
-
 void screenForecastDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
+    char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "5-DAY", timeStr, wifiOk);
-    drawBottombar(tft, "", 2, 4);
+    drawBottombar(tft, dateStr, 2, 4);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     if (!g_current.valid) {
@@ -92,8 +81,9 @@ void screenForecastDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.setCursor(cx - tw / 2, CONTENT_Y + OFF_WIND);
         tft.print(buf);
 
-        // ── Condition (guard against overflow) ────────────────────────────
+        // ── Condition ─────────────────────────────────────────────────────
         const char *cond = wmoDescription(g_daily[i].weather_code);
+        tft.setTextFont(FONT_SM);
         tft.setTextColor(g_themeColor, bg);
         tw = tft.textWidth(cond);
         if (tw <= DAY_W) {
@@ -101,6 +91,4 @@ void screenForecastDraw(TFT_eSPI &tft, bool wifiOk) {
             tft.print(cond);
         }
     }
-
-    drawWindLegend(tft);
 }

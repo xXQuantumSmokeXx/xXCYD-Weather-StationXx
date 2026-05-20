@@ -16,29 +16,17 @@
 #define ROW_H  ((CONTENT_H - 1) / ROWS)   // 96px
 #define ICON_R 16
 
-// Cell layout — hour / icon / temp / wind only; fits in 96px
+// Cell layout — hour / icon / temp / wind
 #define OFF_HOUR  3    // FONT_SM 8px  → ends 11
-#define OFF_ICON  30   // icon center, r=16 (top=14, bot=46) — shifted down for breathing room
+#define OFF_ICON  30   // icon center, r=16
 #define OFF_TEMP  50   // FONT_LG 26px → ends 76
 #define OFF_WIND  78   // FONT_MD 16px → ends 94
 
-static void drawWindLegend(TFT_eSPI &tft) {
-    tft.setTextFont(FONT_SM);
-    int ly = SCREEN_H - BOTBAR_H + (BOTBAR_H - 8) / 2;
-    const char *txt = "WIND";
-    int tw = tft.textWidth(txt);
-    int total = 5 + 2 + tw;
-    int lx = (SCREEN_W - total) / 2;
-    tft.fillRect(lx, ly, 5, 8, COL_WIND);
-    tft.setTextColor(COL_WIND, COL_BG);
-    tft.setCursor(lx + 7, ly);
-    tft.print(txt);
-}
-
 void screenHourlyDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
+    char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "HOURLY", timeStr, wifiOk);
-    drawBottombar(tft, "", 1, 4);
+    drawBottombar(tft, dateStr, 1, 4);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     if (!g_current.valid) {
@@ -94,7 +82,6 @@ void screenHourlyDraw(TFT_eSPI &tft, bool wifiOk) {
     }
 
     tft.drawFastHLine(0, CONTENT_Y + ROW_H, SCREEN_W, COL_DIM);
-    drawWindLegend(tft);
 }
 
 bool screenHourlyTap(int16_t x, int16_t y) { return false; }

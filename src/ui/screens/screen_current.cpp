@@ -52,8 +52,9 @@ static void drawMoonPhase(TFT_eSPI &tft, int cx, int cy, int r, float phase) {
 
 void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
+    char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "NOW", timeStr, wifiOk);
-    drawBottombar(tft, "", 0, 4);
+    drawBottombar(tft, dateStr, 0, 4);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     if (!g_current.valid) {
@@ -164,10 +165,10 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
         : (1.5f - moonPhase) * 29.53f;
 
     tft.setTextFont(FONT_SM);
-    tft.setTextColor(g_themeColor, COL_BG);
+    tft.setTextColor(COL_WHITE, COL_BG);
     const char *pname = moonPhaseName(moonPhase);
     int pnw = tft.textWidth(pname);
-    tft.setCursor(MCX - pnw / 2, CONTENT_Y + 2);
+    tft.setCursor(MCX - pnw / 2, CONTENT_Y + 6);
     tft.print(pname);
 
     drawMoonPhase(tft, MCX, MCY, MOON_R, moonPhase);

@@ -3,6 +3,7 @@
 #include "../theme_color.h"
 #include "../widgets.h"
 #include "../../config/config.h"
+#include "../../config/nvs_config.h"
 #include "../../modules/weather.h"
 #include "../../modules/location.h"
 #include "../../modules/time_sync.h"
@@ -11,28 +12,59 @@
 #include <cstdio>
 #include <cstring>
 
-// ── Theme swatches ────────────────────────────────────────────────────────────
-#define SWATCH_COLS   5
-#define SWATCH_ROWS   2
-#define SWATCH_W     40
-#define SWATCH_H     24
-#define SWATCH_X0    10
-#define SWATCH_Y0    (CONTENT_Y + 14)
-#define SWATCH_PAD    3
+// ── Layout constants ──────────────────────────────────────────────────────────
+// Section 1 — Info (top)
+#define INFO_X       8
+#define INFO_Y0      (CONTENT_Y + 4)    // 27
+#define INFO_LINE_H  12
 
-// ── Brightness buttons ────────────────────────────────────────────────────────
-#define BRI_BTN_W    ((SCREEN_W - 2*SWATCH_X0 - (BRI_LEVELS-1)*3) / BRI_LEVELS)  // 47px
-#define BRI_BTN_H    20
-#define BRI_BTN_Y0   (SWATCH_Y0 + SWATCH_ROWS*(SWATCH_H+SWATCH_PAD) + 16)
+// Divider between info and controls
+#define DIV1_Y       (INFO_Y0 + 4 * INFO_LINE_H + 3)   // 79
 
-// ── Action buttons ────────────────────────────────────────────────────────────
-#define BTN_X   8
-#define BTN_Y   (BRI_BTN_Y0 + BRI_BTN_H + 10)
-#define BTN_W   120
-#define BTN_H   22
+// Section 2 — Brightness + Rotate + Action buttons (middle)
+#define SEC2_X       8
+#define SEC2_W       (SCREEN_W - 2 * SEC2_X)   // 304
+
+#define BRI_LABEL_Y  (DIV1_Y + 4)               // 83
+#define BRI_BTN_Y0   (BRI_LABEL_Y + 10)         // 93
+#define BRI_BTN_H    18
+#define BRI_BTN_W    ((SEC2_W - (BRI_LEVELS - 1) * 3) / BRI_LEVELS)  // 48
+
+#define ROT_LABEL_Y  (BRI_BTN_Y0 + BRI_BTN_H + 4)   // 115
+#define ROT_BTN_Y0   (ROT_LABEL_Y + 10)              // 125
+#define ROT_BTN_H    18
+#define ROT_BTN_COUNT 5
+#define ROT_BTN_W    ((SEC2_W - (ROT_BTN_COUNT - 1) * 3) / ROT_BTN_COUNT)  // 58
+
+#define BTN_Y        (ROT_BTN_Y0 + ROT_BTN_H + 5)   // 148
+#define BTN_H        20
+#define BTN_W        ((SEC2_W - 8) / 2)              // 148
+
+// Divider between controls and theme
+#define DIV2_Y       (BTN_Y + BTN_H + 4)   // 172
+
+// Section 3 — Theme Color (bottom)
+#define THEME_LABEL_Y (DIV2_Y + 4)          // 176
+#define SWATCH_Y0     (THEME_LABEL_Y + 14)  // 190
+#define SWATCH_H      20
+#define SWATCH_W      ((SEC2_W - (THEME_COUNT - 1) * 2) / THEME_COUNT)  // 32
+#define SWATCH_PAD    2
 
 static const char *s_briLabels[BRI_LEVELS] = {"AUTO","DIM","LOW","MED","HIGH","MAX"};
 static bool s_refreshRequested = false;
+
+// ── Auto-rotate state ─────────────────────────────────────────────────────────
+static const uint32_t s_rotMs[]     = { 0, 10000, 30000, 60000, 300000 };
+static const char    *s_rotLabels[] = { "OFF", "10s", "30s", "1m", "5m" };
+static int   s_autoRotSel    = 0;
+static bool  s_autoRotLoaded = false;
+
+static void autoRotLoad() {
+    if (s_autoRotLoaded) return;
+    s_autoRotSel = nvsGetInt("arot_sel", 0);
+    if (s_autoRotSel < 0 || s_autoRotSel >= ROT_BTN_COUNT) s_autoRotSel = 0;
+    s_autoRotLoaded = true;
+}
 
 void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
@@ -40,42 +72,74 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, "", 3, 4);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    // ── Theme section ─────────────────────────────────────────────────────────
+    // ── Section 1: Info ───────────────────────────────────────────────────────
     tft.setTextFont(FONT_SM);
-    tft.setTextColor(g_themeColor, COL_BG);
-    tft.setCursor(SWATCH_X0, CONTENT_Y + 4);
-    tft.print("THEME COLOR");
 
-    int activeTheme = themeColorGetIdx();
-    for (int i = 0; i < THEME_COUNT; i++) {
-        int col = i % SWATCH_COLS;
-        int row = i / SWATCH_COLS;
-        int sx  = SWATCH_X0 + col * (SWATCH_W + SWATCH_PAD);
-        int sy  = SWATCH_Y0 + row * (SWATCH_H + SWATCH_PAD);
+    tft.setTextColor(COL_DIM, COL_BG);
+    tft.setCursor(INFO_X, INFO_Y0);
+    tft.print("WiFi: ");
+    tft.setTextColor(COL_WHITE, COL_BG);
+    tft.print(WiFi.SSID().c_str());
 
-        tft.fillRect(sx, sy, SWATCH_W, SWATCH_H, g_themes[i].color);
-        if (i == activeTheme)
-            tft.drawRect(sx - 2, sy - 2, SWATCH_W + 4, SWATCH_H + 4, COL_WHITE);
+    tft.setTextColor(COL_DIM, COL_BG);
+    tft.setCursor(INFO_X, INFO_Y0 + INFO_LINE_H);
+    tft.print("IP:   ");
+    tft.setTextColor(COL_WHITE, COL_BG);
+    tft.print(WiFi.localIP().toString().c_str());
 
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(COL_BG, g_themes[i].color);
-        int tw = tft.textWidth(g_themes[i].name);
-        tft.setCursor(sx + (SWATCH_W - tw) / 2, sy + SWATCH_H / 2 - 4);
-        tft.print(g_themes[i].name);
+    if (g_location.valid) {
+        char locBuf[32];
+        snprintf(locBuf, sizeof(locBuf), "%.3f, %.3f", g_location.lat, g_location.lon);
+        tft.setTextColor(COL_DIM, COL_BG);
+        tft.setCursor(INFO_X, INFO_Y0 + INFO_LINE_H * 2);
+        tft.print("Loc:  ");
+        tft.setTextColor(COL_WHITE, COL_BG);
+        tft.print(locBuf);
     }
 
-    // ── Brightness section ────────────────────────────────────────────────────
-    int briLabelY = SWATCH_Y0 + SWATCH_ROWS * (SWATCH_H + SWATCH_PAD) + 4;
+    // Battery bar
+    {
+        int batY = INFO_Y0 + INFO_LINE_H * 3;
+        tft.setTextColor(COL_DIM, COL_BG);
+        tft.setCursor(INFO_X, batY);
+        tft.print("BAT:  ");
+        int lblW = tft.textWidth("BAT:  ");
+        int bpct = batteryPct();
+        if (bpct >= 0) {
+            const int barX = INFO_X + lblW;
+            const int barW = 80;
+            const int barH = 7;
+            const int barY = batY + (8 - barH) / 2;
+            uint16_t barCol = (bpct < 20) ? COL_AMBER : g_themeColor;
+            tft.drawRect(barX, barY, barW, barH, COL_DIM);
+            int fill = (barW - 2) * bpct / 100;
+            if (fill > 0) tft.fillRect(barX + 1, barY + 1, fill, barH - 2, barCol);
+            tft.fillRect(barX + barW, barY + 2, 3, barH - 4, COL_DIM);
+            char batBuf[8];
+            snprintf(batBuf, sizeof(batBuf), " %d%%", bpct);
+            tft.setTextColor(COL_WHITE, COL_BG);
+            tft.setCursor(barX + barW + 5, batY);
+            tft.print(batBuf);
+        } else {
+            tft.setTextColor(COL_DIM, COL_BG);
+            tft.setCursor(INFO_X + tft.textWidth("BAT:  "), batY);
+            tft.print("N/A");
+        }
+    }
+
+    // Divider 1
+    tft.drawFastHLine(0, DIV1_Y, SCREEN_W, COL_DIM);
+
+    // ── Section 2: Brightness ─────────────────────────────────────────────────
     tft.setTextFont(FONT_SM);
     tft.setTextColor(g_themeColor, COL_BG);
-    tft.setCursor(SWATCH_X0, briLabelY);
+    tft.setCursor(SEC2_X, BRI_LABEL_Y);
     tft.print("BRIGHTNESS");
 
     int activeBri = brightnessGetLevel();
     for (int i = 0; i < BRI_LEVELS; i++) {
-        int bx = SWATCH_X0 + i * (BRI_BTN_W + 3);
+        int bx = SEC2_X + i * (BRI_BTN_W + 3);
         int by = BRI_BTN_Y0;
-
         tft.fillRect(bx, by, BRI_BTN_W, BRI_BTN_H, COL_INPUTBG);
         if (i == activeBri) {
             tft.drawRect(bx - 1, by - 1, BRI_BTN_W + 2, BRI_BTN_H + 2, g_themeColor);
@@ -89,109 +153,105 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.print(s_briLabels[i]);
     }
 
-    // ── Action buttons ────────────────────────────────────────────────────────
-    tft.fillRect(BTN_X, BTN_Y, BTN_W, BTN_H, COL_INPUTBG);
-    tft.drawRect(BTN_X, BTN_Y, BTN_W, BTN_H, g_themeColor);
+    // ── Section 2: Rotate ─────────────────────────────────────────────────────
+    autoRotLoad();
+    tft.setTextFont(FONT_SM);
+    tft.setTextColor(g_themeColor, COL_BG);
+    tft.setCursor(SEC2_X, ROT_LABEL_Y);
+    tft.print("ROTATE");
+
+    for (int i = 0; i < ROT_BTN_COUNT; i++) {
+        int bx = SEC2_X + i * (ROT_BTN_W + 3);
+        int by = ROT_BTN_Y0;
+        tft.fillRect(bx, by, ROT_BTN_W, ROT_BTN_H, COL_INPUTBG);
+        if (i == s_autoRotSel) {
+            tft.drawRect(bx - 1, by - 1, ROT_BTN_W + 2, ROT_BTN_H + 2, g_themeColor);
+            tft.setTextColor(g_themeColor, COL_INPUTBG);
+        } else {
+            tft.drawRect(bx, by, ROT_BTN_W, ROT_BTN_H, COL_DIM);
+            tft.setTextColor(COL_DIM, COL_INPUTBG);
+        }
+        int tw = tft.textWidth(s_rotLabels[i]);
+        tft.setCursor(bx + (ROT_BTN_W - tw) / 2, by + (ROT_BTN_H - 8) / 2);
+        tft.print(s_rotLabels[i]);
+    }
+
+    // ── Section 2: Action buttons ─────────────────────────────────────────────
+    tft.fillRect(SEC2_X, BTN_Y, BTN_W, BTN_H, COL_INPUTBG);
+    tft.drawRect(SEC2_X, BTN_Y, BTN_W, BTN_H, g_themeColor);
     tft.setTextFont(FONT_SM);
     tft.setTextColor(g_themeColor, COL_INPUTBG);
-    tft.setCursor(BTN_X + 8, BTN_Y + 7);
+    tft.setCursor(SEC2_X + 6, BTN_Y + (BTN_H - 8) / 2);
     tft.print("REFRESH WEATHER");
 
-    int btn2x = BTN_X + BTN_W + 12;
+    int btn2x = SEC2_X + BTN_W + 8;
     tft.fillRect(btn2x, BTN_Y, BTN_W, BTN_H, COL_INPUTBG);
     tft.drawRect(btn2x, BTN_Y, BTN_W, BTN_H, COL_AMBER);
     tft.setTextColor(COL_AMBER, COL_INPUTBG);
-    tft.setCursor(btn2x + 6, BTN_Y + 7);
+    tft.setCursor(btn2x + 6, BTN_Y + (BTN_H - 8) / 2);
     tft.print("UPDATE LOCATION");
 
-    // ── Info section ──────────────────────────────────────────────────────────
-    int infoY = BTN_Y + BTN_H + 8;
-    const int lineH = 12;
+    // Divider 2
+    tft.drawFastHLine(0, DIV2_Y, SCREEN_W, COL_DIM);
+
+    // ── Section 3: Theme Color (bottom) ───────────────────────────────────────
     tft.setTextFont(FONT_SM);
+    tft.setTextColor(g_themeColor, COL_BG);
+    tft.setCursor(SEC2_X, THEME_LABEL_Y);
+    tft.print("THEME COLOR");
 
-    tft.setTextColor(COL_DIM, COL_BG);
-    tft.setCursor(8, infoY);
-    tft.print("WiFi: ");
-    tft.setTextColor(COL_WHITE, COL_BG);
-    tft.print(WiFi.SSID().c_str());
-
-    tft.setTextColor(COL_DIM, COL_BG);
-    tft.setCursor(8, infoY + lineH);
-    tft.print("IP:   ");
-    tft.setTextColor(COL_WHITE, COL_BG);
-    tft.print(WiFi.localIP().toString().c_str());
-
-    if (g_location.valid) {
-        char locBuf[48];
-        snprintf(locBuf, sizeof(locBuf), "%.3f, %.3f", g_location.lat, g_location.lon);
-        tft.setTextColor(COL_DIM, COL_BG);
-        tft.setCursor(8, infoY + lineH * 2);
-        tft.print("Loc:  ");
-        tft.setTextColor(COL_WHITE, COL_BG);
-        tft.print(locBuf);
-    }
-
-    // ── Battery ───────────────────────────────────────────────────────────────
-    tft.setTextFont(FONT_SM);
-    tft.setTextColor(COL_DIM, COL_BG);
-    tft.setCursor(8, infoY + lineH * 3);
-    tft.print("BAT:  ");
-    int batLabelW = tft.textWidth("BAT:  ");
-    int bpct = batteryPct();
-    if (bpct >= 0) {
-        const int barX = 8 + batLabelW;
-        const int barW = 90;
-        const int barH = 7;
-        const int barY = infoY + lineH * 3 + (8 - barH) / 2;
-        uint16_t barCol = (bpct < 20) ? COL_AMBER : g_themeColor;
-        tft.drawRect(barX, barY, barW, barH, COL_DIM);
-        int fill = (barW - 2) * bpct / 100;
-        if (fill > 0) tft.fillRect(barX + 1, barY + 1, fill, barH - 2, barCol);
-        // Battery nub (positive terminal)
-        tft.fillRect(barX + barW, barY + 2, 3, barH - 4, COL_DIM);
-        char batBuf[8];
-        snprintf(batBuf, sizeof(batBuf), " %d%%", bpct);
-        tft.setTextColor(COL_WHITE, COL_BG);
-        tft.setCursor(barX + barW + 5, infoY + lineH * 3);
-        tft.print(batBuf);
-    } else {
-        tft.setTextColor(COL_DIM, COL_BG);
-        tft.setCursor(8 + batLabelW, infoY + lineH * 3);
-        tft.print("N/A (no battery)");
+    int activeTheme = themeColorGetIdx();
+    for (int i = 0; i < THEME_COUNT; i++) {
+        int sx = SEC2_X + i * (SWATCH_W + SWATCH_PAD);
+        tft.fillRect(sx, SWATCH_Y0, SWATCH_W, SWATCH_H, g_themes[i].color);
+        if (i == activeTheme)
+            tft.drawRect(sx - 2, SWATCH_Y0 - 2, SWATCH_W + 4, SWATCH_H + 4, COL_WHITE);
     }
 }
 
 bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
-    // Theme swatches
-    for (int i = 0; i < THEME_COUNT; i++) {
-        int col = i % SWATCH_COLS;
-        int row = i / SWATCH_COLS;
-        int sx  = SWATCH_X0 + col * (SWATCH_W + SWATCH_PAD);
-        int sy  = SWATCH_Y0 + row * (SWATCH_H + SWATCH_PAD);
-        if (tx >= sx && tx < sx + SWATCH_W && ty >= sy && ty < sy + SWATCH_H) {
-            themeColorSet(i);
-            return true;
-        }
-    }
-
-    // Brightness buttons
+    // Brightness
     for (int i = 0; i < BRI_LEVELS; i++) {
-        int bx = SWATCH_X0 + i * (BRI_BTN_W + 3);
-        int by = BRI_BTN_Y0;
-        if (tx >= bx && tx < bx + BRI_BTN_W && ty >= by && ty < by + BRI_BTN_H) {
+        int bx = SEC2_X + i * (BRI_BTN_W + 3);
+        if (tx >= bx && tx < bx + BRI_BTN_W &&
+            ty >= BRI_BTN_Y0 && ty < BRI_BTN_Y0 + BRI_BTN_H) {
             brightnessSetLevel(i);
             return true;
         }
     }
 
+    // Auto-rotate
+    autoRotLoad();
+    for (int i = 0; i < ROT_BTN_COUNT; i++) {
+        int bx = SEC2_X + i * (ROT_BTN_W + 3);
+        if (tx >= bx && tx < bx + ROT_BTN_W &&
+            ty >= ROT_BTN_Y0 && ty < ROT_BTN_Y0 + ROT_BTN_H) {
+            s_autoRotSel = i;
+            nvsPutInt("arot_sel", i);
+            return true;
+        }
+    }
+
     // Refresh button
-    if (tx >= BTN_X && tx < BTN_X + BTN_W && ty >= BTN_Y && ty < BTN_Y + BTN_H)
+    if (tx >= SEC2_X && tx < SEC2_X + BTN_W &&
+        ty >= BTN_Y   && ty < BTN_Y + BTN_H)
         s_refreshRequested = true;
 
     // Location button
-    int btn2x = BTN_X + BTN_W + 12;
-    if (tx >= btn2x && tx < btn2x + BTN_W && ty >= BTN_Y && ty < BTN_Y + BTN_H)
+    int btn2x = SEC2_X + BTN_W + 8;
+    if (tx >= btn2x && tx < btn2x + BTN_W &&
+        ty >= BTN_Y  && ty < BTN_Y + BTN_H)
         s_refreshRequested = true;
+
+    // Theme swatches
+    for (int i = 0; i < THEME_COUNT; i++) {
+        int sx = SEC2_X + i * (SWATCH_W + SWATCH_PAD);
+        if (tx >= sx && tx < sx + SWATCH_W &&
+            ty >= SWATCH_Y0 && ty < SWATCH_Y0 + SWATCH_H) {
+            themeColorSet(i);
+            return true;
+        }
+    }
 
     return false;
 }
@@ -202,4 +262,14 @@ bool screenSettingsRefreshTapped() {
         return true;
     }
     return false;
+}
+
+bool screenSettingsGetAutoRotate() {
+    autoRotLoad();
+    return s_autoRotSel > 0;
+}
+
+uint32_t screenSettingsGetAutoRotateMs() {
+    autoRotLoad();
+    return s_rotMs[s_autoRotSel];
 }

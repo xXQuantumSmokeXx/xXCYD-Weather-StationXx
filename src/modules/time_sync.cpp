@@ -42,3 +42,19 @@ void timeGetDayName(int daysAhead, char *buf3) {
     strncpy(buf3, days[tm->tm_wday], 3);
     buf3[3] = '\0';
 }
+
+void timeGetDateLong(char *buf, size_t len) {
+    static const char *wdays[] = {
+        "Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"
+    };
+    static const char *months[] = {
+        "Jan","Feb","Mar","Apr","May","Jun",
+        "Jul","Aug","Sep","Oct","Nov","Dec"
+    };
+    struct tm *tm = localNow();
+    snprintf(buf, len, "%s, %s %d, %d",
+             wdays[tm->tm_wday],
+             months[tm->tm_mon],
+             tm->tm_mday,
+             tm->tm_year + 1900);
+}

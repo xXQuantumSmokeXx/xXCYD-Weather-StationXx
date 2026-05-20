@@ -2,6 +2,7 @@
 #include <TFT_eSPI.h>
 #include <WiFi.h>
 #include <math.h>
+#include <time.h>
 
 #include "config/config.h"
 #include "config/nvs_config.h"
@@ -17,16 +18,19 @@
 #include "ui/screens/screen_hourly.h"
 #include "ui/screens/screen_forecast.h"
 #include "ui/screens/screen_settings.h"
+#include "modules/screenshot.h"
 
 static TFT_eSPI tft;
 
 // ── App state ─────────────────────────────────────────────────────────────
-static int           s_screen      = 0;
-static bool          s_needsRedraw = true;
-static bool          s_wifiOk      = false;
-static unsigned long s_lastWeather = 0;
-static unsigned long s_lastMinute  = 0;
-static char          s_updateStr[24] = "Never";
+static int           s_screen         = 0;
+static bool          s_needsRedraw    = true;
+static bool          s_wifiOk         = false;
+static unsigned long s_lastWeather    = 0;
+static int           s_lastWeatherHour = -1;   // hour (0-23) of last fetch; -1 = never
+static unsigned long s_lastMinute     = 0;
+static unsigned long s_lastAutoRotate  = 0;
+static char          s_updateStr[24]  = "Never";
 
 // ── RGB LED ───────────────────────────────────────────────────────────────
 static void ledSet(bool r, bool g, bool b) {
@@ -143,22 +147,31 @@ static void fetchWeather() {
     }
     ledSet(false, false, false);
     s_lastWeather = millis();
+    if (timeIsValid()) {
+        time_t now = time(nullptr);
+        s_lastWeatherHour = localtime(&now)->tm_hour;
+    }
     s_needsRedraw = true;
 }
 
 // Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Settings
 static void gotoScreen(int n) {
-    s_screen = constrain(n, 0, 3);
-    s_needsRedraw = true;
+    s_screen         = constrain(n, 0, 3);
+    s_lastAutoRotate = millis();
+    s_needsRedraw    = true;
+}
+
+static void redrawTo(TFT_eSPI &target) {
+    switch (s_screen) {
+        case 0: screenCurrentDraw(target, s_wifiOk);  break;
+        case 1: screenHourlyDraw(target, s_wifiOk);   break;
+        case 2: screenForecastDraw(target, s_wifiOk); break;
+        case 3: screenSettingsDraw(target, s_wifiOk); break;
+    }
 }
 
 static void redraw() {
-    switch (s_screen) {
-        case 0: screenCurrentDraw(tft, s_wifiOk);  break;
-        case 1: screenHourlyDraw(tft, s_wifiOk);   break;
-        case 2: screenForecastDraw(tft, s_wifiOk); break;
-        case 3: screenSettingsDraw(tft, s_wifiOk); break;
-    }
+    redrawTo(tft);
     s_needsRedraw = false;
 }
 
@@ -200,6 +213,8 @@ void setup() {
 
         showSplash("Fetching weather...");
         fetchWeather();
+
+        screenshotInit(tft, redrawTo);
     }
 
     ledSet(false, false, false);
@@ -215,11 +230,25 @@ void loop() {
         lastLdr = millis();
     }
 
-    // Weather refresh
-    if (s_wifiOk && millis() - s_lastWeather > WEATHER_REFRESH_MS) fetchWeather();
+    // Weather refresh — top of each new hour; millis fallback until time is synced
+    if (s_wifiOk) {
+        if (timeIsValid()) {
+            time_t now = time(nullptr);
+            int curHour = localtime(&now)->tm_hour;
+            if (curHour != s_lastWeatherHour) fetchWeather();
+        } else if (millis() - s_lastWeather > WEATHER_REFRESH_MS) {
+            fetchWeather();
+        }
+    }
 
     // Clock tick
     if (millis() - s_lastMinute > 60000) { s_needsRedraw = true; s_lastMinute = millis(); }
+
+    // Auto-rotate screens 0→1→2→0
+    if (screenSettingsGetAutoRotate() &&
+        millis() - s_lastAutoRotate > screenSettingsGetAutoRotateMs()) {
+        gotoScreen(s_screen < 2 ? s_screen + 1 : 0);
+    }
 
     // Touch
     TouchEvent evt = touchPoll();
@@ -242,6 +271,35 @@ void loop() {
                 showSplash("Refreshing...");
                 locationFetch();
                 fetchWeather();
+            }
+        }
+    }
+
+    screenshotLoop();
+    if (screenshotNeedsRedraw()) s_needsRedraw = true;
+
+    // Serial commands: '0'-'3' = switch screen, 'S' = capture current screen
+    if (Serial.available()) {
+        int cmd = Serial.read();
+        if (cmd >= '0' && cmd <= '3') {
+            gotoScreen(cmd - '0');
+            redraw();
+        }
+        if (cmd == 'S' || cmd == 's') {
+            TFT_eSprite spr(&tft);
+            spr.setColorDepth(8);   // 76 KB — fits; raw RGB332 buffer sent to PC
+            uint8_t *fb = (uint8_t*)spr.createSprite(SCREEN_W, SCREEN_H);
+            if (!fb) {
+                Serial.print("OOM:");
+                Serial.print(ESP.getFreeHeap());
+                Serial.print(",max:");
+                Serial.println(ESP.getMaxAllocHeap());
+            } else {
+                redrawTo(spr);
+                Serial.print("RGB332:");   // Python converts RGB332 -> BGR24 BMP
+                Serial.write(fb, SCREEN_W * SCREEN_H);
+                Serial.flush();
+                spr.deleteSprite();
             }
         }
     }
