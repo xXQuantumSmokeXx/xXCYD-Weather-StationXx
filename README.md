@@ -25,9 +25,8 @@ Tactical weather station for the ESP32-2432S028 (CYD — Cheap Yellow Display).
 
 ### Setup
 
-1. Copy `src/config/secrets.h.example` to `src/config/secrets.h` and add your WiFi credentials
-2. Flash `firmware.bin` from the release, or build with PlatformIO
+Flash `firmware.bin` from the release, or build from source with PlatformIO — copy `src/config/secrets.h.example` to `src/config/secrets.h` and add your WiFi credentials before building.
 
 ---
 
-*by xXMayDayXx*
+*by xXQuantum-SmokeXx*
