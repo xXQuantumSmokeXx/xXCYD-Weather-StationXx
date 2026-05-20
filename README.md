@@ -32,6 +32,7 @@ Flash `firmware.bin` from the latest release, then provision WiFi from the SD ca
 3. Put your WiFi password on line 2.
 4. Insert the SD card and boot the CYD.
 5. After the first successful boot, credentials are saved to NVS and the SD card can be removed.
+6. Delete `wifi.txt` from the SD card.
 
 ### Build
 
