@@ -7,6 +7,7 @@
 #include "config/config.h"
 #include "config/nvs_config.h"
 #include "modules/brightness.h"
+#include "modules/wifi_config.h"
 #include "ui/theme.h"
 #include "ui/theme_color.h"
 #include "ui/widgets.h"
@@ -130,8 +131,11 @@ static void showSplash(const char *msg) {
 // ── WiFi ──────────────────────────────────────────────────────────────────
 static void connectWifi() {
     showSplash("Connecting to WiFi...");
+    char ssid[64], pass[64];
+    wifiGetSSID(ssid, sizeof(ssid));
+    wifiGetPass(pass, sizeof(pass));
     WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    WiFi.begin(ssid, pass);
     unsigned long t = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t < 20000) delay(300);
     s_wifiOk = (WiFi.status() == WL_CONNECTED);
@@ -186,6 +190,7 @@ void setup() {
     ledSet(false, false, false);
 
     nvsInit();
+    wifiConfigLoad();   // reads wifi.txt from SD if present, saves to NVS
     themeColorInit();
 
     // TFT_eSPI init
