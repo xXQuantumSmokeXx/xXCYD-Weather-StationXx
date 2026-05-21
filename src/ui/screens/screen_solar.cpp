@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 
 #define SOLAR_CACHE_MS (15UL * 60UL * 1000UL)
 
@@ -24,6 +25,12 @@ struct SolarState {
     float windKms = 0;
     float density = 0;
     float bz = 0;
+    float xrayFlux = 0;
+    float cmeSpeedKms = 0;
+    char xrayClass[8] = "N/A";
+    char flareClass[8] = "NONE";
+    char flareTime[14] = "---";
+    char cmeTime[14] = "NONE";
     char sync[10] = "--:--";
 };
 
@@ -68,6 +75,28 @@ static void stampSync() {
     char t[10];
     timeGetShort(t);
     snprintf(s_solar.sync, sizeof(s_solar.sync), "%s", t);
+}
+
+static void fluxToClass(float flux, char *out, size_t len) {
+    if (flux <= 0) { snprintf(out, len, "N/A"); return; }
+    const char letters[] = "ABCMX";
+    const float bounds[] = { 1e-8f, 1e-7f, 1e-6f, 1e-5f, 1e-4f };
+    int idx = 0;
+    for (int i = 4; i >= 0; --i) {
+        if (flux >= bounds[i]) { idx = i; break; }
+    }
+    snprintf(out, len, "%c%.1f", letters[idx], flux / bounds[idx]);
+}
+
+static void getUtcDate(int dayOffset, char *out, size_t len) {
+    time_t now = time(nullptr);
+    if (now < 1000000) {
+        snprintf(out, len, "2026-05-21");
+        return;
+    }
+    now += (time_t)dayOffset * 86400;
+    struct tm *ti = gmtime(&now);
+    snprintf(out, len, "%04d-%02d-%02d", ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday);
 }
 
 static bool fetchKp() {
@@ -138,12 +167,131 @@ static void fetchMag() {
     http.end();
 }
 
+static void fetchXray() {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.begin(client, "https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json");
+    http.setTimeout(12000);
+    http.addHeader("User-Agent", "CYD-Weather/1.0");
+    if (http.GET() != 200) { http.end(); return; }
+
+    static const int TAIL_MAX = 500;
+    char tail[TAIL_MAX + 1];
+    int tailLen = 0;
+    uint8_t chunk[128];
+    WiFiClient *stream = http.getStreamPtr();
+    uint32_t deadline = millis() + 12000;
+
+    while (millis() < deadline) {
+        int avail = stream->available();
+        if (avail <= 0) {
+            if (!http.connected()) break;
+            delay(5);
+            continue;
+        }
+        int n = stream->readBytes(chunk, min(avail, (int)sizeof(chunk)));
+        if (n <= 0) break;
+        if (tailLen + n <= TAIL_MAX) {
+            memcpy(tail + tailLen, chunk, n);
+            tailLen += n;
+        } else {
+            int keep = TAIL_MAX - n;
+            if (keep < 0) keep = 0;
+            if (keep > 0) memmove(tail, tail + tailLen - keep, keep);
+            int copyFrom = (n > TAIL_MAX) ? n - TAIL_MAX : 0;
+            int copyLen = min(n, TAIL_MAX);
+            memcpy(tail + keep, chunk + copyFrom, copyLen);
+            tailLen = keep + copyLen;
+        }
+    }
+    http.end();
+    tail[tailLen] = '\0';
+
+    char *pos = nullptr;
+    for (char *p = tail; (p = strstr(p, "0.1-0.8nm")) != nullptr; ++p) pos = p;
+    if (!pos) return;
+    for (char *fp = pos; fp > tail; --fp) {
+        if (strncmp(fp, "\"flux\"", 6) == 0) {
+            char *colon = strchr(fp, ':');
+            if (!colon) continue;
+            s_solar.xrayFlux = atof(colon + 1);
+            fluxToClass(s_solar.xrayFlux, s_solar.xrayClass, sizeof(s_solar.xrayClass));
+            return;
+        }
+    }
+}
+
+static void fetchFlare() {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.begin(client, "https://services.swpc.noaa.gov/json/goes/primary/xray-flares-latest.json");
+    http.setTimeout(8000);
+    http.addHeader("User-Agent", "CYD-Weather/1.0");
+    if (http.GET() != 200) { http.end(); return; }
+    String body = http.getString();
+    http.end();
+
+    JsonDocument doc;
+    if (deserializeJson(doc, body)) return;
+    JsonArray arr = doc.as<JsonArray>();
+    if (arr.size() == 0) return;
+    JsonObject flare = arr[0];
+    const char *cls = flare["max_class"] | flare["current_class"] | "NONE";
+    const char *peak = flare["max_time"] | flare["time_tag"] | "";
+    snprintf(s_solar.flareClass, sizeof(s_solar.flareClass), "%s", cls);
+    if (peak && strlen(peak) >= 16) snprintf(s_solar.flareTime, sizeof(s_solar.flareTime), "%.5s %.5s", peak + 5, peak + 11);
+}
+
+static void fetchCme() {
+    char startDate[12], endDate[12], url[220];
+    getUtcDate(-4, startDate, sizeof(startDate));
+    getUtcDate(0, endDate, sizeof(endDate));
+    snprintf(url, sizeof(url), "https://api.nasa.gov/DONKI/CME?startDate=%s&endDate=%s&api_key=DEMO_KEY", startDate, endDate);
+
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.begin(client, url);
+    http.setTimeout(12000);
+    http.addHeader("User-Agent", "CYD-Weather/1.0");
+    if (http.GET() != 200) { http.end(); return; }
+    String body = http.getString();
+    http.end();
+
+    JsonDocument doc;
+    if (deserializeJson(doc, body)) return;
+    JsonArray arr = doc.as<JsonArray>();
+    if (arr.size() == 0) return;
+
+    JsonObject cme = arr[arr.size() - 1];
+    const char *start = cme["startTime"] | "";
+    s_solar.cmeSpeedKms = 0;
+    for (JsonVariant a : cme["cmeAnalyses"].as<JsonArray>()) {
+        if (!a["speed"].isNull()) {
+            s_solar.cmeSpeedKms = a["speed"].as<float>();
+            break;
+        }
+    }
+    if (start && strlen(start) >= 16) snprintf(s_solar.cmeTime, sizeof(s_solar.cmeTime), "%.5s %.5s", start + 5, start + 11);
+}
+
 static void fetchSolar(bool wifiOk) {
     if (!wifiOk || !WiFi.isConnected()) return;
     s_solar.fetchedOnce = true;
+    snprintf(s_solar.xrayClass, sizeof(s_solar.xrayClass), "N/A");
+    snprintf(s_solar.flareClass, sizeof(s_solar.flareClass), "NONE");
+    snprintf(s_solar.flareTime, sizeof(s_solar.flareTime), "---");
+    snprintf(s_solar.cmeTime, sizeof(s_solar.cmeTime), "NONE");
+    s_solar.cmeSpeedKms = 0;
+
     bool kpOk = fetchKp();
     fetchPlasma();
     fetchMag();
+    fetchXray();
+    fetchFlare();
+    fetchCme();
     s_solar.valid = kpOk;
     s_solar.fetchedMs = millis();
     stampSync();
@@ -156,8 +304,9 @@ static bool stale() {
 
 void screenSolarDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
+    char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SOLAR", timeStr, wifiOk);
-    drawBottombar(tft, s_solar.valid ? s_solar.sync : "", 3, 7);
+    drawBottombar(tft, dateStr, 3, 7);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     if (stale() && wifiOk) {
@@ -201,23 +350,33 @@ void screenSolarDraw(TFT_eSPI &tft, bool wifiOk) {
 
     tft.drawFastVLine(112, CONTENT_Y + 4, 82, g_themeColor);
 
-    struct Stat { const char *label; char value[18]; uint16_t color; } stats[3];
+    struct Stat { const char *label; char value[18]; uint16_t color; } stats[6];
     snprintf(stats[0].value, sizeof(stats[0].value), "%.0f km/s", s_solar.windKms);
     stats[0].label = "WIND"; stats[0].color = COL_WHITE;
     snprintf(stats[1].value, sizeof(stats[1].value), "%.1f nT", s_solar.bz);
     stats[1].label = "Bz"; stats[1].color = s_solar.bz < -5 ? COL_RED : (s_solar.bz < 0 ? COL_AMBER : g_themeColor);
     snprintf(stats[2].value, sizeof(stats[2].value), "%.1f p/cc", s_solar.density);
     stats[2].label = "DENS"; stats[2].color = COL_WHITE;
+    snprintf(stats[3].value, sizeof(stats[3].value), "%s", s_solar.xrayClass);
+    stats[3].label = "XRAY"; stats[3].color = COL_AMBER;
+    snprintf(stats[4].value, sizeof(stats[4].value), "%s", s_solar.flareClass);
+    stats[4].label = "FLR"; stats[4].color = COL_AMBER;
+    if (s_solar.cmeSpeedKms > 0) snprintf(stats[5].value, sizeof(stats[5].value), "%.0f km/s", s_solar.cmeSpeedKms);
+    else snprintf(stats[5].value, sizeof(stats[5].value), "%s", s_solar.cmeTime);
+    stats[5].label = "CME"; stats[5].color = COL_RED;
 
-    for (int i = 0; i < 3; ++i) {
-        int y = CONTENT_Y + 8 + i * 25;
+    for (int i = 0; i < 6; ++i) {
+        int col = i / 3;
+        int row = i % 3;
+        int x = col == 0 ? 126 : 220;
+        int y = CONTENT_Y + 8 + row * 25;
         tft.setTextFont(FONT_SM);
         tft.setTextColor(g_themeColor, COL_BG);
-        tft.setCursor(126, y);
+        tft.setCursor(x, y);
         tft.print(stats[i].label);
         tft.setTextFont(FONT_MD);
         tft.setTextColor(stats[i].color, COL_BG);
-        tft.setCursor(126, y + 9);
+        tft.setCursor(x, y + 9);
         tft.print(stats[i].value);
     }
 

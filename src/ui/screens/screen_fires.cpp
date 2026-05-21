@@ -95,8 +95,9 @@ static bool fetchFires(bool wifiOk) {
 
 void screenFiresDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
+    char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "FIRES", timeStr, wifiOk);
-    drawBottombar(tft, s_fetchedOnce ? s_sync : "", 4, 7);
+    drawBottombar(tft, dateStr, 4, 7);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     if (stale() && wifiOk) {

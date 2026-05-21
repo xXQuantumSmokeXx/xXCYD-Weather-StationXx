@@ -256,8 +256,12 @@ void loop() {
         }
     }
 
-    // Clock tick
-    if (millis() - s_lastMinute > 60000) { s_needsRedraw = true; s_lastMinute = millis(); }
+    // Clock tick. The live data screens keep their network cache and avoid
+    // full minute redraws to prevent visible flicker before rotation.
+    if (millis() - s_lastMinute > 60000) {
+        if (s_screen <= 2 || s_screen == 6) s_needsRedraw = true;
+        s_lastMinute = millis();
+    }
 
     // Auto-rotate screens 0→1→2→0
     if (screenSettingsGetAutoRotate() &&
