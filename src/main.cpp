@@ -308,24 +308,35 @@ void loop() {
             redraw();
         }
         if (cmd == 'S' || cmd == 's') {
-            // Capture the pixels that are already on the TFT. This preserves
-            // font 7 exactly; rendering font 7 into an 8-bit sprite corrupts it.
-            uint16_t row[SCREEN_W];
-            uint8_t  line[SCREEN_W];
+            // Render into a 16-bit sprite so font 7 is preserved. Some CYD
+            // boards cannot read pixels back from the TFT, and 8-bit sprites
+            // corrupt font 7, so this is the reliable capture path.
+            TFT_eSprite spr(&tft);
+            spr.setColorDepth(16);
+            uint16_t *fb = (uint16_t*)spr.createSprite(SCREEN_W, SCREEN_H);
+            if (!fb) {
+                Serial.print("OOM:");
+                Serial.print(ESP.getFreeHeap());
+                Serial.print(",max:");
+                Serial.println(ESP.getMaxAllocHeap());
+            } else {
+                redrawTo(spr);
 
-            Serial.print("RGB332:");
-            for (int y = 0; y < SCREEN_H; y++) {
-                tft.readRect(0, y, SCREEN_W, 1, row);
-                for (int x = 0; x < SCREEN_W; x++) {
-                    uint16_t c = row[x];
-                    uint8_t r3 = (c >> 13) & 0x07;
-                    uint8_t g3 = (c >> 8)  & 0x07;
-                    uint8_t b2 = (c >> 3)  & 0x03;
-                    line[x] = (r3 << 5) | (g3 << 2) | b2;
+                uint8_t line[SCREEN_W];
+                Serial.print("RGB332:");
+                for (int y = 0; y < SCREEN_H; y++) {
+                    for (int x = 0; x < SCREEN_W; x++) {
+                        uint16_t c = fb[y * SCREEN_W + x];
+                        uint8_t r3 = (c >> 13) & 0x07;
+                        uint8_t g3 = (c >> 8)  & 0x07;
+                        uint8_t b2 = (c >> 3)  & 0x03;
+                        line[x] = (r3 << 5) | (g3 << 2) | b2;
+                    }
+                    Serial.write(line, SCREEN_W);
                 }
-                Serial.write(line, SCREEN_W);
+                Serial.flush();
+                spr.deleteSprite();
             }
-            Serial.flush();
         }
     }
 
