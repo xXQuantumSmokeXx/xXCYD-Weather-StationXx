@@ -2,15 +2,18 @@
 
 Tactical weather station for the ESP32-2432S028 (CYD / Cheap Yellow Display).
 
-![NOW Screen](ScreenShots/screen_now.png)
+## Screens
 
----
+### NOW
+![NOW](ScreenShots/NOW.png)
 
-| Hourly | 5-Day Forecast | Settings |
-|--------|---------------|----------|
-| ![Hourly](ScreenShots/screen_hourly.png) | ![Forecast](ScreenShots/screen_forecast.png) | ![Settings](ScreenShots/screen_settings.png) |
+| HOURLY | 5-DAY | SOLAR |
+|--------|-------|-------|
+| ![HOURLY](ScreenShots/HOURLY.png) | ![5-DAY](ScreenShots/5-DAY.png) | ![SOLAR](ScreenShots/SOLAR.png) |
 
----
+| FIRES | USGS | SETTINGS |
+|-------|------|----------|
+| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | ![SETTINGS](ScreenShots/SETTINGS.png) |
 
 ### Features
 

@@ -97,7 +97,7 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     char numBuf[8];
 
     // HI value with label left-centered
-    tft.setTextFont(g_spriteCapture ? FONT_LG : 7);
+    tft.setTextFont(7);
     tft.setTextColor(COL_WHITE, COL_BG);
     snprintf(numBuf, sizeof(numBuf), "%d", (int)roundf(g_current.today_max));
     int hiW = tft.textWidth(numBuf);
@@ -114,7 +114,7 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     tft.print("HI");
 
     // LO value with label left-centered
-    tft.setTextFont(g_spriteCapture ? FONT_LG : 7);
+    tft.setTextFont(7);
     tft.setTextColor(COL_WHITE, COL_BG);
     snprintf(numBuf, sizeof(numBuf), "%d", (int)roundf(g_current.today_min));
     int loW = tft.textWidth(numBuf);
@@ -133,7 +133,7 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     // RIGHT: large temperature
     char buf[24];
     snprintf(buf, sizeof(buf), "%d", (int)roundf(g_current.temp));
-    tft.setTextFont(g_spriteCapture ? FONT_LG : 7);
+    tft.setTextFont(7);
     tft.setTextColor(COL_WHITE, COL_BG);
     tft.setCursor(DX, CONTENT_Y + 12);
     tft.print(buf);
