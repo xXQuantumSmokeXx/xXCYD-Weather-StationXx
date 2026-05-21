@@ -13,8 +13,8 @@
 #include <time.h>
 
 #define USGS_CACHE_MS (15UL * 60UL * 1000UL)
-#define QUAKE_MAX 11
-#define QUAKE_ROW_H 15
+#define QUAKE_MAX 12
+#define QUAKE_ROW_H 14
 
 struct QuakeItem {
     float mag;

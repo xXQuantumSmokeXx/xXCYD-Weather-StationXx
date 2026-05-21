@@ -12,8 +12,8 @@
 #include <cstring>
 
 #define FIRE_CACHE_MS (15UL * 60UL * 1000UL)
-#define FIRE_MAX 11
-#define FIRE_ROW_H 15
+#define FIRE_MAX 12
+#define FIRE_ROW_H 14
 
 struct FireItem {
     char title[70];
