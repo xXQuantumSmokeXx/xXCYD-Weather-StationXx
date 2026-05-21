@@ -69,7 +69,7 @@ static void autoRotLoad() {
 void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SETTINGS", timeStr, wifiOk);
-    drawBottombar(tft, "", 3, 4);
+    drawBottombar(tft, "", 6, 7);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     // ── Section 1: Info ───────────────────────────────────────────────────────

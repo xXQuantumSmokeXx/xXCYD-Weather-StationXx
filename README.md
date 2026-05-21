@@ -17,6 +17,9 @@ Tactical weather station for the ESP32-2432S028 (CYD / Cheap Yellow Display).
 - Current temperature, HI/LO, feels like, UV, humidity, wind, pressure, visibility
 - Moon phase disk with illumination % and phase name, sunrise/sunset
 - 12-hour hourly forecast and 5-day forecast
+- Solar conditions screen with Kp index, solar wind, Bz, density, and 24-hour Kp history
+- Wildfire screen using NASA EONET open wildfire events
+- USGS earthquake screen showing recent M3.5+ activity
 - Auto-detects location; no config needed beyond WiFi credentials
 - Weather data via Open-Meteo; no API key required
 - Refreshes at the top of each hour

@@ -19,6 +19,9 @@
 #include "ui/screens/screen_hourly.h"
 #include "ui/screens/screen_forecast.h"
 #include "ui/screens/screen_settings.h"
+#include "ui/screens/screen_solar.h"
+#include "ui/screens/screen_fires.h"
+#include "ui/screens/screen_usgs.h"
 #include "modules/screenshot.h"
 
 static TFT_eSPI tft;
@@ -161,9 +164,9 @@ static void fetchWeather() {
     s_needsRedraw = true;
 }
 
-// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Settings
+// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fires, 5=USGS, 6=Settings
 static void gotoScreen(int n) {
-    s_screen         = constrain(n, 0, 3);
+    s_screen         = constrain(n, 0, 6);
     s_lastAutoRotate = millis();
     s_needsRedraw    = true;
 }
@@ -173,7 +176,10 @@ static void redrawTo(TFT_eSPI &target) {
         case 0: screenCurrentDraw(target, s_wifiOk);  break;
         case 1: screenHourlyDraw(target, s_wifiOk);   break;
         case 2: screenForecastDraw(target, s_wifiOk); break;
-        case 3: screenSettingsDraw(target, s_wifiOk); break;
+        case 3: screenSolarDraw(target, s_wifiOk);    break;
+        case 4: screenFiresDraw(target, s_wifiOk);    break;
+        case 5: screenUsgsDraw(target, s_wifiOk);     break;
+        case 6: screenSettingsDraw(target, s_wifiOk); break;
     }
 }
 
@@ -256,7 +262,7 @@ void loop() {
     // Auto-rotate screens 0→1→2→0
     if (screenSettingsGetAutoRotate() &&
         millis() - s_lastAutoRotate > screenSettingsGetAutoRotateMs()) {
-        gotoScreen(s_screen < 2 ? s_screen + 1 : 0);
+        gotoScreen(s_screen < 5 ? s_screen + 1 : 0);
     }
 
     // Touch
@@ -273,7 +279,7 @@ void loop() {
             if (tx < 50)               gotoScreen(s_screen - 1);
             else if (tx > SCREEN_W - 50) gotoScreen(s_screen + 1);
         }
-        if (s_screen == 3) {
+        if (s_screen == 6) {
             bool changed = screenSettingsTap(tft, tx, ty);
             if (changed) s_needsRedraw = true;
             if (screenSettingsRefreshTapped()) {
@@ -287,13 +293,13 @@ void loop() {
     screenshotLoop();
     if (screenshotNeedsRedraw()) s_needsRedraw = true;
 
-    // Serial commands: '0'-'3' = switch screen, 'S' = capture current screen
+    // Serial commands: '0'-'6' = switch screen, 'S' = capture current screen
     if (Serial.available()) {
         int cmd = Serial.read();
         if (cmd == 'R' || cmd == 'r') {
             Serial.println("READY");
         }
-        if (cmd >= '0' && cmd <= '3') {
+        if (cmd >= '0' && cmd <= '6') {
             gotoScreen(cmd - '0');
             redraw();
         }
