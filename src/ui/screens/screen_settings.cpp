@@ -54,8 +54,8 @@ static const char *s_briLabels[BRI_LEVELS] = {"AUTO","DIM","LOW","MED","HIGH","M
 static bool s_refreshRequested = false;
 
 // ── Auto-rotate state ─────────────────────────────────────────────────────────
-static const uint32_t s_rotMs[]     = { 0, 10000, 30000, 60000, 300000 };
-static const char    *s_rotLabels[] = { "OFF", "10s", "30s", "1m", "5m" };
+static const uint32_t s_rotMs[]     = { 0, 5000, 10000, 30000, 60000 };
+static const char    *s_rotLabels[] = { "OFF", "5s", "10s", "30s", "1m" };
 static int   s_autoRotSel    = 0;
 static bool  s_autoRotLoaded = false;
 

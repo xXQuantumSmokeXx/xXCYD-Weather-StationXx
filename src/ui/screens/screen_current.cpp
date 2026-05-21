@@ -90,44 +90,47 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     // ── LEFT: HI / LO in font 7 (7-seg, same style as main temp) ────────
     // Positions tight-fit for ICR=24: condY ends at ~96, loVal ends at ~215
     const int condY  = ICY + ICR + 5;
-    const int hiLblY = condY + 16 + 4;   // 4px gap after condition text
-    const int hiValY = hiLblY + 8;
-    const int loLblY = hiValY + 48 + 3;
-    const int loValY = loLblY + 8;
+    const int hiValY = condY + 16 + 4;   // 4px gap after condition text
+    const int loValY = hiValY + 59;
+    const int tempLblDy = 20;
 
     char numBuf[8];
 
-    // HI label
-    tft.setTextFont(FONT_SM);
-    tft.setTextColor(g_themeColor, COL_BG);
-    int hlw = tft.textWidth("HI");
-    tft.setCursor((LEFT_W - hlw) / 2, hiLblY);
-    tft.print("HI");
-
-    // HI value — font 7 on display, FONT_LG in 8-bit sprite (font 7 corrupts 8-bit buffer)
+    // HI value with label left-centered
     tft.setTextFont(g_spriteCapture ? FONT_LG : 7);
     tft.setTextColor(COL_WHITE, COL_BG);
     snprintf(numBuf, sizeof(numBuf), "%d", (int)roundf(g_current.today_max));
     int hiW = tft.textWidth(numBuf);
-    tft.setCursor((LEFT_W - hiW) / 2, hiValY);
+    int hiX = (LEFT_W - hiW) / 2;
+    tft.setCursor(hiX, hiValY);
     tft.print(numBuf);
 
-    // LO label
     tft.setTextFont(FONT_SM);
     tft.setTextColor(g_themeColor, COL_BG);
-    int llw = tft.textWidth("LO");
-    tft.setCursor((LEFT_W - llw) / 2, loLblY);
-    tft.print("LO");
+    int hlw = tft.textWidth("HI");
+    int hiLblX = hiX - hlw - 4;
+    if (hiLblX < 0) hiLblX = 0;
+    tft.setCursor(hiLblX, hiValY + tempLblDy);
+    tft.print("HI");
 
-    // LO value — font 7 on display, FONT_LG in 8-bit sprite
+    // LO value with label left-centered
     tft.setTextFont(g_spriteCapture ? FONT_LG : 7);
     tft.setTextColor(COL_WHITE, COL_BG);
     snprintf(numBuf, sizeof(numBuf), "%d", (int)roundf(g_current.today_min));
     int loW = tft.textWidth(numBuf);
-    tft.setCursor((LEFT_W - loW) / 2, loValY);
+    int loX = (LEFT_W - loW) / 2;
+    tft.setCursor(loX, loValY);
     tft.print(numBuf);
 
-    // ── RIGHT: large temperature ─────────────────────────────────────────
+    tft.setTextFont(FONT_SM);
+    tft.setTextColor(g_themeColor, COL_BG);
+    int llw = tft.textWidth("LO");
+    int loLblX = loX - llw - 4;
+    if (loLblX < 0) loLblX = 0;
+    tft.setCursor(loLblX, loValY + tempLblDy);
+    tft.print("LO");
+
+    // RIGHT: large temperature
     char buf[24];
     snprintf(buf, sizeof(buf), "%d", (int)roundf(g_current.temp));
     tft.setTextFont(g_spriteCapture ? FONT_LG : 7);
