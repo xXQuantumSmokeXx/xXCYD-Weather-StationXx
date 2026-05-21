@@ -12,8 +12,8 @@
 #include <cstring>
 
 #define FIRE_CACHE_MS (15UL * 60UL * 1000UL)
-#define FIRE_MAX 10
-#define FIRE_ROW_H 16
+#define FIRE_MAX 11
+#define FIRE_ROW_H 15
 
 struct FireItem {
     char title[70];
@@ -125,24 +125,24 @@ void screenFiresDraw(TFT_eSPI &tft, bool wifiOk) {
         return;
     }
 
-    int y0 = CONTENT_Y + 22;
-    int visible = (CONTENT_H - 24) / FIRE_ROW_H;
+    int y0 = CONTENT_Y + 20;
+    int visible = (CONTENT_H - 20) / FIRE_ROW_H;
     int limit = min(s_fireCount, visible);
     for (int i = 0; i < limit; ++i) {
         int y = y0 + i * FIRE_ROW_H;
         tft.setTextFont(FONT_SM);
         tft.setTextColor(COL_AMBER, COL_BG);
-        tft.setCursor(4, y + 3);
+        tft.setCursor(4, y + 2);
         tft.print("*");
 
         int dateW = tft.textWidth(s_fires[i].when);
         int dateX = SCREEN_W - dateW - 4;
         String title = fitText(tft, s_fires[i].title, dateX - 20);
         tft.setTextColor(COL_WHITE, COL_BG);
-        tft.setCursor(18, y + 3);
+        tft.setCursor(18, y + 2);
         tft.print(title);
         tft.setTextColor(g_themeColor, COL_BG);
-        tft.setCursor(dateX, y + 3);
+        tft.setCursor(dateX, y + 2);
         tft.print(s_fires[i].when);
     }
 }

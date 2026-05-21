@@ -13,8 +13,8 @@
 #include <time.h>
 
 #define USGS_CACHE_MS (15UL * 60UL * 1000UL)
-#define QUAKE_MAX 10
-#define QUAKE_ROW_H 16
+#define QUAKE_MAX 11
+#define QUAKE_ROW_H 15
 
 struct QuakeItem {
     float mag;
@@ -142,8 +142,8 @@ void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
         return;
     }
 
-    int y0 = CONTENT_Y + 22;
-    int visible = (CONTENT_H - 24) / QUAKE_ROW_H;
+    int y0 = CONTENT_Y + 20;
+    int visible = (CONTENT_H - 20) / QUAKE_ROW_H;
     int limit = min(s_quakeCount, visible);
     for (int i = 0; i < limit; ++i) {
         int y = y0 + i * QUAKE_ROW_H;
@@ -151,7 +151,7 @@ void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
         snprintf(magBuf, sizeof(magBuf), "M%.1f", s_quakes[i].mag);
         tft.setTextFont(FONT_SM);
         tft.setTextColor(magColor(s_quakes[i].mag), COL_BG);
-        tft.setCursor(4, y + 3);
+        tft.setCursor(4, y + 2);
         tft.print(magBuf);
 
         int magW = tft.textWidth(magBuf) + 7;
@@ -159,10 +159,10 @@ void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
         int dateX = SCREEN_W - dateW - 4;
         String place = fitText(tft, s_quakes[i].place, dateX - magW - 8);
         tft.setTextColor(COL_WHITE, COL_BG);
-        tft.setCursor(magW, y + 3);
+        tft.setCursor(magW, y + 2);
         tft.print(place);
         tft.setTextColor(g_themeColor, COL_BG);
-        tft.setCursor(dateX, y + 3);
+        tft.setCursor(dateX, y + 2);
         tft.print(s_quakes[i].when);
     }
 }
