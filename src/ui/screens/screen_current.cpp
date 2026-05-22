@@ -12,6 +12,48 @@
 
 extern bool g_spriteCapture;
 
+static float calcDewPoint(float tempF, int humidity) {
+    if (humidity <= 0) return tempF;
+    return tempF - ((100.0f - (float)humidity) / 5.0f);
+}
+
+static float calcHeatIndex(float T, int RH) {
+    if (T < 80.0f || RH < 40) return T;
+    float T2 = T * T;
+    float RH2 = (float)(RH * RH);
+    float hi = -42.379f + 2.04901523f * T + 10.14333127f * (float)RH
+             - 0.22475541f * T * (float)RH
+             - 6.83783e-3f * T2 - 5.481717e-2f * RH2
+             + 1.22874e-3f * T2 * (float)RH
+             + 8.5282e-4f * T * RH2
+             - 1.99e-6f * T2 * RH2;
+    if ((float)RH < 13.0f && T > 80.0f && T < 112.0f)
+        hi -= ((13.0f - (float)RH) / 4.0f) * sqrtf((17.0f - fabsf(T - 95.0f)) / 17.0f);
+    if ((float)RH > 85.0f && T > 80.0f && T < 87.0f)
+        hi += (((float)RH - 85.0f) / 10.0f) * ((87.0f - T) / 5.0f);
+    return hi;
+}
+
+static float calcWindChill(float T, float windMph) {
+    if (T > 50.0f || windMph < 3.0f) return T;
+    float powV = powf(windMph, 0.16f);
+    return 35.74f + 0.6215f * T - 35.75f * powV + 0.4275f * T * powV;
+}
+
+static void getFeelsLike(float tempF, int humidity, float windMph,
+                         const char **label, float *value) {
+    if (tempF > 80.0f && humidity >= 40) {
+        *label = "heat index";
+        *value = calcHeatIndex(tempF, humidity);
+    } else if (tempF < 50.0f && windMph >= 3.0f) {
+        *label = "wind chill";
+        *value = calcWindChill(tempF, windMph);
+    } else {
+        *label = "feels like";
+        *value = tempF;
+    }
+}
+
 // Lunar phase: 0.0 = new, 0.5 = full, 1.0 = new
 static float getMoonPhase() {
     time_t now = time(nullptr);
@@ -145,13 +187,34 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     tft.setCursor(DX + tw + 2, CONTENT_Y + 16);
     tft.print("\xB0""F");
 
-    // Feels like — value in white, then themed F
+    // Temperature trend arrow — compare current hour vs next hour
+    float trend = g_hourly[0].temp - g_hourly[1].temp;
+    if (fabsf(trend) >= 1.0f && g_current.valid) {
+        int degW = tft.textWidth("\xB0""F");
+        int ax = DX + tw + 2 + degW + 6;
+        int ay = CONTENT_Y + 16 + 7;
+        if (trend < 0) {
+            // Warming up ▲
+            tft.fillTriangle(ax, ay - 4, ax - 4, ay + 3, ax + 4, ay + 3, COL_RED);
+        } else {
+            // Cooling down ▼
+            tft.fillTriangle(ax, ay + 4, ax - 4, ay - 3, ax + 4, ay - 3, g_themeColor);
+        }
+    }
+
+    // Dynamic feels-like label: heat index / wind chill / feels like
+    const char *flLabel;
+    float flValue;
+    getFeelsLike(g_current.temp, g_current.humidity, g_current.wind_speed,
+                 &flLabel, &flValue);
+
     tft.setTextFont(FONT_MD);
     tft.setTextColor(g_themeColor, COL_BG);
     tft.setCursor(DX, CONTENT_Y + 64);
-    tft.print("feels like ");
-    int lw = tft.textWidth("feels like ");
-    snprintf(buf, sizeof(buf), "%d\xB0", (int)roundf(g_current.feels_like));
+    tft.print(flLabel);
+    tft.print(" ");
+    int lw = tft.textWidth(flLabel) + tft.textWidth(" ");
+    snprintf(buf, sizeof(buf), "%d\xB0", (int)roundf(flValue));
     tft.setTextColor(COL_WHITE, COL_BG);
     tft.setCursor(DX + lw, CONTENT_Y + 64);
     tft.print(buf);
@@ -204,7 +267,8 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     snprintf(v1, 24, "%d%%",     g_current.humidity);
     snprintf(v2, 24, "%d mph %s",(int)roundf(g_current.wind_speed), windCardinal(g_current.wind_dir));
     snprintf(v3, 24, "%d hPa",   (int)roundf(g_current.pressure));
-    snprintf(v4, 24, "%.0f d",   daysToFull);
+    float dewPt = calcDewPoint(g_current.temp, g_current.humidity);
+    snprintf(v4, 24, "%d\xB0""F", (int)roundf(dewPt));
     snprintf(v5, 24, "%.1f mi",  g_current.visibility);
     snprintf(v6, 24, "%s",       g_daily[0].sunrise[0] ? g_daily[0].sunrise : "--:--");
     snprintf(v7, 24, "%s",       g_daily[0].sunset[0]  ? g_daily[0].sunset  : "--:--");
@@ -216,7 +280,7 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
         { "BAROMETER",   v3, false },
     };
     StatRow right[4] = {
-        { "FULL MOON",    v4, false },
+        { "DEW POINT",    v4, false },
         { "VISIBILITY",   v5, false },
         { "SUNRISE",      v6, false },
         { "SUNSET",       v7, false },

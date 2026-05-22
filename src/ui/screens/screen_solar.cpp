@@ -25,6 +25,8 @@ struct SolarState {
     float windKms = 0;
     float density = 0;
     float bz = 0;
+    float bt = 0;
+    float solarTemp = 0;
     float xrayFlux = 0;
     float cmeSpeedKms = 0;
     char xrayClass[8] = "N/A";
@@ -52,6 +54,13 @@ static uint16_t kpColor(float kp) {
     if (kp >= 5) return COL_RED;
     if (kp >= 3) return COL_AMBER;
     return g_themeColor;
+}
+
+static const char *auroraLabel(float kp) {
+    if (kp < 5) return "NONE";
+    if (kp < 7) return "HIGH LAT";
+    if (kp < 8) return "POSSIBLE";
+    return "LIKELY";
 }
 
 static bool readKp(JsonVariant row, float &kp) {
@@ -144,6 +153,7 @@ static void fetchPlasma() {
             if (last > 0) {
                 if (!arr[last][1].isNull()) s_solar.density = arr[last][1].as<float>();
                 if (!arr[last][2].isNull()) s_solar.windKms = arr[last][2].as<float>();
+                if (!arr[last][3].isNull()) s_solar.solarTemp = arr[last][3].as<float>();
             }
         }
     }
@@ -162,7 +172,10 @@ static void fetchMag() {
         if (!deserializeJson(doc, http.getString())) {
             JsonArray arr = doc.as<JsonArray>();
             int last = arr.size() - 1;
-            if (last > 0 && !arr[last][3].isNull()) s_solar.bz = arr[last][3].as<float>();
+            if (last > 0) {
+                if (!arr[last][3].isNull()) s_solar.bz = arr[last][3].as<float>();
+                if (!arr[last][4].isNull()) s_solar.bt = arr[last][4].as<float>();
+            }
         }
     }
     http.end();
@@ -295,6 +308,8 @@ static void fetchSolar(bool wifiOk) {
     snprintf(s_solar.flareTime, sizeof(s_solar.flareTime), "---");
     snprintf(s_solar.cmeTime, sizeof(s_solar.cmeTime), "NONE");
     s_solar.cmeSpeedKms = 0;
+    s_solar.bt = 0;
+    s_solar.solarTemp = 0;
 
     bool kpOk = fetchKp();
     fetchPlasma();
@@ -346,7 +361,7 @@ static void drawSolarContent(TFT_eSPI &tft) {
     snprintf(stats[0].value, sizeof(stats[0].value), "%.0f km/s", s_solar.windKms);
     stats[0].label = "WIND"; stats[0].color = COL_WHITE;
     snprintf(stats[1].value, sizeof(stats[1].value), "%.1f nT", s_solar.bz);
-    stats[1].label = "Bz"; stats[1].color = s_solar.bz < -5 ? COL_RED : (s_solar.bz < 0 ? COL_AMBER : g_themeColor);
+    stats[1].label = "Bz"; stats[1].color = COL_WHITE;
     snprintf(stats[2].value, sizeof(stats[2].value), "%.1f p/cc", s_solar.density);
     stats[2].label = "DENS"; stats[2].color = COL_WHITE;
     snprintf(stats[3].value, sizeof(stats[3].value), "%s", s_solar.xrayClass);
@@ -355,12 +370,12 @@ static void drawSolarContent(TFT_eSPI &tft) {
     stats[4].label = "FLR"; stats[4].color = COL_AMBER;
     if (s_solar.cmeSpeedKms > 0) snprintf(stats[5].value, sizeof(stats[5].value), "%.0f km/s", s_solar.cmeSpeedKms);
     else snprintf(stats[5].value, sizeof(stats[5].value), "%s", s_solar.cmeTime);
-    stats[5].label = "CME"; stats[5].color = COL_RED;
+    stats[5].label = "CME"; stats[5].color = (s_solar.cmeSpeedKms > 0 || strcmp(s_solar.cmeTime, "NONE") != 0) ? COL_RED : COL_WHITE;
 
     for (int i = 0; i < 6; ++i) {
         int col = i / 3;
         int row = i % 3;
-        int x = col == 0 ? 126 : 220;
+        int x = col == 0 ? 124 : 204;
         int y = CONTENT_Y + 8 + row * 25;
         tft.setTextFont(FONT_SM);
         tft.setTextColor(g_themeColor, COL_BG);
@@ -371,6 +386,56 @@ static void drawSolarContent(TFT_eSPI &tft) {
         tft.setCursor(x, y + 9);
         tft.print(stats[i].value);
     }
+
+    // 3rd column — BT, TEMP, AURORA (labels FONT_SM, values FONT_MD)
+    int ax = 270, ay = CONTENT_Y + 8;
+
+    // BT — row 0
+    char btBuf[12];
+    snprintf(btBuf, sizeof(btBuf), "%.1f nT", s_solar.bt);
+    tft.setTextFont(FONT_SM);
+    tft.setTextColor(g_themeColor, COL_BG);
+    tft.setCursor(ax, ay);
+    tft.print("BT");
+    tft.setTextFont(FONT_MD);
+    tft.setTextColor(COL_WHITE, COL_BG);
+    tft.setCursor(ax, ay + 9);
+    tft.print(btBuf);
+
+    // TEMP — row 1
+    char tempBuf[12];
+    if (s_solar.solarTemp >= 1000000)
+        snprintf(tempBuf, sizeof(tempBuf), "%.1fM K", s_solar.solarTemp / 1000000.0f);
+    else if (s_solar.solarTemp >= 1000)
+        snprintf(tempBuf, sizeof(tempBuf), "%.0fK K", s_solar.solarTemp / 1000.0f);
+    else if (s_solar.solarTemp > 0)
+        snprintf(tempBuf, sizeof(tempBuf), "%.0f K", s_solar.solarTemp);
+    else
+        snprintf(tempBuf, sizeof(tempBuf), "N/A");
+    tft.setTextFont(FONT_SM);
+    tft.setTextColor(g_themeColor, COL_BG);
+    tft.setCursor(ax, ay + 25);
+    tft.print("TEMP");
+    tft.setTextFont(FONT_MD);
+    tft.setTextColor(COL_WHITE, COL_BG);
+    tft.setCursor(ax, ay + 25 + 9);
+    tft.print(tempBuf);
+
+    // AURORA — row 2 (bottom)
+    const char *al = auroraLabel(s_solar.kp);
+    uint16_t ac = COL_WHITE;
+    if (s_solar.kp < 5)       ac = COL_WHITE;
+    else if (s_solar.kp < 7)  ac = COL_AMBER;
+    else if (s_solar.kp < 8)  ac = COL_WHITE;
+    else                      ac = COL_RED;
+    tft.setTextFont(FONT_SM);
+    tft.setTextColor(g_themeColor, COL_BG);
+    tft.setCursor(ax, ay + 50);
+    tft.print("AURORA");
+    tft.setTextFont(FONT_MD);
+    tft.setTextColor(ac, COL_BG);
+    tft.setCursor(ax, ay + 50 + 9);
+    tft.print(al);
 
     int chartY = CONTENT_Y + 104;
     tft.drawFastHLine(0, chartY - 8, SCREEN_W, g_themeColor);
