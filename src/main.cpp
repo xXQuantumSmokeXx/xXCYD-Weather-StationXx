@@ -22,8 +22,11 @@
 #include "ui/screens/screen_solar.h"
 #include "ui/screens/screen_fires.h"
 #include "ui/screens/screen_usgs.h"
+#include "modules/screenshot.h"
 
 static TFT_eSPI tft;
+
+bool g_spriteCapture = false;
 
 
 // ── App state ─────────────────────────────────────────────────────────────
@@ -181,6 +184,83 @@ static void redrawTo(TFT_eSPI &target) {
     }
 }
 
+static uint8_t rgb565To332(uint16_t c) {
+    uint8_t r3 = (c >> 13) & 0x07;
+    uint8_t g3 = (c >> 8)  & 0x07;
+    uint8_t b2 = (c >> 3)  & 0x03;
+    return (r3 << 5) | (g3 << 2) | b2;
+}
+
+static void fillCaptureRect(uint8_t *fb, int x, int y, int w, int h, uint8_t color) {
+    if (!fb || w <= 0 || h <= 0) return;
+    int x0 = constrain(x, 0, SCREEN_W);
+    int y0 = constrain(y, 0, SCREEN_H);
+    int x1 = constrain(x + w, 0, SCREEN_W);
+    int y1 = constrain(y + h, 0, SCREEN_H);
+    for (int yy = y0; yy < y1; yy++) {
+        memset(fb + yy * SCREEN_W + x0, color, x1 - x0);
+    }
+}
+
+static void overlayFont7CaptureText(uint8_t *fb, const char *text, int x, int y) {
+    if (!fb || !text || !text[0]) return;
+
+    tft.setTextFont(7);
+    int w = tft.textWidth(text);
+    int h = tft.fontHeight(7);
+    if (w <= 0 || h <= 0) return;
+
+    fillCaptureRect(fb, x, y, w, h, rgb565To332(COL_BG));
+
+    TFT_eSprite patch(&tft);
+    patch.setColorDepth(16);
+    uint16_t *pfb = (uint16_t*)patch.createSprite(w, h);
+    if (!pfb) return;
+
+    patch.fillSprite(COL_BG);
+    patch.setTextFont(7);
+    patch.setTextColor(COL_WHITE, COL_BG);
+    patch.setCursor(0, 0);
+    patch.print(text);
+
+    for (int py = 0; py < h; py++) {
+        int dy = y + py;
+        if (dy < 0 || dy >= SCREEN_H) continue;
+        for (int px = 0; px < w; px++) {
+            int dx = x + px;
+            if (dx < 0 || dx >= SCREEN_W) continue;
+            uint16_t c = patch.readPixel(px, py);
+            if (c != COL_BG) fb[dy * SCREEN_W + dx] = rgb565To332(c);
+        }
+    }
+
+    patch.deleteSprite();
+}
+
+static void patchNowCaptureDigits(uint8_t *fb) {
+    if (!fb || !g_current.valid) return;
+
+    const int ICY    = CONTENT_Y + 28;
+    const int ICR    = 24;
+    const int DX     = 118;
+    const int LEFT_W = DX - 8;
+    const int condY  = ICY + ICR + 5;
+    const int hiValY = condY + 16 + 4;
+    const int loValY = hiValY + 59;
+
+    char buf[8];
+    tft.setTextFont(7);
+
+    snprintf(buf, sizeof(buf), "%d", (int)roundf(g_current.today_max));
+    overlayFont7CaptureText(fb, buf, (LEFT_W - tft.textWidth(buf)) / 2, hiValY);
+
+    snprintf(buf, sizeof(buf), "%d", (int)roundf(g_current.today_min));
+    overlayFont7CaptureText(fb, buf, (LEFT_W - tft.textWidth(buf)) / 2, loValY);
+
+    snprintf(buf, sizeof(buf), "%d", (int)roundf(g_current.temp));
+    overlayFont7CaptureText(fb, buf, DX, CONTENT_Y + 12);
+}
+
 static void redraw() {
     redrawTo(tft);
     s_needsRedraw = false;
@@ -226,6 +306,7 @@ void setup() {
         showSplash("Fetching weather...");
         fetchWeather();
 
+        screenshotInit(tft, redrawTo);
     }
 
     ledSet(false, false, false);
@@ -260,10 +341,13 @@ void loop() {
         }
     }
 
-    // Clock tick. The live data screens keep their network cache and avoid
-    // full minute redraws to prevent visible flicker before rotation.
+    // Clock tick — only update the time text, not a full redraw
     if (millis() - s_lastMinute > 60000) {
-        if (s_screen <= 2 || s_screen == 6) s_needsRedraw = true;
+        if (s_screen <= 2 || s_screen == 6) {
+            char timeStr[10]; timeGetShort(timeStr);
+            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRES","USGS","SETTINGS"};
+            drawTopbarTime(tft, timeStr, labels[s_screen]);
+        }
         s_lastMinute = millis();
     }
 
@@ -287,7 +371,16 @@ void loop() {
             if (tx < 50)               gotoScreen(s_screen - 1);
             else if (tx > SCREEN_W - 50) gotoScreen(s_screen + 1);
         }
-        if (s_screen == 6) {
+        if (s_screen == 3) {
+            screenSolarTap(tft, tx, ty, s_wifiOk);
+            s_needsRedraw = true;
+        } else if (s_screen == 4) {
+            screenFiresTap(tft, tx, ty, s_wifiOk);
+            s_needsRedraw = true;
+        } else if (s_screen == 5) {
+            screenUsgsTap(tft, tx, ty, s_wifiOk);
+            s_needsRedraw = true;
+        } else if (s_screen == 6) {
             bool changed = screenSettingsTap(tft, tx, ty);
             if (changed) s_needsRedraw = true;
             if (screenSettingsRefreshTapped()) {
@@ -298,6 +391,45 @@ void loop() {
         }
     }
 
+    screenshotLoop();
+    if (screenshotNeedsRedraw()) s_needsRedraw = true;
+
+    // Serial commands: '0'-'6' = switch screen, 'R' = ready check, 'S' = capture
+    if (Serial.available()) {
+        int cmd = Serial.read();
+        if (cmd == 'R' || cmd == 'r') {
+            Serial.println("READY");
+        }
+        if (cmd >= '0' && cmd <= '6') {
+            gotoScreen(cmd - '0');
+            redraw();
+        }
+        if (cmd == 'S' || cmd == 's') {
+            // 8-bit RGB332 capture — 16-bit sprites don't fit in free heap.
+            // Font-7 digits on the NOW screen are patched with tiny 16-bit overlays.
+            TFT_eSprite spr(&tft);
+            spr.setColorDepth(8);
+            uint8_t *fb = (uint8_t*)spr.createSprite(SCREEN_W, SCREEN_H);
+            if (!fb) {
+                Serial.print("OOM:");
+                Serial.print(ESP.getFreeHeap());
+                Serial.print(",max:");
+                Serial.println(ESP.getMaxAllocHeap());
+            } else {
+                bool oldCapture = g_spriteCapture;
+                g_spriteCapture = false;
+                redrawTo(spr);
+                g_spriteCapture = oldCapture;
+
+                if (s_screen == 0) patchNowCaptureDigits(fb);
+
+                Serial.print("RGB332:");
+                Serial.write(fb, SCREEN_W * SCREEN_H);
+                Serial.flush();
+                spr.deleteSprite();
+            }
+        }
+    }
 
     if (s_needsRedraw) redraw();
     delay(20);

@@ -24,6 +24,7 @@ static FireItem s_fires[FIRE_MAX];
 static int s_fireCount = 0;
 static bool s_fetchedOnce = false;
 static unsigned long s_fetchedMs = 0;
+static bool s_forceRefresh = false;
 static char s_sync[10] = "--:--";
 
 static void copyFit(const char *src, char *dst, size_t len) {
@@ -45,6 +46,7 @@ static String fitText(TFT_eSPI &tft, const char *src, int maxPx) {
 
 static bool stale() {
     if (!s_fetchedOnce) return true;
+    if (s_forceRefresh) return true;
     return millis() - s_fetchedMs > FIRE_CACHE_MS;
 }
 
@@ -55,9 +57,11 @@ static void stampSync() {
 }
 
 static bool fetchFires(bool wifiOk) {
-    if (!wifiOk || !WiFi.isConnected()) return false;
-    s_fetchedOnce = true;
-    s_fireCount = 0;
+    if (!wifiOk || !WiFi.isConnected()) {
+        s_fetchedMs = millis();
+        s_fetchedOnce = true;
+        return false;
+    }
 
     WiFiClientSecure client;
     client.setInsecure();
@@ -66,7 +70,7 @@ static bool fetchFires(bool wifiOk) {
     http.setTimeout(15000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
     int code = http.GET();
-    if (code != 200) { http.end(); return false; }
+    if (code != 200) { http.end(); s_fetchedMs = millis(); s_fetchedOnce = true; return false; }
     String body = http.getString();
     http.end();
 
@@ -75,20 +79,36 @@ static bool fetchFires(bool wifiOk) {
     filter["events"][0]["geometry"][0]["date"] = true;
 
     JsonDocument doc;
-    if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) return false;
+    if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) {
+        s_fetchedMs = millis();
+        s_fetchedOnce = true;
+        return false;
+    }
     JsonArray events = doc["events"].as<JsonArray>();
-    if (events.isNull()) return false;
+    if (events.isNull()) {
+        s_fetchedMs = millis();
+        s_fetchedOnce = true;
+        return false;
+    }
 
+    // Collect into temp — don't clear old data until we know we have valid new data
+    FireItem temp[FIRE_MAX];
+    int tempCount = 0;
     for (JsonObject ev : events) {
-        if (s_fireCount >= FIRE_MAX) break;
+        if (tempCount >= FIRE_MAX) break;
         const char *title = ev["title"] | "Unknown Fire";
         const char *date = ev["geometry"][0]["date"] | "";
-        copyFit(title, s_fires[s_fireCount].title, sizeof(s_fires[s_fireCount].title));
-        if (date && strlen(date) >= 10) snprintf(s_fires[s_fireCount].when, sizeof(s_fires[s_fireCount].when), "%.5s", date + 5);
-        else copyFit("--", s_fires[s_fireCount].when, sizeof(s_fires[s_fireCount].when));
-        s_fireCount++;
+        copyFit(title, temp[tempCount].title, sizeof(temp[tempCount].title));
+        if (date && strlen(date) >= 10) snprintf(temp[tempCount].when, sizeof(temp[tempCount].when), "%.5s", date + 5);
+        else copyFit("--", temp[tempCount].when, sizeof(temp[tempCount].when));
+        tempCount++;
     }
+
+    // Only replace live data when we have valid new data
+    for (int i = 0; i < tempCount; i++) s_fires[i] = temp[i];
+    s_fireCount = tempCount;
     s_fetchedMs = millis();
+    s_fetchedOnce = true;
     stampSync();
     return s_fireCount > 0;
 }
@@ -100,14 +120,71 @@ void screenFiresDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 4, 7);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    if (stale() && wifiOk) {
+    bool doFetch = stale() && wifiOk;
+    bool showFetchMsg = doFetch && (s_fireCount == 0 || s_forceRefresh);
+    s_forceRefresh = false;
+
+    if (showFetchMsg) {
         tft.setTextFont(FONT_MD);
         tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(86, 108);
         tft.print("Fetching fires...");
-        fetchFires(wifiOk);
-        tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
+    } else if (s_fireCount > 0) {
+        // Draw cached data while background fetch runs
+        tft.setTextFont(FONT_SM);
+        tft.setTextColor(g_themeColor, COL_BG);
+        char hdr[32];
+        snprintf(hdr, sizeof(hdr), "OPEN WILDFIRES: %d", s_fireCount);
+        tft.setCursor(8, CONTENT_Y + 4);
+        tft.print(hdr);
+        tft.drawFastHLine(0, CONTENT_Y + 16, SCREEN_W, g_themeColor);
+
+        int headerH = 20;
+        int visible = (CONTENT_H - headerH) / FIRE_ROW_H;
+        int limit = min(s_fireCount, visible);
+        int dataH = limit * FIRE_ROW_H;
+        int y0 = CONTENT_Y + headerH + ((CONTENT_H - headerH) - dataH) / 2;
+        for (int i = 0; i < limit; ++i) {
+            int y = y0 + i * FIRE_ROW_H;
+            tft.setTextFont(FONT_SM);
+            tft.setTextColor(COL_AMBER, COL_BG);
+            tft.setCursor(4, y + 2);
+            tft.print("*");
+
+            int dateW = tft.textWidth(s_fires[i].when);
+            int dateX = SCREEN_W - dateW - 4;
+            String title = fitText(tft, s_fires[i].title, dateX - 20);
+            tft.setTextColor(COL_WHITE, COL_BG);
+            tft.setCursor(18, y + 2);
+            tft.print(title);
+            tft.setTextColor(g_themeColor, COL_BG);
+            tft.setCursor(dateX, y + 2);
+            tft.print(s_fires[i].when);
+        }
+    } else if (!doFetch) {
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(g_themeColor, COL_BG);
+        tft.setCursor(wifiOk ? 58 : 92, 104);
+        tft.print(wifiOk ? "No open wildfire data" : "Fires offline");
     }
+
+    if (doFetch) {
+        bool ok = fetchFires(wifiOk);
+        if (showFetchMsg || ok) {
+            tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
+        }
+        if (s_fireCount == 0) {
+            tft.setTextFont(FONT_MD);
+            tft.setTextColor(g_themeColor, COL_BG);
+            tft.setCursor(wifiOk ? 58 : 92, 104);
+            tft.print(wifiOk ? "No open wildfire data" : "Fires offline");
+            return;
+        }
+    }
+
+    // Re-draw after fetch if we showed a message or data changed
+    if (!doFetch && s_fireCount == 0) return;
+    if (doFetch && !showFetchMsg && s_fireCount == 0) return;
 
     tft.setTextFont(FONT_SM);
     tft.setTextColor(g_themeColor, COL_BG);
@@ -117,15 +194,7 @@ void screenFiresDraw(TFT_eSPI &tft, bool wifiOk) {
     tft.print(hdr);
     tft.drawFastHLine(0, CONTENT_Y + 16, SCREEN_W, g_themeColor);
 
-    if (s_fireCount == 0) {
-        tft.setTextFont(FONT_MD);
-        tft.setTextColor(g_themeColor, COL_BG);
-        tft.setCursor(wifiOk ? 58 : 92, 104);
-        tft.print(wifiOk ? "No open wildfire data" : "Fires offline");
-        return;
-    }
-
-    int headerH = 20;  // header + divider occupy top ~20px of content
+    int headerH = 20;
     int visible = (CONTENT_H - headerH) / FIRE_ROW_H;
     int limit = min(s_fireCount, visible);
     int dataH = limit * FIRE_ROW_H;
@@ -146,5 +215,12 @@ void screenFiresDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(dateX, y + 2);
         tft.print(s_fires[i].when);
+    }
+}
+
+void screenFiresTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {
+    if (y <= TOPBAR_H && wifiOk) {
+        s_forceRefresh = true;
+        s_fetchedMs = 0;
     }
 }

@@ -28,11 +28,16 @@ static void drawCloud(TFT_eSPI &tft, int cx, int cy, int r, uint16_t col) {
     tft.fillCircle(cx + sOffX, cy + bigR / 4, smlR, col);
     // Centre dome (tallest)
     tft.fillCircle(cx, cy, bigR, col);
-    // Flat base connecting everything
-    int lx = cx - sOffX - smlR;
-    int rx = cx + sOffX + smlR;
-    int by = cy + bigR / 2;
-    tft.fillRect(lx, by, rx - lx + 1, (cy + bigR) - by + 1, col);
+    // Rounded base — filled circles at bottom corners + rect fill
+    int lx   = cx - sOffX - smlR;
+    int rx   = cx + sOffX + smlR;
+    int by   = cy + bigR / 2;
+    int btm  = cy + bigR;
+    int cR   = smlR * 2 / 3;   // bottom corner radius
+    tft.fillCircle(lx + cR, btm - cR, cR, col);
+    tft.fillCircle(rx - cR, btm - cR, cR, col);
+    tft.fillRect(lx + cR, by, rx - lx - cR * 2 + 1, btm - by + 1, col);
+    tft.fillRect(lx, by + cR, rx - lx + 1, btm - by - cR + 1, col);
 }
 
 // ── Partly Cloudy ─────────────────────────────────────────────────────────────

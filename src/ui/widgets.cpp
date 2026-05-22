@@ -144,6 +144,35 @@ void drawBottombar(TFT_eSPI &tft, const char *label, int activeScreen, int total
     tft.drawFastVLine(SCREEN_W - 1,    SCREEN_H - TK_V, TK_V, g_themeColor);
 }
 
+void drawTopbarTime(TFT_eSPI &tft, const char *timeStr, const char *screenLabel) {
+    // Clear right portion of topbar — label to right edge. Uses 155 to cover
+    // any label width (widest is "SETTINGS" ~96px centered = ends ~208) while
+    // leaving the city text on the far left untouched.
+    tft.fillRect(155, 0, SCREEN_W - 155, TOPBAR_H - 1, COL_BG);
+
+    // Redraw centered screen label
+    if (screenLabel && screenLabel[0]) {
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(COL_WHITE, COL_BG);
+        int lw = tft.textWidth(screenLabel);
+        tft.setCursor((SCREEN_W - lw) / 2, 3);
+        tft.print(screenLabel);
+    }
+
+    // Draw time — right side
+    tft.setTextFont(FONT_MD);
+    int tw = tft.textWidth(timeStr);
+    tft.setTextColor(COL_WHITE, COL_BG);
+    int timeX = SCREEN_W - tw - TK_H - 3;
+    if (timeX < 160) timeX = 160;
+    tft.setCursor(timeX, 3);
+    tft.print(timeStr);
+
+    // Redraw right-side corner ticks
+    tft.drawFastHLine(SCREEN_W - TK_H, 0, TK_H, g_themeColor);
+    tft.drawFastVLine(SCREEN_W - 1,    0, TK_V, g_themeColor);
+}
+
 void drawDivider(TFT_eSPI &tft, int y, uint16_t col) {
     if (col == 0) col = COL_DIM;
     tft.drawFastHLine(0, y, SCREEN_W, col);

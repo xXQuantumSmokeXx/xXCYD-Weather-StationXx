@@ -10,6 +10,8 @@
 #include <math.h>
 #include <time.h>
 
+extern bool g_spriteCapture;
+
 // Lunar phase: 0.0 = new, 0.5 = full, 1.0 = new
 static float getMoonPhase() {
     time_t now = time(nullptr);
@@ -97,7 +99,7 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     char numBuf[8];
 
     // HI value with label left-centered
-    tft.setTextFont(7);
+    tft.setTextFont(g_spriteCapture ? FONT_LG : 7);
     tft.setTextColor(COL_WHITE, COL_BG);
     snprintf(numBuf, sizeof(numBuf), "%d", (int)roundf(g_current.today_max));
     int hiW = tft.textWidth(numBuf);
@@ -114,7 +116,7 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     tft.print("HI");
 
     // LO value with label left-centered
-    tft.setTextFont(7);
+    tft.setTextFont(g_spriteCapture ? FONT_LG : 7);
     tft.setTextColor(COL_WHITE, COL_BG);
     snprintf(numBuf, sizeof(numBuf), "%d", (int)roundf(g_current.today_min));
     int loW = tft.textWidth(numBuf);
@@ -133,7 +135,7 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     // RIGHT: large temperature
     char buf[24];
     snprintf(buf, sizeof(buf), "%d", (int)roundf(g_current.temp));
-    tft.setTextFont(7);
+    tft.setTextFont(g_spriteCapture ? FONT_LG : 7);
     tft.setTextColor(COL_WHITE, COL_BG);
     tft.setCursor(DX, CONTENT_Y + 12);
     tft.print(buf);
@@ -208,8 +210,8 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     snprintf(v7, 24, "%s",       g_daily[0].sunset[0]  ? g_daily[0].sunset  : "--:--");
 
     StatRow left[4] = {
-        { "UV INDEX",    v0, true  },
-        { "HUMIDITY",    v1, true  },
+        { "UV INDEX",    v0, false },
+        { "HUMIDITY",    v1, false },
         { "WINDSPEED",   v2, false },
         { "BAROMETER",   v3, false },
     };
