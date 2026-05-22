@@ -48,7 +48,7 @@ Tactical weather station for the ESP32-2432S028 (CYD / Cheap Yellow Display).
 - WiFi status and IP, city, NTP time sync status, weather provider info
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
 - Screen auto-rotate interval (off / 15s / 30s / 60s / 120s)
-- Manual refresh now button and reset display defaults button
+- Refresh Weather and Update Location buttons
 - 9 theme accent colors, saved across reboots
 - E-Ink mode — inverts display to white-background / black-foreground, toggled from the settings screen
 
@@ -56,6 +56,7 @@ Tactical weather station for the ESP32-2432S028 (CYD / Cheap Yellow Display).
 - Auto-detects location via IP geolocation; no config needed beyond WiFi credentials
 - Weather data via Open-Meteo; no API key required
 - Refreshes at the top of each hour
+- Tap the title bar on SOLAR, FIRES, or USGS screens to force an immediate data re-fetch
 
 ### Setup
 
