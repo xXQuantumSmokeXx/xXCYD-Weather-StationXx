@@ -375,7 +375,7 @@ static void drawSolarContent(TFT_eSPI &tft) {
     for (int i = 0; i < 6; ++i) {
         int col = i / 3;
         int row = i % 3;
-        int x = col == 0 ? 124 : 204;
+        int x = col == 0 ? 124 : 196;
         int y = CONTENT_Y + 8 + row * 25;
         tft.setTextFont(FONT_SM);
         tft.setTextColor(g_themeColor, COL_BG);
@@ -388,7 +388,7 @@ static void drawSolarContent(TFT_eSPI &tft) {
     }
 
     // 3rd column — BT, TEMP, AURORA (labels FONT_SM, values FONT_MD)
-    int ax = 270, ay = CONTENT_Y + 8;
+    int ax = 252, ay = CONTENT_Y + 8;
 
     // BT — row 0
     char btBuf[12];
