@@ -12,31 +12,8 @@
 void drawTopbar(TFT_eSPI &tft, const char *city, const char *screenLabel, const char *timeStr, bool wifiOk) {
     tft.fillRect(0, 0, SCREEN_W, TOPBAR_H, COL_BG);
 
-    // ── Double border: dim line above, themed line at very bottom ─────────
-    tft.drawFastHLine(0, TOPBAR_H - 2, SCREEN_W, COL_DIM);
-    tft.drawFastHLine(0, TOPBAR_H - 1, SCREEN_W, g_themeColor);
-
-    // ── Corner bracket ticks — top-left and top-right ─────────────────────
-    tft.drawFastHLine(0,              0, TK_H, g_themeColor);
-    tft.drawFastVLine(0,              0, TK_V, g_themeColor);
-    tft.drawFastHLine(SCREEN_W - TK_H, 0, TK_H, g_themeColor);
-    tft.drawFastVLine(SCREEN_W - 1,    0, TK_V, g_themeColor);
-
-    // ── Screen label — centered, themed, with accent squares at border ────
-    if (screenLabel && screenLabel[0]) {
-        tft.setTextFont(FONT_MD);
-        tft.setTextColor(g_themeColor, COL_BG);
-        int lw = tft.textWidth(screenLabel);
-        int lx = (SCREEN_W - lw) / 2;
-        tft.setCursor(lx, 3);
-        tft.print(screenLabel);
-
-        // Small filled squares flanking the label on the border line
-        tft.fillRect(lx - 6,      TOPBAR_H - 5, 3, 4, g_themeColor);
-        tft.fillRect(lx + lw + 3, TOPBAR_H - 5, 3, 4, g_themeColor);
-    }
-
     // ── City — left, shifted inside corner bracket ────────────────────────
+    // Drawn first so themed border elements on top cover any text overflow
     if (city && city[0]) {
         tft.setTextFont(FONT_MD);
         tft.setTextColor(COL_WHITE, COL_BG);
@@ -48,42 +25,61 @@ void drawTopbar(TFT_eSPI &tft, const char *city, const char *screenLabel, const 
     tft.setTextFont(FONT_MD);
     int tw = tft.textWidth(timeStr);
     tft.setTextColor(COL_WHITE, COL_BG);
-    tft.setCursor(SCREEN_W - tw - TK_H - 3, 3);
+    int timeX = SCREEN_W - tw - TK_H - 3;
+    if (timeX < 160) timeX = 160;   // prevent leftward collision with label
+    tft.setCursor(timeX, 3);
     tft.print(timeStr);
+
+    // ── Screen label — centered, white ─────────────────────────────────────
+    if (screenLabel && screenLabel[0]) {
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(COL_WHITE, COL_BG);
+        int lw = tft.textWidth(screenLabel);
+        int lx = (SCREEN_W - lw) / 2;
+        tft.setCursor(lx, 3);
+        tft.print(screenLabel);
+    }
+
+    // ── Solid border at bottom of topbar ───────────────────────────────────
+    tft.drawFastHLine(0, TOPBAR_H - 1, SCREEN_W, g_themeColor);
+
+    // ── Corner bracket ticks — top-left and top-right ─────────────────────
+    tft.drawFastHLine(0,              0, TK_H, g_themeColor);
+    tft.drawFastVLine(0,              0, TK_V, g_themeColor);
+    tft.drawFastHLine(SCREEN_W - TK_H, 0, TK_H, g_themeColor);
+    tft.drawFastVLine(SCREEN_W - 1,    0, TK_V, g_themeColor);
+
+    // ── Small filled squares flanking the label on the border line ────────
+    if (screenLabel && screenLabel[0]) {
+        int lw = tft.textWidth(screenLabel);
+        int lx = (SCREEN_W - lw) / 2;
+        tft.fillRect(lx - 6,      TOPBAR_H - 5, 3, 4, g_themeColor);
+        tft.fillRect(lx + lw + 3, TOPBAR_H - 5, 3, 4, g_themeColor);
+    }
 }
 
 void drawBottombar(TFT_eSPI &tft, const char *label, int activeScreen, int totalScreens) {
     int y0 = SCREEN_H - BOTBAR_H;
     tft.fillRect(0, y0, SCREEN_W, BOTBAR_H, COL_BG);
 
-    // ── Double border: themed line at top, dim line just below ────────────
-    tft.drawFastHLine(0, y0,     SCREEN_W, g_themeColor);
-    tft.drawFastHLine(0, y0 + 1, SCREEN_W, COL_DIM);
-
-    // ── Corner bracket ticks — bottom-left and bottom-right ───────────────
-    tft.drawFastHLine(0,              SCREEN_H - 1, TK_H, g_themeColor);
-    tft.drawFastVLine(0,              SCREEN_H - TK_V, TK_V, g_themeColor);
-    tft.drawFastHLine(SCREEN_W - TK_H, SCREEN_H - 1, TK_H, g_themeColor);
-    tft.drawFastVLine(SCREEN_W - 1,    SCREEN_H - TK_V, TK_V, g_themeColor);
-
     int my = y0 + BOTBAR_H / 2;
 
-    // ── Navigation arrows — symmetric spacing inside corner brackets ─────
+    // ── Navigation arrows — drawn first so border elements cover overflow ─
     tft.setTextFont(FONT_MD);
-    int arrowW = tft.textWidth(">");   // same width as "<" in this font
+    int arrowW = tft.textWidth(">");
 
     uint16_t lCol = (activeScreen > 0) ? g_themeColor : COL_DIM;
     tft.setTextColor(lCol, COL_BG);
     tft.setCursor(TK_H + 2, my - 8);
     tft.print("<");
 
-    int rarrowX = SCREEN_W - TK_H - 2 - arrowW;   // mirrors left arrow distance
+    int rarrowX = SCREEN_W - TK_H - 2 - arrowW;
     uint16_t rCol = (activeScreen < totalScreens - 1) ? g_themeColor : COL_DIM;
     tft.setTextColor(rCol, COL_BG);
     tft.setCursor(rarrowX, my - 8);
     tft.print(">");
 
-    // ── Battery % — themed, just left of right arrow ──────────────────────
+    // ── Battery % — just left of right arrow ──────────────────────────────
     int batt = batteryPct();
     if (batt >= 0) {
         char bbuf[8];
@@ -95,7 +91,7 @@ void drawBottombar(TFT_eSPI &tft, const char *label, int activeScreen, int total
         tft.print(bbuf);
     }
 
-    // ── Page indicator dots (shown when no label is given) ─────────────────
+    // ── Page indicator dots or centered label ─────────────────────────────
     if (!label || !label[0]) {
         const int DS = 4, DG = 6;
         int total = totalScreens * DS + (totalScreens - 1) * DG;
@@ -108,15 +104,44 @@ void drawBottombar(TFT_eSPI &tft, const char *label, int activeScreen, int total
                 tft.drawRect(dx, dy, DS, DS, COL_DIM);
             dx += DS + DG;
         }
+    } else {
+        // Split "Day, Mon DD, YYYY" → day-of-week left, rest centered
+        const char *comma = strchr(label, ',');
+        if (comma) {
+            // Day-of-week — lower left, after the arrow
+            char dayBuf[12];
+            size_t dayLen = comma - label;
+            if (dayLen > sizeof(dayBuf) - 1) dayLen = sizeof(dayBuf) - 1;
+            memcpy(dayBuf, label, dayLen);
+            dayBuf[dayLen] = '\0';
+
+            tft.setTextFont(FONT_MD);
+            tft.setTextColor(COL_WHITE, COL_BG);
+            tft.setCursor(TK_H + 2 + arrowW + 6, my - 8);
+            tft.print(dayBuf);
+
+            // Rest of date ("Mon DD, YYYY") — centered
+            const char *rest = comma + 2;  // skip ", "
+            int rw = tft.textWidth(rest);
+            tft.setCursor((SCREEN_W - rw) / 2, my - 8);
+            tft.print(rest);
+        } else {
+            tft.setTextFont(FONT_MD);
+            tft.setTextColor(COL_WHITE, COL_BG);
+            int lw = tft.textWidth(label);
+            tft.setCursor((SCREEN_W - lw) / 2, my - 8);
+            tft.print(label);
+        }
     }
 
-    if (label && label[0]) {
-        tft.setTextFont(FONT_MD);
-        tft.setTextColor(COL_WHITE, COL_BG);
-        int lw = tft.textWidth(label);
-        tft.setCursor((SCREEN_W - lw) / 2, my - 8);
-        tft.print(label);
-    }
+    // ── Solid border at top of bottombar ──────────────────────────────────
+    tft.drawFastHLine(0, y0, SCREEN_W, g_themeColor);
+
+    // ── Corner bracket ticks — bottom-left and bottom-right ───────────────
+    tft.drawFastHLine(0,              SCREEN_H - 1, TK_H, g_themeColor);
+    tft.drawFastVLine(0,              SCREEN_H - TK_V, TK_V, g_themeColor);
+    tft.drawFastHLine(SCREEN_W - TK_H, SCREEN_H - 1, TK_H, g_themeColor);
+    tft.drawFastVLine(SCREEN_W - 1,    SCREEN_H - TK_V, TK_V, g_themeColor);
 }
 
 void drawDivider(TFT_eSPI &tft, int y, uint16_t col) {

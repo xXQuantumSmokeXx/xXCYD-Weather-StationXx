@@ -27,7 +27,8 @@ Tactical weather station for the ESP32-2432S028 (CYD / Cheap Yellow Display).
 - Weather data via Open-Meteo; no API key required
 - Refreshes at the top of each hour
 - Auto-rotate cycles screens at configurable interval
-- 9 theme accent colors and brightness control, saved across reboots
+- **E-Ink mode** — inverts the display to a white-background / black-foreground scheme that mimics an e-paper panel and doubles as a flashlight by driving the backlight to maximum; toggle from Settings
+- 9 theme accent colors and 6-step brightness control (auto via LDR or fixed), saved across reboots
 
 ### Setup
 

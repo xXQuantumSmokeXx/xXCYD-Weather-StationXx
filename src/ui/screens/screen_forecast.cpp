@@ -46,7 +46,7 @@ void screenForecastDraw(TFT_eSPI &tft, bool wifiOk) {
 
         // ── Day label ─────────────────────────────────────────────────────
         tft.setTextFont(FONT_MD);
-        tft.setTextColor(g_themeColor, bg);
+        tft.setTextColor(COL_WHITE, bg);
         const char *label = (i == 0) ? "NOW" : g_daily[i].day;
         int tw = tft.textWidth(label);
         tft.setCursor(cx - tw / 2, CONTENT_Y + OFF_DAY);

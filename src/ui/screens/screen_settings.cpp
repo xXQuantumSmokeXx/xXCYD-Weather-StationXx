@@ -18,6 +18,12 @@
 #define INFO_Y0      (CONTENT_Y + 4)    // 27
 #define INFO_LINE_H  12
 
+// E-Ink button — right side of info section
+#define EINK_X       195
+#define EINK_Y       INFO_Y0
+#define EINK_W       (SCREEN_W - EINK_X - 8)   // ~117
+#define EINK_H       (4 * INFO_LINE_H)          // 48
+
 // Divider between info and controls
 #define DIV1_Y       (INFO_Y0 + 4 * INFO_LINE_H + 3)   // 79
 
@@ -127,6 +133,29 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         }
     }
 
+    // ── E-Ink / Flashlight toggle — right side of info section ─────────────────
+    {
+        tft.fillRect(EINK_X, EINK_Y, EINK_W, EINK_H, COL_INPUTBG);
+        if (invertGet()) {
+            tft.drawRect(EINK_X - 1, EINK_Y - 1, EINK_W + 2, EINK_H + 2, COL_WHITE);
+            tft.drawRect(EINK_X - 2, EINK_Y - 2, EINK_W + 4, EINK_H + 4, COL_WHITE);
+            tft.setTextColor(COL_BG, COL_INPUTBG);
+        } else {
+            tft.drawRect(EINK_X, EINK_Y, EINK_W, EINK_H, g_themeColor);
+            tft.setTextColor(g_themeColor, COL_INPUTBG);
+        }
+        tft.setTextFont(FONT_MD);
+        const char *einkLabel = "E-INK";
+        int elw = tft.textWidth(einkLabel);
+        tft.setCursor(EINK_X + (EINK_W - elw) / 2, EINK_Y + 6);
+        tft.print(einkLabel);
+        tft.setTextFont(FONT_SM);
+        const char *state = invertGet() ? "ON" : "OFF";
+        int sw = tft.textWidth(state);
+        tft.setCursor(EINK_X + (EINK_W - sw) / 2, EINK_Y + 28);
+        tft.print(state);
+    }
+
     // Divider 1
     tft.drawFastHLine(0, DIV1_Y, SCREEN_W, COL_DIM);
 
@@ -210,6 +239,13 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
 }
 
 bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
+    // E-Ink toggle button
+    if (tx >= EINK_X && tx < EINK_X + EINK_W &&
+        ty >= EINK_Y && ty < EINK_Y + EINK_H) {
+        invertSet(!invertGet());
+        return true;
+    }
+
     // Brightness
     for (int i = 0; i < BRI_LEVELS; i++) {
         int bx = SEC2_X + i * (BRI_BTN_W + 3);

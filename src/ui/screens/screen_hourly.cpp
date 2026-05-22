@@ -17,10 +17,10 @@
 #define ICON_R 16
 
 // Cell layout — hour / icon / temp / wind
-#define OFF_HOUR  3    // FONT_SM 8px  → ends 11
-#define OFF_ICON  30   // icon center, r=16
-#define OFF_TEMP  50   // FONT_LG 26px → ends 76
-#define OFF_WIND  78   // FONT_MD 16px → ends 94
+#define OFF_HOUR  1    // FONT_MD 16px → ends 17
+#define OFF_ICON  32   // icon center, r=16
+#define OFF_TEMP  51   // FONT_LG 26px → ends 77
+#define OFF_WIND  79   // FONT_MD 16px → ends 95
 
 void screenHourlyDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
@@ -52,7 +52,7 @@ void screenHourlyDraw(TFT_eSPI &tft, bool wifiOk) {
         const char *ap = (g_hourly[i].hour < 12) ? "a" : "p";
         char buf[12];
         snprintf(buf, sizeof(buf), "%d%s", h, ap);
-        tft.setTextFont(FONT_SM);
+        tft.setTextFont(FONT_MD);
         tft.setTextColor(COL_WHITE, COL_BG);
         int tw = tft.textWidth(buf);
         tft.setCursor(cx - tw / 2, y + OFF_HOUR);

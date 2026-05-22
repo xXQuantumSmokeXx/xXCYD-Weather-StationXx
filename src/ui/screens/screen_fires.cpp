@@ -125,9 +125,11 @@ void screenFiresDraw(TFT_eSPI &tft, bool wifiOk) {
         return;
     }
 
-    int y0 = CONTENT_Y + 20;
-    int visible = (CONTENT_H - 20) / FIRE_ROW_H;
+    int headerH = 20;  // header + divider occupy top ~20px of content
+    int visible = (CONTENT_H - headerH) / FIRE_ROW_H;
     int limit = min(s_fireCount, visible);
+    int dataH = limit * FIRE_ROW_H;
+    int y0 = CONTENT_Y + headerH + ((CONTENT_H - headerH) - dataH) / 2;
     for (int i = 0; i < limit; ++i) {
         int y = y0 + i * FIRE_ROW_H;
         tft.setTextFont(FONT_SM);

@@ -184,42 +184,74 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     tft.setCursor(MCX - ilw / 2, MCY + MOON_R + 5);
     tft.print(buf);
 
-    // ── Stats: 2-col × 4-row, stacked label(FONT_SM) + value(FONT_MD) ────
+    // ── Stats: 2-col × 4-row, label(FONT_SM) + value(FONT_MD) ────
     // SLH=26 fills separator→content-bottom: 4×26=104, y=111→215
-    // Left:  UV | HUM | WIND | BARO
-    // Right: TO FULL | VIS | SUNRISE | SUNSET
-    const int SY0 = CONTENT_Y + 88;   // y=111
-    const int SLH = 26;               // label(8) + value(16) + gap(2)
-    const int SCL = DX;               // left col  = 118
-    const int SCR = DX + 99;          // right col = 217
+    // Left:  UV INDEX | HUMIDITY | WINDSPEED | BAROMETER
+    // Right: TO FULL MOON | VISIBILITY | SUNRISE | SUNSET
+    //
+    // "centered" items: value centered under label
+    // "left" items:     label+value left-aligned at column start
+    const int SY0 = CONTENT_Y + 88;
+    const int SLH = 26;
+    const int SCL = DX;
+    const int SCR = DX + 94;
 
-    const char *lbl_L[4] = { "UV",       "HUM",     "WIND",    "BARO"    };
-    const char *lbl_R[4] = { "TO FULL",  "VIS",     "SUNRISE", "SUNSET"  };
-    char        val_L[4][24];
-    char        val_R[4][24];
+    struct StatRow { const char *label; const char *val; bool centered; };
+    char v0[24], v1[24], v2[24], v3[24], v4[24], v5[24], v6[24], v7[24];
+    snprintf(v0, 24, "%.0f",     g_current.uv_index);
+    snprintf(v1, 24, "%d%%",     g_current.humidity);
+    snprintf(v2, 24, "%d mph %s",(int)roundf(g_current.wind_speed), windCardinal(g_current.wind_dir));
+    snprintf(v3, 24, "%d hPa",   (int)roundf(g_current.pressure));
+    snprintf(v4, 24, "%.0f d",   daysToFull);
+    snprintf(v5, 24, "%.1f mi",  g_current.visibility);
+    snprintf(v6, 24, "%s",       g_daily[0].sunrise[0] ? g_daily[0].sunrise : "--:--");
+    snprintf(v7, 24, "%s",       g_daily[0].sunset[0]  ? g_daily[0].sunset  : "--:--");
 
-    snprintf(val_L[0], 24, "%.0f",     g_current.uv_index);
-    snprintf(val_L[1], 24, "%d%%",     g_current.humidity);
-    snprintf(val_L[2], 24, "%d mph %s",(int)roundf(g_current.wind_speed), windCardinal(g_current.wind_dir));
-    snprintf(val_L[3], 24, "%d hPa",   (int)roundf(g_current.pressure));
-
-    snprintf(val_R[0], 24, "%.0f d",   daysToFull);
-    snprintf(val_R[1], 24, "%.1f mi",  g_current.visibility);
-    snprintf(val_R[2], 24, "%s",       g_daily[0].sunrise[0] ? g_daily[0].sunrise : "--:--");
-    snprintf(val_R[3], 24, "%s",       g_daily[0].sunset[0]  ? g_daily[0].sunset  : "--:--");
+    StatRow left[4] = {
+        { "UV INDEX",    v0, true  },
+        { "HUMIDITY",    v1, true  },
+        { "WINDSPEED",   v2, false },
+        { "BAROMETER",   v3, false },
+    };
+    StatRow right[4] = {
+        { "FULL MOON",    v4, false },
+        { "VISIBILITY",   v5, false },
+        { "SUNRISE",      v6, false },
+        { "SUNSET",       v7, false },
+    };
 
     for (int i = 0; i < 4; i++) {
         int ly = SY0 + i * SLH;
         int vy = ly + 8;
 
+        // Left column
         tft.setTextFont(FONT_SM);
         tft.setTextColor(g_themeColor, COL_BG);
-        tft.setCursor(SCL, ly); tft.print(lbl_L[i]);
-        tft.setCursor(SCR, ly); tft.print(lbl_R[i]);
-
+        tft.setCursor(SCL, ly); tft.print(left[i].label);
         tft.setTextFont(FONT_MD);
         tft.setTextColor(COL_WHITE, COL_BG);
-        tft.setCursor(SCL, vy); tft.print(val_L[i]);
-        tft.setCursor(SCR, vy); tft.print(val_R[i]);
+        if (left[i].centered) {
+            int lw = tft.textWidth(left[i].label);
+            int vw = tft.textWidth(left[i].val);
+            tft.setCursor(SCL + (lw - vw) / 2, vy);
+        } else {
+            tft.setCursor(SCL, vy);
+        }
+        tft.print(left[i].val);
+
+        // Right column
+        tft.setTextFont(FONT_SM);
+        tft.setTextColor(g_themeColor, COL_BG);
+        tft.setCursor(SCR, ly); tft.print(right[i].label);
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(COL_WHITE, COL_BG);
+        if (right[i].centered) {
+            int lw = tft.textWidth(right[i].label);
+            int vw = tft.textWidth(right[i].val);
+            tft.setCursor(SCR + (lw - vw) / 2, vy);
+        } else {
+            tft.setCursor(SCR, vy);
+        }
+        tft.print(right[i].val);
     }
 }

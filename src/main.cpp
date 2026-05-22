@@ -30,10 +30,11 @@ static TFT_eSPI tft;
 static int           s_screen         = 0;
 static bool          s_needsRedraw    = true;
 static bool          s_wifiOk         = false;
-static unsigned long s_lastWeather    = 0;
-static int           s_lastWeatherHour = -1;   // hour (0-23) of last fetch; -1 = never
-static unsigned long s_lastMinute     = 0;
-static unsigned long s_lastAutoRotate  = 0;
+static unsigned long s_lastWeather        = 0;
+static int           s_lastWeatherHour     = -1;   // hour (0-23) of last fetch; -1 = never
+static unsigned long s_lastWeatherAttempt  = 0;    // cooldown timer to prevent tight retry loops
+static unsigned long s_lastMinute          = 0;
+static unsigned long s_lastAutoRotate      = 0;
 static char          s_updateStr[24]  = "Never";
 
 // ── RGB LED ───────────────────────────────────────────────────────────────
@@ -110,14 +111,14 @@ static void showSplash(const char *msg) {
 
     tft.setTextFont(FONT_MD);
     tft.setTextColor(COL_WHITE, COL_BG);
-    tw = tft.textWidth("xXCYD-WeatherXx");
+    tw = tft.textWidth("xXCYD-Weather-StationXx");
     tft.setCursor((SCREEN_W - tw) / 2, 152);
-    tft.print("xXCYD-WeatherXx");
+    tft.print("xXCYD-Weather-StationXx");
 
     tft.setTextColor(g_themeColor, COL_BG);
-    tw = tft.textWidth("xXStationXx");
+    tw = tft.textWidth("xXQuantum-SmokeXx");
     tft.setCursor((SCREEN_W - tw) / 2, 172);
-    tft.print("xXStationXx");
+    tft.print("xXQuantum-SmokeXx");
 
     if (msg && msg[0]) {
         tft.setTextFont(FONT_SM);
@@ -147,17 +148,17 @@ static void fetchWeather() {
     if (!s_wifiOk) return;
     if (!g_location.valid) { showSplash("Location failed.\nCheck serial monitor."); delay(3000); return; }
     ledSet(false, false, true);
-    if (weatherFetch(g_location.lat, g_location.lon)) {
-        timeSyncInit(g_utcOffsetSec);
+    bool ok = weatherFetch(g_location.lat, g_location.lon);
+    if (ok) {
         char t[10]; timeGetShort(t);
         snprintf(s_updateStr, sizeof(s_updateStr), "Updated %s", t);
+        if (timeIsValid()) {
+            time_t now = time(nullptr);
+            s_lastWeatherHour = localtime(&now)->tm_hour;
+        }
     }
     ledSet(false, false, false);
     s_lastWeather = millis();
-    if (timeIsValid()) {
-        time_t now = time(nullptr);
-        s_lastWeatherHour = localtime(&now)->tm_hour;
-    }
     s_needsRedraw = true;
 }
 
@@ -241,13 +242,20 @@ void loop() {
         lastLdr = millis();
     }
 
-    // Weather refresh — top of each new hour; millis fallback until time is synced
+    // Weather refresh — top of each new hour, with periodic fallback
     if (s_wifiOk) {
+        bool shouldFetch = false;
         if (timeIsValid()) {
             time_t now = time(nullptr);
             int curHour = localtime(&now)->tm_hour;
-            if (curHour != s_lastWeatherHour) fetchWeather();
-        } else if (millis() - s_lastWeather > WEATHER_REFRESH_MS) {
+            if (curHour != s_lastWeatherHour) shouldFetch = true;
+        }
+        // Periodic fallback (also provides minimum interval between attempts)
+        if (millis() - s_lastWeather > WEATHER_REFRESH_MS) shouldFetch = true;
+
+        // 60s cooldown between attempts to prevent tight retry loops on failure
+        if (shouldFetch && millis() - s_lastWeatherAttempt > 60000) {
+            s_lastWeatherAttempt = millis();
             fetchWeather();
         }
     }

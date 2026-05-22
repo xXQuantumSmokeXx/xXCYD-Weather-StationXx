@@ -14,3 +14,6 @@ void     themeColorInit();
 void     themeColorSet(int idx);
 int      themeColorGetIdx();
 uint16_t themeColorGet();
+
+void     invertSet(bool on);
+bool     invertGet();

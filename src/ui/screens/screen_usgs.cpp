@@ -142,9 +142,11 @@ void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
         return;
     }
 
-    int y0 = CONTENT_Y + 20;
-    int visible = (CONTENT_H - 20) / QUAKE_ROW_H;
+    int headerH = 20;  // header + divider occupy top ~20px of content
+    int visible = (CONTENT_H - headerH) / QUAKE_ROW_H;
     int limit = min(s_quakeCount, visible);
+    int dataH = limit * QUAKE_ROW_H;
+    int y0 = CONTENT_Y + headerH + ((CONTENT_H - headerH) - dataH) / 2;
     for (int i = 0; i < limit; ++i) {
         int y = y0 + i * QUAKE_ROW_H;
         char magBuf[8];

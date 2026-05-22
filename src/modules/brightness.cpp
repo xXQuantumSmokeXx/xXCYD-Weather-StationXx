@@ -1,6 +1,7 @@
 #include "brightness.h"
 #include "../config/config.h"
 #include "../config/nvs_config.h"
+#include "../ui/theme.h"
 #include <Arduino.h>
 
 #define BATT_PIN 34   // GPIO34 — voltage divider (100k/100k) to LiPo
@@ -28,9 +29,19 @@ void brightnessSetLevel(int n) {
 int brightnessGetLevel() { return s_level; }
 
 void brightnessAutoUpdate() {
+    if (g_invert) { applyBri(255); return; }
     if (s_level != 0) return;
     int bri = map(analogRead(LDR_PIN), 0, 4095, 60, 255);
     applyBri((uint8_t)bri);
+}
+
+void brightnessRestore() {
+    if (s_level == 0) {
+        int bri = map(analogRead(LDR_PIN), 0, 4095, 60, 255);
+        applyBri((uint8_t)bri);
+    } else {
+        applyBri(s_vals[s_level]);
+    }
 }
 
 int batteryPct() {
