@@ -28,6 +28,7 @@ static bool s_fetchedOnce = false;
 static unsigned long s_fetchedMs = 0;
 static bool s_forceRefresh = false;
 static char s_sync[10] = "--:--";
+bool g_usgsPending = false;
 
 static void copyFit(const char *src, char *dst, size_t len) {
     if (!src || len == 0) return;
@@ -72,10 +73,8 @@ static void msToWhen(long long ms, char *out, size_t outLen) {
     else copyFit("--", out, outLen);
 }
 
-static bool fetchQuakes(bool wifiOk) {
+bool usgsFetch(bool wifiOk) {
     if (!wifiOk || !WiFi.isConnected()) {
-        s_fetchedMs = millis();
-        s_fetchedOnce = true;
         return false;
     }
 
@@ -86,7 +85,7 @@ static bool fetchQuakes(bool wifiOk) {
     http.setTimeout(15000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
     int code = http.GET();
-    if (code != 200) { http.end(); s_fetchedMs = millis(); s_fetchedOnce = true; return false; }
+    if (code != 200) { http.end(); return false; }
     String body = http.getString();
     http.end();
 
@@ -97,8 +96,6 @@ static bool fetchQuakes(bool wifiOk) {
 
     JsonDocument doc;
     if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) {
-        s_fetchedMs = millis();
-        s_fetchedOnce = true;
         return false;
     }
 
@@ -126,82 +123,7 @@ static bool fetchQuakes(bool wifiOk) {
     return s_quakeCount > 0;
 }
 
-void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
-    char timeStr[10]; timeGetShort(timeStr);
-    char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
-    drawTopbar(tft, g_location.valid ? g_location.city : "", "USGS", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 5, 7);
-    tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
-
-    bool doFetch = stale() && wifiOk;
-    bool showFetchMsg = doFetch && (s_quakeCount == 0 || s_forceRefresh);
-    s_forceRefresh = false;
-
-    if (showFetchMsg) {
-        tft.setTextFont(FONT_MD);
-        tft.setTextColor(g_themeColor, COL_BG);
-        tft.setCursor(82, 108);
-        tft.print("Fetching USGS...");
-    } else if (s_quakeCount > 0) {
-        // Draw cached data while background fetch runs
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(g_themeColor, COL_BG);
-        char hdr[34];
-        snprintf(hdr, sizeof(hdr), "M3.5+ QUAKES: %d", s_quakeCount);
-        tft.setCursor(8, CONTENT_Y + 4);
-        tft.print(hdr);
-        tft.drawFastHLine(0, CONTENT_Y + 16, SCREEN_W, g_themeColor);
-
-        int headerH = 20;
-        int visible = (CONTENT_H - headerH) / QUAKE_ROW_H;
-        int limit = min(s_quakeCount, visible);
-        int dataH = limit * QUAKE_ROW_H;
-        int y0 = CONTENT_Y + headerH + ((CONTENT_H - headerH) - dataH) / 2;
-        for (int i = 0; i < limit; ++i) {
-            int y = y0 + i * QUAKE_ROW_H;
-            char magBuf[8];
-            snprintf(magBuf, sizeof(magBuf), "M%.1f", s_quakes[i].mag);
-            tft.setTextFont(FONT_SM);
-            tft.setTextColor(magColor(s_quakes[i].mag), COL_BG);
-            tft.setCursor(4, y + 2);
-            tft.print(magBuf);
-
-            int magW = tft.textWidth(magBuf) + 7;
-            int dateW = tft.textWidth(s_quakes[i].when);
-            int dateX = SCREEN_W - dateW - 4;
-            String place = fitText(tft, s_quakes[i].place, dateX - magW - 8);
-            tft.setTextColor(COL_WHITE, COL_BG);
-            tft.setCursor(magW, y + 2);
-            tft.print(place);
-            tft.setTextColor(g_themeColor, COL_BG);
-            tft.setCursor(dateX, y + 2);
-            tft.print(s_quakes[i].when);
-        }
-    } else if (!doFetch) {
-        tft.setTextFont(FONT_MD);
-        tft.setTextColor(g_themeColor, COL_BG);
-        tft.setCursor(wifiOk ? 58 : 92, 104);
-        tft.print(wifiOk ? "No quake data" : "USGS offline");
-    }
-
-    if (doFetch) {
-        bool ok = fetchQuakes(wifiOk);
-        if (showFetchMsg || ok) {
-            tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
-        }
-        if (s_quakeCount == 0) {
-            tft.setTextFont(FONT_MD);
-            tft.setTextColor(g_themeColor, COL_BG);
-            tft.setCursor(wifiOk ? 58 : 92, 104);
-            tft.print(wifiOk ? "No quake data" : "USGS offline");
-            return;
-        }
-    }
-
-    // Re-draw after fetch if we showed a message or data changed
-    if (!doFetch && s_quakeCount == 0) return;
-    if (doFetch && !showFetchMsg && s_quakeCount == 0) return;
-
+static void drawQuakeList(TFT_eSPI &tft) {
     tft.setTextFont(FONT_SM);
     tft.setTextColor(g_themeColor, COL_BG);
     char hdr[34];
@@ -234,6 +156,36 @@ void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(dateX, y + 2);
         tft.print(s_quakes[i].when);
+    }
+}
+
+void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
+    char timeStr[10]; timeGetShort(timeStr);
+    char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
+    drawTopbar(tft, g_location.valid ? g_location.city : "", "USGS", timeStr, wifiOk);
+    drawBottombar(tft, dateStr, 5, 7);
+    tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
+
+    bool doFetch = stale() && wifiOk && !g_usgsPending;
+    s_forceRefresh = false;
+
+    if (doFetch) {
+        g_usgsPending = true;
+        triggerUsgsFetch();
+    }
+
+    if (s_quakeCount > 0) {
+        drawQuakeList(tft);
+    } else if (g_usgsPending) {
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(g_themeColor, COL_BG);
+        tft.setCursor(82, 108);
+        tft.print("Fetching USGS...");
+    } else {
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(g_themeColor, COL_BG);
+        tft.setCursor(wifiOk ? 58 : 92, 104);
+        tft.print(wifiOk ? "No quake data" : "USGS offline");
     }
 }
 

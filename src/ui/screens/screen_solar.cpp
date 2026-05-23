@@ -38,6 +38,7 @@ struct SolarState {
 
 static SolarState s_solar;
 static bool s_forceRefresh = false;
+bool g_solarPending = false;
 
 static const char *kpCondition(float kp) {
     if (kp < 3) return "QUIET";
@@ -291,16 +292,13 @@ static void fetchCme() {
     if (start && strlen(start) >= 16) snprintf(s_solar.cmeTime, sizeof(s_solar.cmeTime), "%.5s %.5s", start + 5, start + 11);
 }
 
-static void fetchSolar(bool wifiOk) {
+void solarFetch(bool wifiOk) {
     if (!wifiOk || !WiFi.isConnected()) {
-        s_solar.fetchedMs = millis();
-        s_solar.fetchedOnce = true;
         return;
     }
 
     // Save old state in case Kp fetch fails
     SolarState old = s_solar;
-    s_solar.fetchedOnce = true;
 
     // Reset fields that sub-fetchers will populate
     snprintf(s_solar.xrayClass, sizeof(s_solar.xrayClass), "N/A");
@@ -321,9 +319,9 @@ static void fetchSolar(bool wifiOk) {
     if (!kpOk) {
         // Restore old data on Kp failure (Kp is the critical piece)
         s_solar = old;
-    } else {
-        s_solar.valid = true;
+        return;
     }
+    s_solar.valid = true;
     s_solar.fetchedMs = millis();
     s_solar.fetchedOnce = true;
     stampSync();
@@ -473,30 +471,22 @@ void screenSolarDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 3, 7);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    bool doFetch = stale() && wifiOk;
-    bool showFetchMsg = doFetch && (!s_solar.valid || s_forceRefresh);
+    bool doFetch = stale() && wifiOk && !g_solarPending;
     s_forceRefresh = false;
 
-    // Background refresh: draw cached data first so user sees it during fetch
-    if (s_solar.valid && !showFetchMsg) {
-        drawSolarContent(tft);
+    if (doFetch) {
+        g_solarPending = true;
+        triggerSolarFetch();
     }
 
-    if (showFetchMsg) {
+    if (s_solar.valid) {
+        drawSolarContent(tft);
+    } else if (g_solarPending) {
         tft.setTextFont(FONT_MD);
         tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(82, 108);
         tft.print("Fetching solar...");
-    }
-
-    if (doFetch) {
-        fetchSolar(wifiOk);
-        if (showFetchMsg && s_solar.valid) {
-            tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
-        }
-    }
-
-    if (!s_solar.valid) {
+    } else {
         tft.setTextFont(FONT_MD);
         tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(92, 100);
@@ -504,12 +494,6 @@ void screenSolarDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.setTextFont(FONT_SM);
         tft.setCursor(58, 124);
         tft.print("Connect WiFi and revisit this screen");
-        return;
-    }
-
-    // Draw data (either fresh after fetch, or redraw after cached display)
-    if (showFetchMsg || doFetch) {
-        drawSolarContent(tft);
     }
 }
 

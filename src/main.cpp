@@ -3,6 +3,9 @@
 #include <WiFi.h>
 #include <math.h>
 #include <time.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
 #include "config/config.h"
 #include "config/nvs_config.h"
@@ -33,7 +36,6 @@ bool g_spriteCapture = false;
 static int           s_screen         = 0;
 static bool          s_needsRedraw    = true;
 static bool          s_wifiOk         = false;
-static unsigned long s_lastWeather        = 0;
 static int           s_lastWeatherHour     = -1;   // hour (0-23) of last fetch; -1 = never
 static unsigned long s_lastWeatherAttempt  = 0;    // cooldown timer to prevent tight retry loops
 static unsigned long s_lastMinute          = 0;
@@ -45,6 +47,156 @@ static void ledSet(bool r, bool g, bool b) {
     digitalWrite(LED_R, r ? LOW : HIGH);
     digitalWrite(LED_G, g ? LOW : HIGH);
     digitalWrite(LED_B, b ? LOW : HIGH);
+}
+
+// ── Async fetch worker (Core 0) ────────────────────────────────────────────
+enum FetchCmd : uint8_t {
+    FETCH_NONE = 0,
+    FETCH_WEATHER,
+    FETCH_WEATHER_LOC,
+    FETCH_BOOT_BG,    // pre-fetch all data screens at boot
+    FETCH_FIRES,
+    FETCH_USGS,
+    FETCH_SOLAR
+};
+
+static TaskHandle_t      s_fetchTask    = nullptr;
+static SemaphoreHandle_t s_dataMutex    = nullptr;
+static volatile FetchCmd s_fetchCmd     = FETCH_NONE;
+static volatile bool     s_fetchDone    = false;
+static volatile bool     s_fetchOk      = false;
+
+// Per-screen completion (worker writes, main loop reads+clears)
+static volatile bool s_firesDone = false, s_firesOk = false;
+static volatile bool s_usgsDone  = false, s_usgsOk  = false;
+static volatile bool s_solarDone = false;
+
+static void fetchWorker(void *param) {
+    while (true) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        FetchCmd cmd = s_fetchCmd;
+
+        switch (cmd) {
+            case FETCH_WEATHER: {
+                bool ok = weatherFetch(g_location.lat, g_location.lon);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                if (ok) {
+                    char t[10]; timeGetShort(t);
+                    snprintf(s_updateStr, sizeof(s_updateStr), "Updated %s", t);
+                    if (timeIsValid()) {
+                        time_t now = time(nullptr);
+                        s_lastWeatherHour = localtime(&now)->tm_hour;
+                    }
+                }
+                s_fetchOk = ok;
+                s_fetchDone = true;
+                xSemaphoreGive(s_dataMutex);
+                break;
+            }
+            case FETCH_WEATHER_LOC:
+                locationFetch();
+                {
+                    bool ok = weatherFetch(g_location.lat, g_location.lon);
+                    xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                    if (ok) {
+                        char t[10]; timeGetShort(t);
+                        snprintf(s_updateStr, sizeof(s_updateStr), "Updated %s", t);
+                        if (timeIsValid()) {
+                            time_t now = time(nullptr);
+                            s_lastWeatherHour = localtime(&now)->tm_hour;
+                        }
+                    }
+                    s_fetchOk = ok;
+                    s_fetchDone = true;
+                    xSemaphoreGive(s_dataMutex);
+                }
+                break;
+            case FETCH_BOOT_BG:
+                g_firesPending  = true;
+                g_usgsPending   = true;
+                g_solarPending  = true;
+
+                firesFetch(s_wifiOk);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                s_firesDone = true;
+                xSemaphoreGive(s_dataMutex);
+
+                usgsFetch(s_wifiOk);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                s_usgsDone = true;
+                xSemaphoreGive(s_dataMutex);
+
+                solarFetch(s_wifiOk);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                s_solarDone = true;
+                xSemaphoreGive(s_dataMutex);
+                break;
+
+            case FETCH_FIRES: {
+                bool ok = firesFetch(s_wifiOk);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                s_firesOk = ok;
+                s_firesDone = true;
+                xSemaphoreGive(s_dataMutex);
+                break;
+            }
+            case FETCH_USGS: {
+                bool ok = usgsFetch(s_wifiOk);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                s_usgsOk = ok;
+                s_usgsDone = true;
+                xSemaphoreGive(s_dataMutex);
+                break;
+            }
+            case FETCH_SOLAR:
+                solarFetch(s_wifiOk);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                s_solarDone = true;
+                xSemaphoreGive(s_dataMutex);
+                break;
+            default:
+                break;
+        }
+
+        s_fetchCmd = FETCH_NONE;
+        ledSet(false, false, false);
+    }
+}
+
+static bool workerBusy() { return s_fetchCmd != FETCH_NONE; }
+
+// Weather trigger (hourly — called from loop)
+static void triggerFetch(bool includeLocation) {
+    if (!s_fetchTask || workerBusy()) return;
+    s_fetchDone = false;
+    s_fetchCmd  = includeLocation ? FETCH_WEATHER_LOC : FETCH_WEATHER;
+    ledSet(false, false, true);
+    xTaskNotifyGive(s_fetchTask);
+}
+
+// Screen triggers (called from screen draw functions — must be non-static)
+void triggerFiresFetch() {
+    if (!s_fetchTask || workerBusy()) return;
+    s_firesDone = false;
+    s_fetchCmd  = FETCH_FIRES;
+    ledSet(false, false, true);
+    xTaskNotifyGive(s_fetchTask);
+}
+
+void triggerUsgsFetch() {
+    if (!s_fetchTask || workerBusy()) return;
+    s_usgsDone = false;
+    s_fetchCmd  = FETCH_USGS;
+    ledSet(false, false, true);
+    xTaskNotifyGive(s_fetchTask);
+}
+
+void triggerSolarFetch() {
+    if (!s_fetchTask || workerBusy()) return;
+    s_solarDone = false;
+    s_fetchCmd  = FETCH_SOLAR;
+    ledSet(false, false, true);
+    xTaskNotifyGive(s_fetchTask);
 }
 
 // ── Splash art — quantum smoke / orbital design ───────────────────────────
@@ -141,13 +293,13 @@ static void connectWifi() {
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, pass);
     unsigned long t = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t < 20000) delay(300);
+    while (WiFi.status() != WL_CONNECTED && millis() - t < 12000) delay(100);
     s_wifiOk = (WiFi.status() == WL_CONNECTED);
     if (!s_wifiOk) showSplash("WiFi failed!");
 }
 
-// ── Weather fetch ─────────────────────────────────────────────────────────
-static void fetchWeather() {
+// ── Weather fetch (sync — used only during boot before worker task starts) ──
+static void fetchWeatherSync() {
     if (!s_wifiOk) return;
     if (!g_location.valid) { showSplash("Location failed.\nCheck serial monitor."); delay(3000); return; }
     ledSet(false, false, true);
@@ -161,7 +313,6 @@ static void fetchWeather() {
         }
     }
     ledSet(false, false, false);
-    s_lastWeather = millis();
     s_needsRedraw = true;
 }
 
@@ -292,6 +443,8 @@ void setup() {
     connectWifi();
     s_wifiOk = (WiFi.status() == WL_CONNECTED);
 
+    s_dataMutex = xSemaphoreCreateMutex();
+
     if (s_wifiOk) {
         showSplash("Getting location...");
         locationLoad();
@@ -301,12 +454,30 @@ void setup() {
         showSplash("Syncing time...");
         // Use UTC offset from ip-api immediately — correct time before weather loads
         timeSyncInit(g_location.valid ? g_location.utcOffset : 0);
-        for (int i = 0; i < 50 && !timeIsValid(); i++) delay(200);
+        for (int i = 0; i < 30 && !timeIsValid(); i++) delay(100);   // 3 s max
 
         showSplash("Fetching weather...");
-        fetchWeather();
+        fetchWeatherSync();
 
         screenshotInit(tft, redrawTo);
+    }
+
+    // Launch async fetch worker on Core 0
+    xTaskCreatePinnedToCore(fetchWorker, "fetch", 8192, nullptr, 1, &s_fetchTask, 0);
+
+    // Kick off background fetches — each message waits for that stage to complete
+    if (s_wifiOk) {
+        s_fetchCmd = FETCH_BOOT_BG;
+        xTaskNotifyGive(s_fetchTask);
+
+        showSplash("Fetching fires...");
+        for (int i = 0; i < 60 && !s_firesDone; i++) delay(50);
+
+        showSplash("Fetching USGS...");
+        for (int i = 0; i < 60 && !s_usgsDone; i++) delay(50);
+
+        showSplash("Fetching solar...");
+        for (int i = 0; i < 60 && !s_solarDone; i++) delay(50);
     }
 
     ledSet(false, false, false);
@@ -323,22 +494,55 @@ void loop() {
         lastLdr = millis();
     }
 
-    // Weather refresh — top of each new hour, with periodic fallback
-    if (s_wifiOk) {
+    // Weather refresh — top of each new hour (async, Core 0)
+    if (s_wifiOk && !workerBusy()) {
         bool shouldFetch = false;
         if (timeIsValid()) {
             time_t now = time(nullptr);
             int curHour = localtime(&now)->tm_hour;
             if (curHour != s_lastWeatherHour) shouldFetch = true;
         }
-        // Periodic fallback (also provides minimum interval between attempts)
-        if (millis() - s_lastWeather > WEATHER_REFRESH_MS) shouldFetch = true;
-
-        // 60s cooldown between attempts to prevent tight retry loops on failure
         if (shouldFetch && millis() - s_lastWeatherAttempt > 60000) {
             s_lastWeatherAttempt = millis();
-            fetchWeather();
+            triggerFetch(false);
         }
+    }
+
+    // Weather fetch completion
+    if (s_fetchDone) {
+        xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        bool ok = s_fetchOk;
+        s_fetchDone = false;
+        xSemaphoreGive(s_dataMutex);
+        if (!ok) s_lastWeatherAttempt = millis();
+        s_needsRedraw = true;
+    }
+
+    // Fires fetch completion
+    if (s_firesDone) {
+        xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        s_firesDone = false;
+        g_firesPending = false;
+        xSemaphoreGive(s_dataMutex);
+        if (s_screen == 4) s_needsRedraw = true;
+    }
+
+    // USGS fetch completion
+    if (s_usgsDone) {
+        xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        s_usgsDone = false;
+        g_usgsPending = false;
+        xSemaphoreGive(s_dataMutex);
+        if (s_screen == 5) s_needsRedraw = true;
+    }
+
+    // Solar fetch completion
+    if (s_solarDone) {
+        xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        s_solarDone = false;
+        g_solarPending = false;
+        xSemaphoreGive(s_dataMutex);
+        if (s_screen == 3) s_needsRedraw = true;
     }
 
     // Clock tick — only update the time text, not a full redraw
@@ -371,6 +575,11 @@ void loop() {
             if (tx < 50)               gotoScreen(s_screen - 1);
             else if (tx > SCREEN_W - 50) gotoScreen(s_screen + 1);
         }
+        // Top bar tap → refresh (weather screens 0-2,6; data screens handle their own)
+        if (ty < TOPBAR_H && s_wifiOk && !workerBusy() && (s_screen <= 2 || s_screen == 6)) {
+            showSplash("Refreshing...");
+            triggerFetch(true);
+        }
         if (s_screen == 3) {
             screenSolarTap(tft, tx, ty, s_wifiOk);
             s_needsRedraw = true;
@@ -385,8 +594,7 @@ void loop() {
             if (changed) s_needsRedraw = true;
             if (screenSettingsRefreshTapped()) {
                 showSplash("Refreshing...");
-                locationFetch();
-                fetchWeather();
+                triggerFetch(true);
             }
         }
     }
@@ -431,6 +639,7 @@ void loop() {
         }
     }
 
-    if (s_needsRedraw) redraw();
+    // Skip redraw while worker writes data globals on Core 0
+    if (s_needsRedraw && !workerBusy()) redraw();
     delay(20);
 }

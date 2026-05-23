@@ -47,7 +47,6 @@
 
 
 // ── App settings ─────────────────────────────────────────────────────────
-#define WEATHER_REFRESH_MS  (15UL * 60UL * 1000UL)   // 15 minutes
 #define HOURLY_COUNT        12
 #define DAILY_COUNT          5
 #define AP_NAME             "CYD-Weather"
