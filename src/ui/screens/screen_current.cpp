@@ -89,7 +89,7 @@ static void drawMoonPhase(TFT_eSPI &tft, int cx, int cy, int r, float phase) {
             x1 = cx - hw;     x2 = cx + termX;
         }
         if (x2 > x1)
-            tft.drawFastHLine(x1, cy + dy, x2 - x1, COL_WHITE);
+            tft.drawFastHLine(x1, cy + dy, x2 - x1, g_themeColor);
     }
     tft.drawCircle(cx, cy, r, COL_DIM);
 }
