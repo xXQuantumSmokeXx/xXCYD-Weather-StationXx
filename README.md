@@ -4,8 +4,6 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 
 [![Support on Patreon](https://img.shields.io/badge/Support-Patreon-orange)](https://www.patreon.com/c/xXQuantumSmokeXx)
 
-Built by xXQuantum-SmokeXx, with development assistance from Codex and Claude Code.
-
 ## Screens
 
 ### NOW
@@ -88,3 +86,5 @@ The generated firmware is written to `.pio/build/cyd_weather/firmware.bin`.
 - WiFi credentials are not committed to Git.
 - The release firmware does not require an API key.
 - Open-Meteo is used for weather data, so no weather service token is baked into the build.
+
+Built by xXQuantum-SmokeXx, with development assistance from Codex and Claude Code.
