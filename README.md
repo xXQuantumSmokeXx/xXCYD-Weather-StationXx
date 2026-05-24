@@ -1,6 +1,6 @@
 # xXCYD-Weather-StationXx
 
-A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap Yellow Display), consolidating real-time weather, space weather, wildfire and earthquake tracking, and customizable display profiles into a single portable unit.
+A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap Yellow Display), consolidating real-time weather, space weather, wildfire and earthquake tracking, breaking news, and customizable display profiles into a single portable unit.
 
 [![Support on Patreon](https://img.shields.io/badge/Support-Patreon-orange)](https://www.patreon.com/c/xXQuantumSmokeXx)
 
