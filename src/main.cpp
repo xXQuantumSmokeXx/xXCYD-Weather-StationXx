@@ -370,7 +370,7 @@ static void fetchWeatherSync() {
     s_needsRedraw = true;
 }
 
-// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fires, 5=USGS, 6=News, 7=Settings, 8=Alerts, 9=SITREP, 10=Planner
+// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fires, 5=USGS, 6=News, 7=Alerts, 8=SITREP, 9=Planner, 10=Settings
 static void gotoScreen(int n) {
     s_screen         = constrain(n, 0, 10);
     s_lastAutoRotate = millis();
@@ -386,10 +386,10 @@ static void redrawTo(TFT_eSPI &target) {
         case 4: screenFiresDraw(target, s_wifiOk);    break;
         case 5: screenUsgsDraw(target, s_wifiOk);     break;
         case 6: screenNewsDraw(target, s_wifiOk);     break;
-        case 7: screenSettingsDraw(target, s_wifiOk); break;
-        case 8: screenAlertsDraw(target, s_wifiOk);   break;
-        case 9: screenSitrepDraw(target, s_wifiOk);   break;
-        case 10: screenPlannerDraw(target, s_wifiOk); break;
+        case 7: screenAlertsDraw(target, s_wifiOk);   break;
+        case 8: screenSitrepDraw(target, s_wifiOk);   break;
+        case 9: screenPlannerDraw(target, s_wifiOk);  break;
+        case 10: screenSettingsDraw(target, s_wifiOk); break;
     }
 }
 
@@ -644,14 +644,14 @@ void loop() {
         s_alertsDone = false;
         g_alertsPending = false;
         xSemaphoreGive(s_dataMutex);
-        if (s_screen == 8) s_needsRedraw = true;
+        if (s_screen == 7) s_needsRedraw = true;
     }
 
     // Clock tick — only update the time text, not a full redraw
     if (millis() - s_lastMinute > 60000) {
         if (s_screen <= 2 || s_screen >= 6) {
             char timeStr[10]; timeGetShort(timeStr);
-            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRES","USGS","NEWS","SETTINGS","ALERTS","SITREP","PLANNER"};
+            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRES","USGS","NEWS","ALERTS","SITREP","PLANNER","SETTINGS"};
             drawTopbarTime(tft, timeStr, labels[s_screen]);
         }
         s_lastMinute = millis();
@@ -687,10 +687,10 @@ void loop() {
     } else if (evt.swipe == SwipeDir::Down && s_screen == 6) {
         screenNewsSwipe(-1);
         s_needsRedraw = true;
-    } else if (evt.swipe == SwipeDir::Up && s_screen == 8) {
+    } else if (evt.swipe == SwipeDir::Up && s_screen == 7) {
         screenAlertsSwipe(1);
         s_needsRedraw = true;
-    } else if (evt.swipe == SwipeDir::Down && s_screen == 8) {
+    } else if (evt.swipe == SwipeDir::Down && s_screen == 7) {
         screenAlertsSwipe(-1);
         s_needsRedraw = true;
     } else if (evt.tap == TapEvent::Tap) {
@@ -727,25 +727,25 @@ void loop() {
                 s_needsRedraw = true;
             }
         } else if (s_screen == 7) {
+            if (ty < TOPBAR_H && s_wifiOk) {
+                screenAlertsTap(tft, tx, ty, s_wifiOk);
+                s_needsRedraw = true;
+            }
+        } else if (s_screen == 8) {
+            if (ty < TOPBAR_H) {
+                screenSitrepTap(tft, tx, ty, s_wifiOk);
+            }
+        } else if (s_screen == 9) {
+            if (ty < TOPBAR_H) {
+                screenPlannerTap(tft, tx, ty, s_wifiOk);
+                s_needsRedraw = true;
+            }
+        } else if (s_screen == 10) {
             bool changed = screenSettingsTap(tft, tx, ty);
             if (changed) s_needsRedraw = true;
             if (screenSettingsRefreshTapped()) {
                 showSplash("Refreshing...");
                 triggerFetch(true);
-            }
-        } else if (s_screen == 8) {
-            if (ty < TOPBAR_H && s_wifiOk) {
-                screenAlertsTap(tft, tx, ty, s_wifiOk);
-                s_needsRedraw = true;
-            }
-        } else if (s_screen == 9) {
-            if (ty < TOPBAR_H) {
-                screenSitrepTap(tft, tx, ty, s_wifiOk);
-            }
-        } else if (s_screen == 10) {
-            if (ty < TOPBAR_H) {
-                screenPlannerTap(tft, tx, ty, s_wifiOk);
-                s_needsRedraw = true;
             }
         }
     }
