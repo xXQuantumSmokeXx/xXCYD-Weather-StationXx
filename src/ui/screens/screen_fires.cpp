@@ -10,6 +10,7 @@
 #include <ArduinoJson.h>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 
 #define FIRE_CACHE_MS (15UL * 60UL * 1000UL)
 #define FIRE_MAX 24
@@ -75,18 +76,21 @@ bool firesFetch(bool wifiOk) {
         return false;
     }
 
-    // NIFC IMSR — Incident Management Situation Report. Only actual
-    // wildfire incidents, no prescribed burns. Updated daily.
+    // WFIGS — Wildland Fire Interagency Geospatial Services.
+    // Active fires only, no prescribed burns. Refreshed every 5 min.
     WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/"
-                       "services/IMSR_Incident_Locations_Most_Recent_View/FeatureServer/0/"
-                       "query?where=IsLatest%3D%27x%27+AND+%28x100pct+IS+NULL+OR+x100pct%3C%3E%27c%27%29"
-                       "&outFields=fire_name,IrwinFireDiscoveryDateTime,size,incident_id"
+                       "services/WFIGS_Incident_Locations_Current/FeatureServer/0/"
+                       "query?where=ActiveFireCandidate%3D1+AND+"
+                       "IncidentTypeCategory%3C%3E%27RX%27+AND+"
+                       "PercentContained%3C100"
+                       "&outFields=IncidentName,FireDiscoveryDateTime,IncidentSize,"
+                       "FireCause,PercentContained,POOState"
                        "&returnGeometry=false"
-                       "&orderByFields=IrwinFireDiscoveryDateTime+DESC"
-                       "&resultRecordCount=30&f=json");
+                       "&orderByFields=FireDiscoveryDateTime+DESC"
+                       "&resultRecordCount=40&f=json");
     http.setTimeout(15000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
     int code = http.GET();
@@ -95,10 +99,12 @@ bool firesFetch(bool wifiOk) {
     http.end();
 
     JsonDocument filter;
-    filter["features"][0]["attributes"]["fire_name"] = true;
-    filter["features"][0]["attributes"]["IrwinFireDiscoveryDateTime"] = true;
-    filter["features"][0]["attributes"]["size"] = true;
-    filter["features"][0]["attributes"]["incident_id"] = true;
+    filter["features"][0]["attributes"]["IncidentName"] = true;
+    filter["features"][0]["attributes"]["FireDiscoveryDateTime"] = true;
+    filter["features"][0]["attributes"]["IncidentSize"] = true;
+    filter["features"][0]["attributes"]["FireCause"] = true;
+    filter["features"][0]["attributes"]["PercentContained"] = true;
+    filter["features"][0]["attributes"]["POOState"] = true;
 
     JsonDocument doc;
     if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) {
@@ -109,7 +115,7 @@ bool firesFetch(bool wifiOk) {
         return false;
     }
 
-    const int TEMP_MAX = 32;
+    const int TEMP_MAX = 40;
     FireItem temp[TEMP_MAX];
     int tempCount = 0;
     for (JsonObject f : features) {
@@ -117,37 +123,48 @@ bool firesFetch(bool wifiOk) {
         JsonObject attr = f["attributes"];
         if (attr.isNull()) continue;
 
-        const char *name = attr["fire_name"] | "Unknown Fire";
-        const char *dateStr = attr["IrwinFireDiscoveryDateTime"] | "";
-        const char *incId = attr["incident_id"] | "";
-        double size = attr["size"] | 0.0;
+        const char *name  = attr["IncidentName"] | "Unknown Fire";
+        const char *state = attr["POOState"] | "";
+        const char *cause = attr["FireCause"] | "";
+        double size       = attr["IncidentSize"] | 0.0;
+        double pctCont    = attr["PercentContained"] | 0.0;
 
-        // Parse "M/D/YYYY H:MM:SS AM/PM" → "MM-DD"
+        // FireDiscoveryDateTime is epoch ms (esriFieldTypeDate)
+        long long discMs = attr["FireDiscoveryDateTime"] | 0LL;
         int month = 0, day = 0;
-        if (dateStr && dateStr[0])
-            sscanf(dateStr, "%d/%d/%*d", &month, &day);
-
-        // Extract state code from incident_id (first two chars)
-        char state[4] = "";
-        if (incId && incId[0] && incId[1]) {
-            state[0] = incId[0];
-            state[1] = incId[1];
-            state[2] = '\0';
+        if (discMs > 0) {
+            time_t tt = (time_t)(discMs / 1000LL);
+            struct tm *ti = gmtime(&tt);
+            if (ti) { month = ti->tm_mon + 1; day = ti->tm_mday; }
         }
 
+        // Build compact title: "Name [ST] (ac) cause pct%"
         char acBuf[16];
         fmtAcres(size, acBuf, sizeof(acBuf));
-        if (acBuf[0] && state[0])
-            snprintf(temp[tempCount].title, sizeof(temp[tempCount].title),
-                     "%s [%s] (%s)", name, state, acBuf);
+
+        const char *cs = cause;
+        if (strcmp(cause, "Natural") == 0)      cs = "Nat";
+        else if (strcmp(cause, "Human") == 0)   cs = "Hum";
+        else if (strcmp(cause, "Undetermined") == 0) cs = "Unk";
+        else if (!cause[0])                      cs = "";
+
+        char titleBuf[70];
+        if (acBuf[0] && cs[0] && state[0])
+            snprintf(titleBuf, sizeof(titleBuf), "%s [%s] (%s) %s %.0f%%",
+                     name, state, acBuf, cs, pctCont);
+        else if (acBuf[0] && state[0])
+            snprintf(titleBuf, sizeof(titleBuf), "%s [%s] (%s) %.0f%%",
+                     name, state, acBuf, pctCont);
+        else if (state[0] && cs[0])
+            snprintf(titleBuf, sizeof(titleBuf), "%s [%s] %s %.0f%%",
+                     name, state, cs, pctCont);
         else if (state[0])
-            snprintf(temp[tempCount].title, sizeof(temp[tempCount].title),
-                     "%s [%s]", name, state);
+            snprintf(titleBuf, sizeof(titleBuf), "%s [%s] %.0f%%", name, state, pctCont);
         else if (acBuf[0])
-            snprintf(temp[tempCount].title, sizeof(temp[tempCount].title),
-                     "%s (%s)", name, acBuf);
+            snprintf(titleBuf, sizeof(titleBuf), "%s (%s) %.0f%%", name, acBuf, pctCont);
         else
-            copyFit(name, temp[tempCount].title, sizeof(temp[tempCount].title));
+            snprintf(titleBuf, sizeof(titleBuf), "%s %.0f%%", name, pctCont);
+        copyFit(titleBuf, temp[tempCount].title, sizeof(temp[tempCount].title));
 
         if (month > 0 && day > 0)
             snprintf(temp[tempCount].when, sizeof(temp[tempCount].when),
@@ -155,17 +172,6 @@ bool firesFetch(bool wifiOk) {
         else
             copyFit("--", temp[tempCount].when, sizeof(temp[tempCount].when));
         tempCount++;
-    }
-
-    // API returns newest-first, but sort as a safeguard
-    for (int i = 0; i < tempCount - 1; i++) {
-        for (int j = i + 1; j < tempCount; j++) {
-            if (strcmp(temp[i].when, temp[j].when) < 0) {
-                FireItem t = temp[i];
-                temp[i] = temp[j];
-                temp[j] = t;
-            }
-        }
     }
     int count = tempCount < FIRE_MAX ? tempCount : FIRE_MAX;
     for (int i = 0; i < count; i++) s_fires[i] = temp[i];
