@@ -263,7 +263,7 @@ static void drawNewsList(TFT_eSPI &tft) {
     tft.print("BREAKING NEWS");
     curY += 14;
     tft.drawFastHLine(8, curY, SCREEN_W - 16, g_themeColor);
-    curY += 5;
+    curY += 3;
 
     int bottomY = SCREEN_H - BOTBAR_H;
 
@@ -271,14 +271,17 @@ static void drawNewsList(TFT_eSPI &tft) {
         if (curY + NEWS_ROW_H > bottomY) break;
 
         int dateW = tft.textWidth(s_items[i].when);
+        int dateX = SCREEN_W - MARGIN - dateW;
         String l1, l2;
         splitTitle(tft, s_items[i].title, LINE_W, l1, l2);
 
         if (l2.length() == 0) {
+            // Single line — truncate to leave room for date
+            String title = fitText(tft, s_items[i].title, dateX - MARGIN - 6);
             tft.setTextColor(g_themeColor, COL_BG);
             tft.setCursor(MARGIN, curY + 2);
-            tft.print(l1);
-            tft.setCursor(SCREEN_W - MARGIN - dateW, curY + 2);
+            tft.print(title);
+            tft.setCursor(dateX, curY + 2);
             tft.print(s_items[i].when);
         } else {
             int l2w = tft.textWidth(l2);
