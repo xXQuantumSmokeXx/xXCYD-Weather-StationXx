@@ -126,7 +126,6 @@ static void fetchWorker(void *param) {
                 g_usgsPending   = true;
                 g_solarPending  = true;
                 g_newsPending   = true;
-                g_alertsPending = true;
 
                 firesFetch(s_wifiOk);
                 xSemaphoreTake(s_dataMutex, portMAX_DELAY);
@@ -146,11 +145,6 @@ static void fetchWorker(void *param) {
                 newsFetch(s_wifiOk, g_location.city);
                 xSemaphoreTake(s_dataMutex, portMAX_DELAY);
                 s_newsDone = true;
-                xSemaphoreGive(s_dataMutex);
-
-                alertsFetch(s_wifiOk);
-                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
-                s_alertsDone = true;
                 xSemaphoreGive(s_dataMutex);
                 break;
 
@@ -521,7 +515,7 @@ void setup() {
     }
 
     // Launch async fetch worker on Core 0
-    xTaskCreatePinnedToCore(fetchWorker, "fetch", 8192, nullptr, 1, &s_fetchTask, 0);
+    xTaskCreatePinnedToCore(fetchWorker, "fetch", 16384, nullptr, 1, &s_fetchTask, 0);
 
     // Kick off background fetches — each message waits for that stage to complete
     if (s_wifiOk) {
@@ -529,19 +523,16 @@ void setup() {
         xTaskNotifyGive(s_fetchTask);
 
         showSplash("Fetching fires...");
-        for (int i = 0; i < 60 && !s_firesDone; i++) delay(50);
+        for (int i = 0; i < 60 && !s_firesDone && s_wifiOk; i++) delay(50);
 
-        showSplash("Fetching USGS...");
-        for (int i = 0; i < 60 && !s_usgsDone; i++) delay(50);
+        if (s_wifiOk) showSplash("Fetching USGS...");
+        for (int i = 0; i < 60 && !s_usgsDone && s_wifiOk; i++) delay(50);
 
-        showSplash("Fetching solar...");
-        for (int i = 0; i < 60 && !s_solarDone; i++) delay(50);
+        if (s_wifiOk) showSplash("Fetching solar...");
+        for (int i = 0; i < 60 && !s_solarDone && s_wifiOk; i++) delay(50);
 
-        showSplash("Fetching news...");
-        for (int i = 0; i < 60 && !s_newsDone; i++) delay(50);
-
-        showSplash("Fetching alerts...");
-        for (int i = 0; i < 60 && !s_alertsDone; i++) delay(50);
+        if (s_wifiOk) showSplash("Fetching news...");
+        for (int i = 0; i < 60 && !s_newsDone && s_wifiOk; i++) delay(50);
     }
 
     ledSet(false, false, false);
