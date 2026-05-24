@@ -13,9 +13,13 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 |--------|-------|-------|
 | ![HOURLY](ScreenShots/HOURLY.png) | ![5-DAY](ScreenShots/5-DAY.png) | ![SOLAR](ScreenShots/SOLAR.png) |
 
-| FIRES | USGS | SETTINGS |
-|-------|------|----------|
-| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | ![SETTINGS](ScreenShots/SETTINGS.png) |
+| FIRES | USGS | NEWS |
+|-------|------|------|
+| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | ![NEWS](ScreenShots/NEWS.png) |
+
+| SETTINGS |
+|----------|
+| ![SETTINGS](ScreenShots/SETTINGS.png) |
 
 ### Features
 
@@ -46,19 +50,31 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 **USGS screen:**
 - USGS earthquake feed — up to 12 recent M3.5+ events with magnitude, location, and time
 
+**NEWS screen:**
+- Breaking news from r/news — crime, disasters, major incidents. Strictly moderated (no fluff, no opinion).
+- Two-line headline format with word-boundary wrapping for readability
+- Sorted newest-first by date
+- Vertical swipe scrolling — up to 16 headlines, swipe up/down to page through all entries
+- Scroll indicators (^ / v) show when more content is available above or below
+- Tap title bar to force a data re-fetch; scroll position resets to top on refresh
+- No API key required
+
 **SETTINGS screen:**
 - WiFi status and IP, city, NTP time sync status, weather provider info
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
-- Screen auto-rotate interval (off / 15s / 30s / 60s / 120s)
+- Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
 - Refresh Weather and Update Location buttons
 - 9 theme accent colors, saved across reboots
 - E-Ink mode — inverts display to white-background / black-foreground, toggled from the settings screen
+- Power Off — two-tap confirmation ("PWR OFF" then "SURE?") puts the device into deep sleep (wake via RST button)
 
 **General:**
 - Auto-detects location via IP geolocation; no config needed beyond WiFi credentials
 - Weather data via Open-Meteo; no API key required
 - Refreshes at the top of each hour
-- Tap the title bar on SOLAR, FIRES, or USGS screens to force an immediate data re-fetch
+- Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, NEWS)
+- FIRES and USGS headline text uses the active theme color
+- 8 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRES, USGS, NEWS, SETTINGS
 
 ### Setup
 

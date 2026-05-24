@@ -150,7 +150,7 @@ static void drawQuakeList(TFT_eSPI &tft) {
         int dateW = tft.textWidth(s_quakes[i].when);
         int dateX = SCREEN_W - dateW - 4;
         String place = fitText(tft, s_quakes[i].place, dateX - magW - 8);
-        tft.setTextColor(COL_WHITE, COL_BG);
+        tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(magW, y + 2);
         tft.print(place);
         tft.setTextColor(g_themeColor, COL_BG);
@@ -163,7 +163,7 @@ void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "USGS", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 5, 7);
+    drawBottombar(tft, dateStr, 5, 8);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     bool doFetch = stale() && wifiOk && !g_usgsPending;

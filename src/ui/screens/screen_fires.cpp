@@ -132,7 +132,7 @@ static void drawFireList(TFT_eSPI &tft) {
         int dateW = tft.textWidth(s_fires[i].when);
         int dateX = SCREEN_W - dateW - 4;
         String title = fitText(tft, s_fires[i].title, dateX - 20);
-        tft.setTextColor(COL_WHITE, COL_BG);
+        tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(18, y + 2);
         tft.print(title);
         tft.setTextColor(g_themeColor, COL_BG);
@@ -145,7 +145,7 @@ void screenFiresDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "FIRES", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 4, 7);
+    drawBottombar(tft, dateStr, 4, 8);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     bool doFetch = stale() && wifiOk && !g_firesPending;

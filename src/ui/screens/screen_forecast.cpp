@@ -24,7 +24,7 @@ void screenForecastDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "5-DAY", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 2, 7);
+    drawBottombar(tft, dateStr, 2, 8);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     if (!g_current.valid) {

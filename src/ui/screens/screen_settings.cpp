@@ -9,6 +9,7 @@
 #include "../../modules/time_sync.h"
 #include "../../modules/brightness.h"
 #include <WiFi.h>
+#include <esp_sleep.h>
 #include <cstdio>
 #include <cstring>
 
@@ -18,11 +19,13 @@
 #define INFO_Y0      (CONTENT_Y + 4)    // 27
 #define INFO_LINE_H  12
 
-// E-Ink button — right side of info section
+// E-Ink + Power buttons — right column of info section
 #define EINK_X       195
-#define EINK_Y       INFO_Y0
+#define EINK_Y       INFO_Y0                    // 27
 #define EINK_W       (SCREEN_W - EINK_X - 8)   // ~117
-#define EINK_H       (4 * INFO_LINE_H)          // 48
+#define EINK_H       23
+#define PWR_Y        (EINK_Y + EINK_H + 2)     // 52
+#define PWR_H        23
 
 // Divider between info and controls
 #define DIV1_Y       (INFO_Y0 + 4 * INFO_LINE_H + 3)   // 79
@@ -58,6 +61,8 @@
 
 static const char *s_briLabels[BRI_LEVELS] = {"AUTO","DIM","LOW","MED","HIGH","MAX"};
 static bool s_refreshRequested = false;
+static bool s_pwrConfirm = false;
+static unsigned long s_pwrConfirmMs = 0;
 
 // ── Auto-rotate state ─────────────────────────────────────────────────────────
 static const uint32_t s_rotMs[]     = { 0, 5000, 10000, 30000, 60000 };
@@ -75,7 +80,7 @@ static void autoRotLoad() {
 void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SETTINGS", timeStr, wifiOk);
-    drawBottombar(tft, "", 6, 7);
+    drawBottombar(tft, "", 7, 8);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     // ── Section 1: Info ───────────────────────────────────────────────────────
@@ -133,7 +138,7 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         }
     }
 
-    // ── E-Ink / Flashlight toggle — right side of info section ─────────────────
+    // ── E-Ink / Flashlight toggle — right column, top ──────────────────────────
     {
         tft.fillRect(EINK_X, EINK_Y, EINK_W, EINK_H, COL_INPUTBG);
         if (invertGet()) {
@@ -145,15 +150,23 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
             tft.setTextColor(g_themeColor, COL_INPUTBG);
         }
         tft.setTextFont(FONT_MD);
-        const char *einkLabel = "E-INK";
+        char einkLabel[12];
+        snprintf(einkLabel, sizeof(einkLabel), "E-INK %s", invertGet() ? "ON" : "OFF");
         int elw = tft.textWidth(einkLabel);
-        tft.setCursor(EINK_X + (EINK_W - elw) / 2, EINK_Y + 6);
+        tft.setCursor(EINK_X + (EINK_W - elw) / 2, EINK_Y + (EINK_H - 16) / 2);
         tft.print(einkLabel);
-        tft.setTextFont(FONT_SM);
-        const char *state = invertGet() ? "ON" : "OFF";
-        int sw = tft.textWidth(state);
-        tft.setCursor(EINK_X + (EINK_W - sw) / 2, EINK_Y + 28);
-        tft.print(state);
+    }
+
+    // ── Power Off — right column, bottom ───────────────────────────────────────
+    {
+        tft.fillRect(EINK_X, PWR_Y, EINK_W, PWR_H, COL_INPUTBG);
+        tft.drawRect(EINK_X, PWR_Y, EINK_W, PWR_H, COL_RED);
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(COL_RED, COL_INPUTBG);
+        const char *pwrLabel = s_pwrConfirm ? "SURE?" : "PWR OFF";
+        int plw = tft.textWidth(pwrLabel);
+        tft.setCursor(EINK_X + (EINK_W - plw) / 2, PWR_Y + (PWR_H - 16) / 2);
+        tft.print(pwrLabel);
     }
 
     // Divider 1
@@ -239,10 +252,35 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
 }
 
 bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
+    // Timeout stale power-off confirmation
+    if (s_pwrConfirm && millis() - s_pwrConfirmMs > 5000) {
+        s_pwrConfirm = false;
+    }
+
     // E-Ink toggle button
     if (tx >= EINK_X && tx < EINK_X + EINK_W &&
         ty >= EINK_Y && ty < EINK_Y + EINK_H) {
+        s_pwrConfirm = false;
         invertSet(!invertGet());
+        return true;
+    }
+
+    // Power Off button — two-tap confirmation
+    if (tx >= EINK_X && tx < EINK_X + EINK_W &&
+        ty >= PWR_Y  && ty < PWR_Y + PWR_H) {
+        if (s_pwrConfirm && millis() - s_pwrConfirmMs < 5000) {
+            // Second tap within 5s — deep sleep
+            tft.fillScreen(COL_BG);
+            tft.setTextFont(FONT_MD);
+            tft.setTextColor(g_themeColor, COL_BG);
+            tft.setCursor(80, 110);
+            tft.print("Shutting down...");
+            delay(500);
+            esp_deep_sleep_start();
+        } else {
+            s_pwrConfirm = true;
+            s_pwrConfirmMs = millis();
+        }
         return true;
     }
 
