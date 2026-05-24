@@ -138,32 +138,26 @@ bool firesFetch(bool wifiOk) {
             if (ti) { month = ti->tm_mon + 1; day = ti->tm_mday; }
         }
 
-        // Build compact title: "Name [ST] (ac) cause pct%"
+        // Build title: "Name [ST] (ac) cause pct%"
         char acBuf[16];
         fmtAcres(size, acBuf, sizeof(acBuf));
 
+        // Shorten only the excessively long "Undetermined"
         const char *cs = cause;
-        if (strcmp(cause, "Natural") == 0)      cs = "Nat";
-        else if (strcmp(cause, "Human") == 0)   cs = "Hum";
-        else if (strcmp(cause, "Undetermined") == 0) cs = "Unk";
-        else if (!cause[0])                      cs = "";
+        if (strcmp(cause, "Undetermined") == 0) cs = "Unknown";
 
         char titleBuf[70];
-        if (acBuf[0] && cs[0] && state[0])
-            snprintf(titleBuf, sizeof(titleBuf), "%s [%s] (%s) %s %.0f%%",
-                     name, state, acBuf, cs, pctCont);
-        else if (acBuf[0] && state[0])
-            snprintf(titleBuf, sizeof(titleBuf), "%s [%s] (%s) %.0f%%",
-                     name, state, acBuf, pctCont);
-        else if (state[0] && cs[0])
-            snprintf(titleBuf, sizeof(titleBuf), "%s [%s] %s %.0f%%",
-                     name, state, cs, pctCont);
-        else if (state[0])
-            snprintf(titleBuf, sizeof(titleBuf), "%s [%s] %.0f%%", name, state, pctCont);
-        else if (acBuf[0])
-            snprintf(titleBuf, sizeof(titleBuf), "%s (%s) %.0f%%", name, acBuf, pctCont);
-        else
-            snprintf(titleBuf, sizeof(titleBuf), "%s %.0f%%", name, pctCont);
+        int off = snprintf(titleBuf, sizeof(titleBuf), "%s", name);
+        if (state[0] && off < (int)sizeof(titleBuf) - 6)
+            off += snprintf(titleBuf + off, sizeof(titleBuf) - off, " [%s]", state);
+        if (acBuf[0] && off < (int)sizeof(titleBuf) - (int)strlen(acBuf) - 3)
+            off += snprintf(titleBuf + off, sizeof(titleBuf) - off, " (%s)", acBuf);
+        if (cs[0] && off < (int)sizeof(titleBuf) - 34)
+            off += snprintf(titleBuf + off, sizeof(titleBuf) - off,
+                            " %s %.0f%% contained", cs, pctCont);
+        else if (off < (int)sizeof(titleBuf) - 18)
+            off += snprintf(titleBuf + off, sizeof(titleBuf) - off,
+                            " %.0f%% contained", pctCont);
         copyFit(titleBuf, temp[tempCount].title, sizeof(temp[tempCount].title));
 
         if (month > 0 && day > 0)
@@ -199,16 +193,11 @@ static void drawFireList(TFT_eSPI &tft) {
     for (int i = s_scrollOff; i < s_fireCount; i++) {
         if (curY + FIRE_ROW_H > bottomY) break;
         int y = curY;
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(COL_AMBER, COL_BG);
-        tft.setCursor(4, y + 2);
-        tft.print("*");
-
         int dateW = tft.textWidth(s_fires[i].when);
         int dateX = SCREEN_W - dateW - 4;
-        String title = fitText(tft, s_fires[i].title, dateX - 20);
+        String title = fitText(tft, s_fires[i].title, dateX - 6);
         tft.setTextColor(g_themeColor, COL_BG);
-        tft.setCursor(18, y + 2);
+        tft.setCursor(4, y + 2);
         tft.print(title);
         tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(dateX, y + 2);
