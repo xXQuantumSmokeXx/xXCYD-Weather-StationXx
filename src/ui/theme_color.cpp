@@ -5,15 +5,15 @@
 #include <Arduino.h>
 
 const ThemeEntry g_themes[THEME_COUNT] = {
-    { "CYAN",   0x07FFu },
-    { "GREEN",  0x07E0u },
-    { "RED",    0xF800u },
-    { "ORANGE", 0xFC60u },
-    { "YELLOW", 0xFFE0u },
-    { "GRAY",   0x8410u },
-    { "PURPLE", 0xA81Fu },
-    { "PINK",   0xFB56u },
-    { "WHITE",  0xFFFFu },
+    { "CYAN",   0x07FFu },   // max green+blue — already neon
+    { "GREEN",  0x07E0u },   // max green — already neon
+    { "RED",    0xF810u },   // neon red: pure R + hint of blue
+    { "ORANGE", 0xFE80u },   // neon orange: max R + strong G
+    { "YELLOW", 0xFFE0u },   // max red+green — already neon
+    { "GRAY",   0xAD55u },   // neutral mid-gray (was green-tinted)
+    { "PURPLE", 0xF01Fu },   // neon purple: max B + strong R
+    { "PINK",   0xFE5Au },   // hot pink: max R + strong G + blue
+    { "WHITE",  0xFFFFu },   // full white
 };
 
 uint16_t g_themeColor  = 0x07FFu;   // current active color (black when inverted)
