@@ -39,6 +39,8 @@ static bool          s_needsRedraw    = true;
 static bool          s_wifiOk         = false;
 static int           s_lastWeatherHour     = -1;   // hour (0-23) of last fetch; -1 = never
 static unsigned long s_lastWeatherAttempt  = 0;    // cooldown timer to prevent tight retry loops
+static int           s_lastSolarHour       = -1;
+static unsigned long s_lastSolarAttempt    = 0;
 static unsigned long s_lastMinute          = 0;
 static unsigned long s_lastAutoRotate      = 0;
 static char          s_updateStr[24]  = "Never";
@@ -537,6 +539,22 @@ void loop() {
         }
     }
 
+    // Solar auto-refresh — top of each new hour (async, Core 0)
+    if (s_wifiOk && !workerBusy() && !g_solarPending) {
+        bool solarShouldFetch = false;
+        if (timeIsValid()) {
+            time_t now = time(nullptr);
+            int curHour = localtime(&now)->tm_hour;
+            if (curHour != s_lastSolarHour) solarShouldFetch = true;
+        }
+        if (solarShouldFetch && millis() - s_lastSolarAttempt > 60000) {
+            s_lastSolarAttempt = millis();
+            s_lastSolarHour = -1;  // will be set on success in loop below
+            g_solarPending = true;
+            triggerSolarFetch();
+        }
+    }
+
     // Weather fetch completion
     if (s_fetchDone) {
         xSemaphoreTake(s_dataMutex, portMAX_DELAY);
@@ -571,6 +589,10 @@ void loop() {
         s_solarDone = false;
         g_solarPending = false;
         xSemaphoreGive(s_dataMutex);
+        if (timeIsValid()) {
+            time_t now = time(nullptr);
+            s_lastSolarHour = localtime(&now)->tm_hour;
+        }
         if (s_screen == 3) s_needsRedraw = true;
     }
 
@@ -605,6 +627,18 @@ void loop() {
         gotoScreen(s_screen + 1);
     } else if (evt.swipe == SwipeDir::Right) {
         gotoScreen(s_screen - 1);
+    } else if (evt.swipe == SwipeDir::Up && s_screen == 4) {
+        screenFiresSwipe(1);
+        s_needsRedraw = true;
+    } else if (evt.swipe == SwipeDir::Down && s_screen == 4) {
+        screenFiresSwipe(-1);
+        s_needsRedraw = true;
+    } else if (evt.swipe == SwipeDir::Up && s_screen == 5) {
+        screenUsgsSwipe(1);
+        s_needsRedraw = true;
+    } else if (evt.swipe == SwipeDir::Down && s_screen == 5) {
+        screenUsgsSwipe(-1);
+        s_needsRedraw = true;
     } else if (evt.swipe == SwipeDir::Up && s_screen == 6) {
         screenNewsSwipe(1);
         s_needsRedraw = true;

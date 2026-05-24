@@ -13,7 +13,7 @@
 #include <time.h>
 
 #define USGS_CACHE_MS (15UL * 60UL * 1000UL)
-#define QUAKE_MAX 12
+#define QUAKE_MAX 24
 #define QUAKE_ROW_H 14
 
 struct QuakeItem {
@@ -27,6 +27,7 @@ static int s_quakeCount = 0;
 static bool s_fetchedOnce = false;
 static unsigned long s_fetchedMs = 0;
 static bool s_forceRefresh = false;
+static int  s_scrollOff = 0;
 static char s_sync[10] = "--:--";
 bool g_usgsPending = false;
 
@@ -99,11 +100,12 @@ bool usgsFetch(bool wifiOk) {
         return false;
     }
 
-    // Collect into temp — don't clear old data until we have valid new data
-    QuakeItem temp[QUAKE_MAX];
+    // Collect all into temp, sort by date (newest first), store up to QUAKE_MAX
+    const int TEMP_MAX = 32;
+    QuakeItem temp[TEMP_MAX];
     int tempCount = 0;
     for (JsonObject feature : doc["features"].as<JsonArray>()) {
-        if (tempCount >= QUAKE_MAX) break;
+        if (tempCount >= TEMP_MAX) break;
         JsonObject p = feature["properties"];
         if (p.isNull()) continue;
         temp[tempCount].mag = p["mag"] | 0.0f;
@@ -114,9 +116,20 @@ bool usgsFetch(bool wifiOk) {
         tempCount++;
     }
 
-    // Only replace live data when we have valid new data
-    for (int i = 0; i < tempCount; i++) s_quakes[i] = temp[i];
-    s_quakeCount = tempCount;
+    // Sort by date (newest first) — when is "MM-DD HH:MM"
+    for (int i = 0; i < tempCount - 1; i++) {
+        for (int j = i + 1; j < tempCount; j++) {
+            if (strcmp(temp[i].when, temp[j].when) < 0) {
+                QuakeItem t = temp[i];
+                temp[i] = temp[j];
+                temp[j] = t;
+            }
+        }
+    }
+    int count = tempCount < QUAKE_MAX ? tempCount : QUAKE_MAX;
+    for (int i = 0; i < count; i++) s_quakes[i] = temp[i];
+    s_quakeCount = count;
+    s_scrollOff = 0;
     s_fetchedMs = millis();
     s_fetchedOnce = true;
     stampSync();
@@ -124,21 +137,22 @@ bool usgsFetch(bool wifiOk) {
 }
 
 static void drawQuakeList(TFT_eSPI &tft) {
+    const int HEADER_H = 22;
     tft.setTextFont(FONT_SM);
     tft.setTextColor(g_themeColor, COL_BG);
     char hdr[34];
     snprintf(hdr, sizeof(hdr), "M3.5+ QUAKES: %d", s_quakeCount);
     tft.setCursor(8, CONTENT_Y + 4);
     tft.print(hdr);
-    tft.drawFastHLine(0, CONTENT_Y + 16, SCREEN_W, g_themeColor);
+    tft.drawFastHLine(0, CONTENT_Y + HEADER_H - 4, SCREEN_W, g_themeColor);
 
-    int headerH = 20;
-    int visible = (CONTENT_H - headerH) / QUAKE_ROW_H;
-    int limit = min(s_quakeCount, visible);
-    int dataH = limit * QUAKE_ROW_H;
-    int y0 = CONTENT_Y + headerH + ((CONTENT_H - headerH) - dataH) / 2;
-    for (int i = 0; i < limit; ++i) {
-        int y = y0 + i * QUAKE_ROW_H;
+    int perPage = (CONTENT_H - HEADER_H) / QUAKE_ROW_H;
+    int curY = CONTENT_Y + HEADER_H;
+    int bottomY = SCREEN_H - BOTBAR_H;
+
+    for (int i = s_scrollOff; i < s_quakeCount; i++) {
+        if (curY + QUAKE_ROW_H > bottomY) break;
+        int y = curY;
         char magBuf[8];
         snprintf(magBuf, sizeof(magBuf), "M%.1f", s_quakes[i].mag);
         tft.setTextFont(FONT_SM);
@@ -156,6 +170,21 @@ static void drawQuakeList(TFT_eSPI &tft) {
         tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(dateX, y + 2);
         tft.print(s_quakes[i].when);
+        curY += QUAKE_ROW_H;
+    }
+
+    // Scroll indicators
+    if (s_scrollOff + perPage < s_quakeCount) {
+        tft.setTextFont(FONT_SM);
+        tft.setTextColor(COL_DIM, COL_BG);
+        tft.setCursor(SCREEN_W - 20, SCREEN_H - BOTBAR_H - 10);
+        tft.print("v");
+    }
+    if (s_scrollOff > 0) {
+        tft.setTextFont(FONT_SM);
+        tft.setTextColor(COL_DIM, COL_BG);
+        tft.setCursor(SCREEN_W - 20, CONTENT_Y + HEADER_H);
+        tft.print("^");
     }
 }
 
@@ -193,5 +222,21 @@ void screenUsgsTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {
     if (y <= TOPBAR_H && wifiOk) {
         s_forceRefresh = true;
         s_fetchedMs = 0;
+        s_scrollOff = 0;
+    }
+}
+
+void screenUsgsSwipe(int dir) {
+    int headerH = 22;
+    int perPage = (CONTENT_H - headerH) / QUAKE_ROW_H;
+    int maxOff = s_quakeCount - perPage;
+    if (maxOff < 0) maxOff = 0;
+
+    if (dir > 0) {
+        s_scrollOff += perPage;
+        if (s_scrollOff > maxOff) s_scrollOff = maxOff;
+    } else {
+        s_scrollOff -= perPage;
+        if (s_scrollOff < 0) s_scrollOff = 0;
     }
 }
