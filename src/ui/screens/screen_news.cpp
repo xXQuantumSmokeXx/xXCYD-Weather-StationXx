@@ -12,7 +12,7 @@
 #include <cstring>
 #include <cctype>
 
-#define NEWS_CACHE_MS (15UL * 60UL * 1000UL)
+#define NEWS_CACHE_MS (15UL * 60UL * 1000UL)  // 15 min refresh interval
 #define NEWS_RETRY_MS (30UL * 1000UL)
 #define NEWS_MAX 16
 #define NEWS_ROW_H 24
@@ -336,7 +336,8 @@ void screenNewsDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.setTextFont(FONT_MD);
         tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(wifiOk ? 58 : 92, 104);
-        tft.print(wifiOk ? "No news data" : "News offline");
+        const char *msg = wifiOk ? "No news data" : "News offline";
+        tft.print(msg);
     }
 }
 
