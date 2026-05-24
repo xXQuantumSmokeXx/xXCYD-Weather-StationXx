@@ -58,15 +58,35 @@ static void stampSync() {
     snprintf(s_sync, sizeof(s_sync), "%s", t);
 }
 
+// Format "1234" → "1,234" for acreage display
+static void fmtAcres(double acres, char *out, size_t len) {
+    if (acres < 1) { snprintf(out, len, ""); return; }
+    long a = (long)acres;
+    if (a >= 1000000)
+        snprintf(out, len, "%ld,%03ld,%03ld ac", a / 1000000, (a / 1000) % 1000, a % 1000);
+    else if (a >= 1000)
+        snprintf(out, len, "%ld,%03ld ac", a / 1000, a % 1000);
+    else
+        snprintf(out, len, "%ld ac", a);
+}
+
 bool firesFetch(bool wifiOk) {
     if (!wifiOk || !WiFi.isConnected()) {
         return false;
     }
 
+    // NIFC IMSR — Incident Management Situation Report. Only actual
+    // wildfire incidents, no prescribed burns. Updated daily.
     WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
-    http.begin(client, "https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&limit=20");
+    http.begin(client, "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/"
+                       "services/IMSR_Incident_Locations_Most_Recent_View/FeatureServer/0/"
+                       "query?where=IsLatest%3D%27x%27+AND+%28x100pct+IS+NULL+OR+x100pct%3C%3E%27c%27%29"
+                       "&outFields=fire_name,IrwinFireDiscoveryDateTime,size"
+                       "&returnGeometry=false"
+                       "&orderByFields=IrwinFireDiscoveryDateTime+DESC"
+                       "&resultRecordCount=30&f=json");
     http.setTimeout(15000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
     int code = http.GET();
@@ -75,34 +95,53 @@ bool firesFetch(bool wifiOk) {
     http.end();
 
     JsonDocument filter;
-    filter["events"][0]["title"] = true;
-    filter["events"][0]["geometry"][0]["date"] = true;
+    filter["features"][0]["attributes"]["fire_name"] = true;
+    filter["features"][0]["attributes"]["IrwinFireDiscoveryDateTime"] = true;
+    filter["features"][0]["attributes"]["size"] = true;
 
     JsonDocument doc;
     if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) {
         return false;
     }
-    JsonArray events = doc["events"].as<JsonArray>();
-    if (events.isNull()) {
+    JsonArray features = doc["features"].as<JsonArray>();
+    if (features.isNull()) {
         return false;
     }
 
-    // Collect all events into a temp buffer, sort by date (newest first),
-    // then store up to FIRE_MAX for scrollable display.
     const int TEMP_MAX = 32;
     FireItem temp[TEMP_MAX];
     int tempCount = 0;
-    for (JsonObject ev : events) {
+    for (JsonObject f : features) {
         if (tempCount >= TEMP_MAX) break;
-        const char *title = ev["title"] | "Unknown Fire";
-        const char *date = ev["geometry"][0]["date"] | "";
-        copyFit(title, temp[tempCount].title, sizeof(temp[tempCount].title));
-        if (date && strlen(date) >= 10) snprintf(temp[tempCount].when, sizeof(temp[tempCount].when), "%.5s", date + 5);
-        else copyFit("--", temp[tempCount].when, sizeof(temp[tempCount].when));
+        JsonObject attr = f["attributes"];
+        if (attr.isNull()) continue;
+
+        const char *name = attr["fire_name"] | "Unknown Fire";
+        const char *dateStr = attr["IrwinFireDiscoveryDateTime"] | "";
+        double size = attr["size"] | 0.0;
+
+        // Parse "M/D/YYYY H:MM:SS AM/PM" → "MM-DD"
+        int month = 0, day = 0;
+        if (dateStr && dateStr[0])
+            sscanf(dateStr, "%d/%d/%*d", &month, &day);
+
+        char acBuf[16];
+        fmtAcres(size, acBuf, sizeof(acBuf));
+        if (acBuf[0])
+            snprintf(temp[tempCount].title, sizeof(temp[tempCount].title),
+                     "%s (%s)", name, acBuf);
+        else
+            copyFit(name, temp[tempCount].title, sizeof(temp[tempCount].title));
+
+        if (month > 0 && day > 0)
+            snprintf(temp[tempCount].when, sizeof(temp[tempCount].when),
+                     "%02d-%02d", month, day);
+        else
+            copyFit("--", temp[tempCount].when, sizeof(temp[tempCount].when));
         tempCount++;
     }
 
-    // Sort by date (newest first)
+    // API returns newest-first, but sort as a safeguard
     for (int i = 0; i < tempCount - 1; i++) {
         for (int j = i + 1; j < tempCount; j++) {
             if (strcmp(temp[i].when, temp[j].when) < 0) {
