@@ -298,19 +298,6 @@ static void drawNewsList(TFT_eSPI &tft) {
         curY += NEWS_ROW_H;
     }
 
-    // Scroll indicator — show if more items below
-    if (s_scrollOff + (curY - (CONTENT_Y + 4 + 14 + 5)) / NEWS_ROW_H < s_count) {
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(COL_DIM, COL_BG);
-        tft.setCursor(SCREEN_W - 20, SCREEN_H - BOTBAR_H - 10);
-        tft.print("v");
-    }
-    if (s_scrollOff > 0) {
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(COL_DIM, COL_BG);
-        tft.setCursor(SCREEN_W - 20, CONTENT_Y + 4);
-        tft.print("^");
-    }
 }
 
 void screenNewsDraw(TFT_eSPI &tft, bool wifiOk) {

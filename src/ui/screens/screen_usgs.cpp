@@ -172,19 +172,6 @@ static void drawQuakeList(TFT_eSPI &tft) {
         curY += QUAKE_ROW_H;
     }
 
-    // Scroll indicators
-    if (s_scrollOff + perPage < s_quakeCount) {
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(COL_DIM, COL_BG);
-        tft.setCursor(SCREEN_W - 20, SCREEN_H - BOTBAR_H - 10);
-        tft.print("v");
-    }
-    if (s_scrollOff > 0) {
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(COL_DIM, COL_BG);
-        tft.setCursor(SCREEN_W - 20, CONTENT_Y + HEADER_H);
-        tft.print("^");
-    }
 }
 
 void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
