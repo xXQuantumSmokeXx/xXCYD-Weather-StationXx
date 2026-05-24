@@ -7,7 +7,7 @@
 static SPIClass            g_touchSPI(VSPI);
 static XPT2046_Touchscreen g_ts(TOUCH_CS);   // no IRQ pin — poll directly
 
-#define SWIPE_THRESHOLD 40
+#define SWIPE_THRESHOLD 30
 #define SWIPE_RATIO      2
 #define DEBOUNCE_MS     50
 
@@ -52,9 +52,9 @@ TouchEvent touchPoll() {
         int dy = s_lastY - s_startY;
         int ax = abs(dx), ay = abs(dy);
 
-        if (ax > SWIPE_THRESHOLD && ax > ay * SWIPE_RATIO) {
+        if (ax > SWIPE_THRESHOLD && ax * 10 > ay * 15) {
             evt.swipe = (dx < 0) ? SwipeDir::Left : SwipeDir::Right;
-        } else if (ay > SWIPE_THRESHOLD && ay > ax * SWIPE_RATIO) {
+        } else if (ay > SWIPE_THRESHOLD && ay * 10 > ax * 15) {
             evt.swipe = (dy < 0) ? SwipeDir::Up : SwipeDir::Down;
         } else if (ax < 30 && ay < 30) {
             evt.tap  = TapEvent::Tap;
