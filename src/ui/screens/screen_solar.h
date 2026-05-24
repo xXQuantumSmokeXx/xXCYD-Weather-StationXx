@@ -8,3 +8,6 @@ void screenSolarTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk);
 void solarFetch(bool wifiOk);
 extern bool g_solarPending;
 void triggerSolarFetch();
+
+// Accessor for SITREP
+float screenSolarGetKp();

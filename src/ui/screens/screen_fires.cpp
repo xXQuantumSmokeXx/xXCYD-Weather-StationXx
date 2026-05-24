@@ -211,7 +211,7 @@ void screenFiresDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "FIRES", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 4, 8);
+    drawBottombar(tft, dateStr, 4, 11);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     bool doFetch = stale() && wifiOk && !g_firesPending;
@@ -236,6 +236,9 @@ void screenFiresDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.print(wifiOk ? "No open wildfire data" : "Fires offline");
     }
 }
+
+int screenFiresGetCount() { return s_fireCount; }
+const char* screenFiresGetFirstTitle() { return s_fireCount > 0 ? s_fires[0].title : ""; }
 
 void screenFiresTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {
     if (y <= TOPBAR_H && wifiOk) {

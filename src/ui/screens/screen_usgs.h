@@ -9,3 +9,8 @@ void screenUsgsSwipe(int dir);
 bool usgsFetch(bool wifiOk);
 extern bool g_usgsPending;
 void triggerUsgsFetch();
+
+// Accessors for SITREP
+int screenUsgsGetCount();
+float screenUsgsGetMaxMag();
+const char* screenUsgsGetMaxPlace();
