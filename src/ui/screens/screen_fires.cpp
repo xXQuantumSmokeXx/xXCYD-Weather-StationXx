@@ -115,7 +115,6 @@ bool firesFetch(bool wifiOk) {
     int count = tempCount < FIRE_MAX ? tempCount : FIRE_MAX;
     for (int i = 0; i < count; i++) s_fires[i] = temp[i];
     s_fireCount = count;
-    s_scrollOff = 0;
     s_fetchedMs = millis();
     s_fetchedOnce = true;
     stampSync();

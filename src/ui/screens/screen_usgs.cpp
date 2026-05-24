@@ -129,7 +129,6 @@ bool usgsFetch(bool wifiOk) {
     int count = tempCount < QUAKE_MAX ? tempCount : QUAKE_MAX;
     for (int i = 0; i < count; i++) s_quakes[i] = temp[i];
     s_quakeCount = count;
-    s_scrollOff = 0;
     s_fetchedMs = millis();
     s_fetchedOnce = true;
     stampSync();
