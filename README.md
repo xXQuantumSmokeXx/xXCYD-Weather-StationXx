@@ -40,12 +40,18 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 - X-ray flux class, flare class and peak time, CME speed and detection time
 - Aurora visibility label
 - 24-hour Kp history bar chart
+- Auto-refreshes at the top of each hour; tap title bar for manual refresh
 
 **FIRES screen:**
-- NASA EONET wildfire events — up to 12 recent events with location and date
+- NIFC WFIGS active wildfire events — fire name, state, acreage, cause, and containment %
+- Sorted newest-first, scrollable via swipe up/down, scroll indicators (^ / v)
+- Tap title bar to force a refresh; auto-refreshes every 15 minutes
+- Prescribed burns automatically filtered out
 
 **USGS screen:**
-- USGS earthquake feed — up to 12 recent M3.5+ events with magnitude, location, and time
+- USGS earthquake feed — M3.5+ events with magnitude, location, and time
+- Sorted newest-first, scrollable via swipe up/down, scroll indicators (^ / v)
+- Tap title bar to force a refresh; auto-refreshes every 15 minutes
 
 **NEWS screen:**
 - Breaking news from r/news — crime, disasters, major incidents. Strictly moderated (no fluff, no opinion).
