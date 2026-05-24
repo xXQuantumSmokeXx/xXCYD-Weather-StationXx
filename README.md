@@ -13,13 +13,9 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 |--------|-------|-------|
 | ![HOURLY](ScreenShots/HOURLY.png) | ![5-DAY](ScreenShots/5-DAY.png) | ![SOLAR](ScreenShots/SOLAR.png) |
 
-| FIRES | USGS | NEWS |
-|-------|------|------|
-| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | ![NEWS](ScreenShots/NEWS.png) |
-
-| SETTINGS |
-|----------|
-| ![SETTINGS](ScreenShots/SETTINGS.png) |
+| FIRES | USGS | SETTINGS |
+|-------|------|----------|
+| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | ![SETTINGS](ScreenShots/SETTINGS.png) |
 
 ### Features
 
