@@ -83,7 +83,7 @@ bool firesFetch(bool wifiOk) {
     http.begin(client, "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/"
                        "services/IMSR_Incident_Locations_Most_Recent_View/FeatureServer/0/"
                        "query?where=IsLatest%3D%27x%27+AND+%28x100pct+IS+NULL+OR+x100pct%3C%3E%27c%27%29"
-                       "&outFields=fire_name,IrwinFireDiscoveryDateTime,size"
+                       "&outFields=fire_name,IrwinFireDiscoveryDateTime,size,incident_id"
                        "&returnGeometry=false"
                        "&orderByFields=IrwinFireDiscoveryDateTime+DESC"
                        "&resultRecordCount=30&f=json");
@@ -98,6 +98,7 @@ bool firesFetch(bool wifiOk) {
     filter["features"][0]["attributes"]["fire_name"] = true;
     filter["features"][0]["attributes"]["IrwinFireDiscoveryDateTime"] = true;
     filter["features"][0]["attributes"]["size"] = true;
+    filter["features"][0]["attributes"]["incident_id"] = true;
 
     JsonDocument doc;
     if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) {
@@ -118,6 +119,7 @@ bool firesFetch(bool wifiOk) {
 
         const char *name = attr["fire_name"] | "Unknown Fire";
         const char *dateStr = attr["IrwinFireDiscoveryDateTime"] | "";
+        const char *incId = attr["incident_id"] | "";
         double size = attr["size"] | 0.0;
 
         // Parse "M/D/YYYY H:MM:SS AM/PM" → "MM-DD"
@@ -125,9 +127,23 @@ bool firesFetch(bool wifiOk) {
         if (dateStr && dateStr[0])
             sscanf(dateStr, "%d/%d/%*d", &month, &day);
 
+        // Extract state code from incident_id (first two chars)
+        char state[4] = "";
+        if (incId && incId[0] && incId[1]) {
+            state[0] = incId[0];
+            state[1] = incId[1];
+            state[2] = '\0';
+        }
+
         char acBuf[16];
         fmtAcres(size, acBuf, sizeof(acBuf));
-        if (acBuf[0])
+        if (acBuf[0] && state[0])
+            snprintf(temp[tempCount].title, sizeof(temp[tempCount].title),
+                     "%s [%s] (%s)", name, state, acBuf);
+        else if (state[0])
+            snprintf(temp[tempCount].title, sizeof(temp[tempCount].title),
+                     "%s [%s]", name, state);
+        else if (acBuf[0])
             snprintf(temp[tempCount].title, sizeof(temp[tempCount].title),
                      "%s (%s)", name, acBuf);
         else
