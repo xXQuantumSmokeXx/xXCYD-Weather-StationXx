@@ -44,13 +44,13 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 
 **FIRES screen:**
 - NIFC WFIGS active wildfire events — fire name, state, acreage, cause, and containment %
-- Sorted newest-first, scrollable via swipe up/down, scroll indicators (^ / v)
+- Sorted newest-first, scrollable via swipe up/down
 - Tap title bar to force a refresh; auto-refreshes every 15 minutes
 - Prescribed burns automatically filtered out
 
 **USGS screen:**
 - USGS earthquake feed — M3.5+ events with magnitude, location, and time
-- Sorted newest-first, scrollable via swipe up/down, scroll indicators (^ / v)
+- Sorted newest-first, scrollable via swipe up/down
 - Tap title bar to force a refresh; auto-refreshes every 15 minutes
 
 **NEWS screen:**
@@ -58,7 +58,6 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 - Two-line headline format with word-boundary wrapping for readability
 - Sorted newest-first by date
 - Vertical swipe scrolling — up to 16 headlines, swipe up/down to page through all entries
-- Scroll indicators (^ / v) show when more content is available above or below
 - Tap title bar to force a data re-fetch; scroll position resets to top on refresh
 - No API key required
 
