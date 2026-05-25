@@ -67,27 +67,37 @@ static float moonPhase() {
 
 static const char *moonPhaseName(float phase) {
     if (phase < 0.03f || phase > 0.97f) return "NEW MOON";
-    if (phase < 0.22f) return "WAX CRESC";
-    if (phase < 0.28f) return "FIRST QTR";
-    if (phase < 0.47f) return "WAX GIBB";
+    if (phase < 0.22f) return "WAXING CRESCENT";
+    if (phase < 0.28f) return "FIRST QUARTER";
+    if (phase < 0.47f) return "WAXING GIBBOUS";
     if (phase < 0.53f) return "FULL MOON";
-    if (phase < 0.72f) return "WAN GIBB";
-    if (phase < 0.78f) return "LAST QTR";
-    return "WAN CRESC";
+    if (phase < 0.72f) return "WANING GIBBOUS";
+    if (phase < 0.78f) return "LAST QUARTER";
+    return "WANING CRESCENT";
 }
 
-// Draw a row: time on the left, label on the right
-static void drawTimelineRow(TFT_eSPI &tft, int &y, const char *timeStr,
-                            const char *label, uint16_t labelColor) {
-    const int ROW_H = 13;
-    tft.setTextFont(FONT_SM);
-    tft.setTextColor(g_themeColor, COL_BG);
-    tft.setCursor(24, y);
+static void drawRow(TFT_eSPI &tft, int &y, const char *timeStr, const char *label,
+                    const char *note, uint16_t timeColor, uint16_t labelColor) {
+    // Time — FONT_MD, larger
+    tft.setTextFont(FONT_MD);
+    tft.setTextColor(timeColor, COL_BG);
+    tft.setCursor(10, y);
     tft.print(timeStr);
+
+    // Label — FONT_SM, inline after time
+    tft.setTextFont(FONT_SM);
     tft.setTextColor(labelColor, COL_BG);
-    tft.setCursor(80, y);
+    tft.setCursor(74, y + 3);
     tft.print(label);
-    y += ROW_H;
+
+    // Note — FONT_SM, dim, right-aligned
+    if (note && note[0]) {
+        tft.setTextColor(COL_DIM, COL_BG);
+        int nw = tft.textWidth(note);
+        tft.setCursor(SCREEN_W - 8 - nw, y + 3);
+        tft.print(note);
+    }
+    y += 16;
 }
 
 void screenPlannerDraw(TFT_eSPI &tft, bool wifiOk) {
@@ -117,29 +127,10 @@ void screenPlannerDraw(TFT_eSPI &tft, bool wifiOk) {
     int astEnd   = timeFromNoonMins(+haAstro, eotMin);
     int noonM    = (sunriseM + sunsetM) / 2;
 
-    char buf[16], buf2[16];
-
-    // ── Day length hero ──────────────────────────────────────────
-    int y = CONTENT_Y + 2;
-    int dayLen = sunsetM - sunriseM;
-    if (dayLen > 0) {
-        int h = dayLen / 60, m = dayLen % 60;
-        snprintf(buf, sizeof(buf), "%dh %02dm of daylight", h, m);
-        tft.setTextFont(FONT_MD);
-        tft.setTextColor(g_themeColor, COL_BG);
-        int tw = tft.textWidth(buf);
-        tft.setCursor((SCREEN_W - tw) / 2, y);
-        tft.print(buf);
-        y += 18;
-    }
-    // Accent line under hero
-    tft.drawFastHLine(40, y, SCREEN_W - 80, g_themeColor);
-    y += 6;
-
-    char astD[8], nauD[8], civD[8], sunR[8], noon[8], sunS[8], civS[8], nauS[8], astS[8];
+    char sunR[8], noon[8], sunS[8];
+    char astD[8], nauD[8], civD[8], civS[8], nauS[8], astS[8];
 
     if (g_daily[0].sunset[0]) {
-        // Use Open-Meteo sunrise/sunset if available
         snprintf(sunR, sizeof(sunR), "%s", g_daily[0].sunrise);
         snprintf(sunS, sizeof(sunS), "%s", g_daily[0].sunset);
     } else {
@@ -154,52 +145,51 @@ void screenPlannerDraw(TFT_eSPI &tft, bool wifiOk) {
     minsToHMA(nauS, sizeof(nauS), nautEnd);
     minsToHMA(astS, sizeof(astS), astEnd);
 
-    // ── Dawn sector ──────────────────────────────────────────────
-    tft.setTextFont(FONT_SM);
-    tft.setTextColor(COL_DIM, COL_BG);
-    tft.setCursor(24, y);
-    tft.print("DAWN");
-    y += 12;
+    char buf[48];
+    int y = CONTENT_Y + 2;
 
-    drawTimelineRow(tft, y, astD, "Astronomical", COL_DIM);
-    drawTimelineRow(tft, y, nauD, "Nautical",    COL_DIM);
-    drawTimelineRow(tft, y, civD, "Civil",       COL_WHITE);
-    drawTimelineRow(tft, y, sunR, "Sunrise",     COL_AMBER);
+    // ── Day length hero ──────────────────────────────────────────
+    int dayLen = sunsetM - sunriseM;
+    if (dayLen > 0) {
+        int h = dayLen / 60, m = dayLen % 60;
+        snprintf(buf, sizeof(buf), "%dh %02dm of daylight", h, m);
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(g_themeColor, COL_BG);
+        int tw = tft.textWidth(buf);
+        tft.setCursor((SCREEN_W - tw) / 2, y);
+        tft.print(buf);
+        y += 18;
+    }
+    tft.drawFastHLine(40, y, SCREEN_W - 80, g_themeColor);
+    y += 5;
 
-    // Thin separator
+    // ── Timeline with practical notes ────────────────────────────
+    drawRow(tft, y, astD, "Astro dawn",    "True darkness ends",       COL_DIM,    COL_DIM);
+    drawRow(tft, y, nauD, "Naut dawn",     "Horizon visible",          COL_DIM,    COL_DIM);
+    drawRow(tft, y, civD, "Civil dawn",    "Outdoor light begins",     COL_WHITE,  COL_WHITE);
+    drawRow(tft, y, sunR, "Sunrise",       "Sun breaks the horizon",   COL_AMBER,  g_themeColor);
+    drawRow(tft, y, noon, "Solar noon",    "Sun at highest point",     g_themeColor, COL_WHITE);
+    drawRow(tft, y, sunS, "Sunset",        "Golden hour begins",       COL_AMBER,  g_themeColor);
+    drawRow(tft, y, civS, "Civil dusk",    "Streetlights come on",     COL_WHITE,  COL_WHITE);
+    drawRow(tft, y, nauS, "Naut dusk",     "Stars visible overhead",   COL_DIM,    COL_DIM);
+    drawRow(tft, y, astS, "Astro dusk",    "Deep sky observing",       COL_DIM,    COL_DIM);
+
     y += 2;
-    tft.drawFastHLine(24, y, SCREEN_W - 48, g_themeColor);
-    y += 4;
 
-    // ── Day sector ───────────────────────────────────────────────
-    drawTimelineRow(tft, y, noon, "Solar Noon",   g_themeColor);
-
-    y += 2;
-    tft.drawFastHLine(24, y, SCREEN_W - 48, g_themeColor);
-    y += 4;
-
-    // ── Dusk sector ──────────────────────────────────────────────
-    drawTimelineRow(tft, y, sunS, "Sunset",       COL_AMBER);
-    drawTimelineRow(tft, y, civS, "Civil",        COL_WHITE);
-    drawTimelineRow(tft, y, nauS, "Nautical",     COL_DIM);
-    drawTimelineRow(tft, y, astS, "Astronomical", COL_DIM);
-
-    // Separator before moon
-    y += 2;
+    // ── Moon ─────────────────────────────────────────────────────
     tft.drawFastHLine(40, y, SCREEN_W - 80, g_themeColor);
     y += 4;
 
-    // ── Moon ─────────────────────────────────────────────────────
     float phase = moonPhase();
     float illum = (1.0f - cosf(phase * 2.0f * M_PI)) / 2.0f;
     const char *phaseStr = moonPhaseName(phase);
 
     tft.setTextFont(FONT_SM);
     tft.setTextColor(g_themeColor, COL_BG);
-    tft.setCursor(24, y);
+    tft.setCursor(10, y);
     tft.print("Moon:");
     tft.setTextColor(COL_WHITE, COL_BG);
-    tft.setCursor(64, y);
+    tft.setCursor(48, y);
     tft.print(phaseStr);
     snprintf(buf, sizeof(buf), "%.0f%% illuminated", illum * 100.0f);
     int w = tft.textWidth(buf);
