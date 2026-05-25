@@ -19,42 +19,52 @@
 #define INFO_Y0      (CONTENT_Y + 4)    // 27
 #define INFO_LINE_H  12
 
-// E-Ink + Power buttons — right column of info section
-#define EINK_X       195
-#define EINK_Y       INFO_Y0                    // 27
-#define EINK_W       (SCREEN_W - EINK_X - 8)   // ~117
-#define EINK_H       23
-#define PWR_Y        (EINK_Y + EINK_H + 2)     // 52
-#define PWR_H        23
+// Right column — 2×2 grid, same height as brightness buttons
+#define BTN_X1       195
+#define BTN_X2       (BTN_X1 + BTN_SQ_W + 2)   // 252
+#define BTN_SQ_W     55
+#define BTN_SQ_H     18   // matches BRI_BTN_H
+
+#define EINK_X       BTN_X1                    // 195
+#define EINK_Y       INFO_Y0                   // 27
+#define PWR_X        BTN_X2                    // 252
+#define PWR_Y        INFO_Y0                   // 27
+#define REFRESH_X    BTN_X1                    // 195
+#define REFRESH_Y    (EINK_Y + BTN_SQ_H + 2)   // 47
+#define LOC_X        BTN_X2                    // 252
+#define LOC_Y        (EINK_Y + BTN_SQ_H + 2)   // 47
 
 // Divider between info and controls
-#define DIV1_Y       (INFO_Y0 + 4 * INFO_LINE_H + 3)   // 79
+#define DIV1_Y       79
 
-// Section 2 — Brightness + Rotate + Action buttons (middle)
+// Section 2 — Brightness + Rotate + Page checkboxes (middle)
 #define SEC2_X       8
 #define SEC2_W       (SCREEN_W - 2 * SEC2_X)   // 304
 
 #define BRI_LABEL_Y  (DIV1_Y + 4)               // 83
-#define BRI_BTN_Y0   (BRI_LABEL_Y + 10)         // 93
+#define BRI_BTN_Y0   (BRI_LABEL_Y + 8)          // 91
 #define BRI_BTN_H    18
 #define BRI_BTN_W    ((SEC2_W - (BRI_LEVELS - 1) * 3) / BRI_LEVELS)  // 48
 
-#define ROT_LABEL_Y  (BRI_BTN_Y0 + BRI_BTN_H + 4)   // 115
-#define ROT_BTN_Y0   (ROT_LABEL_Y + 10)              // 125
+#define ROT_LABEL_Y  (BRI_BTN_Y0 + BRI_BTN_H + 3)   // 112
+#define ROT_BTN_Y0   (ROT_LABEL_Y + 8)               // 120
 #define ROT_BTN_H    18
 #define ROT_BTN_COUNT 5
 #define ROT_BTN_W    ((SEC2_W - (ROT_BTN_COUNT - 1) * 3) / ROT_BTN_COUNT)  // 58
 
-#define BTN_Y        (ROT_BTN_Y0 + ROT_BTN_H + 5)   // 148
-#define BTN_H        20
-#define BTN_W        ((SEC2_W - 8) / 2)              // 148
+#define PAGE_LABEL_Y (ROT_BTN_Y0 + ROT_BTN_H + 3)    // 141
+#define PAGE_BTN_Y0  (PAGE_LABEL_Y + 8)               // 149
+#define PAGE_BTN_H   18
+#define PAGE_GAP     2
+#define PAGE_COUNT   8
+#define PAGE_BTN_W   ((SEC2_W - (PAGE_COUNT - 1) * PAGE_GAP) / PAGE_COUNT)  // 36
 
 // Divider between controls and theme
-#define DIV2_Y       (BTN_Y + BTN_H + 4)   // 172
+#define DIV2_Y       (PAGE_BTN_Y0 + PAGE_BTN_H + 4)   // 171
 
 // Section 3 — Theme Color (bottom)
-#define THEME_LABEL_Y (DIV2_Y + 4)          // 176
-#define SWATCH_Y0     (THEME_LABEL_Y + 14)  // 190
+#define THEME_LABEL_Y (DIV2_Y + 4)          // 175
+#define SWATCH_Y0     (THEME_LABEL_Y + 12)  // 187
 #define SWATCH_H      20
 #define SWATCH_W      ((SEC2_W - (THEME_COUNT - 1) * 2) / THEME_COUNT)  // 32
 #define SWATCH_PAD    2
@@ -77,6 +87,39 @@ static void autoRotLoad() {
     s_autoRotLoaded = true;
 }
 
+// ── Page rotation mask ────────────────────────────────────────────────────────
+// Bit 0 = page 0 (NOW), bit 1 = page 1 (HOURLY), ..., bit 7 = page 7 (ALMANAC)
+static uint8_t s_pageMask   = 0xFF;
+static bool    s_pageLoaded = false;
+
+static void pageMaskLoad() {
+    if (s_pageLoaded) return;
+    s_pageMask = (uint8_t)nvsGetInt("page_mask", 0xFF);
+    if (s_pageMask == 0) s_pageMask = 0xFF;
+    s_pageLoaded = true;
+}
+
+static void pageMaskSave() {
+    nvsPutInt("page_mask", s_pageMask);
+}
+
+bool screenSettingsGetPageEnabled(int page) {
+    pageMaskLoad();
+    if (page < 0 || page >= PAGE_COUNT) return false;
+    return (s_pageMask >> page) & 1;
+}
+
+int screenSettingsGetNextRotatePage(int current) {
+    pageMaskLoad();
+    if (s_pageMask == 0) return -1;
+    for (int i = 1; i <= PAGE_COUNT; i++) {
+        int p = (current + i) % PAGE_COUNT;
+        if ((s_pageMask >> p) & 1) return p;
+    }
+    return -1;
+}
+
+// ── Drawing ───────────────────────────────────────────────────────────────────
 void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SETTINGS", timeStr, wifiOk);
@@ -138,35 +181,58 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         }
     }
 
-    // ── E-Ink / Flashlight toggle — right column, top ──────────────────────────
+    // ── Right column: 2×2 grid (same style as brightness buttons) ─────────────
+    // Top-left: E-Ink toggle
     {
-        tft.fillRect(EINK_X, EINK_Y, EINK_W, EINK_H, COL_INPUTBG);
+        tft.fillRect(EINK_X, EINK_Y, BTN_SQ_W, BTN_SQ_H, COL_INPUTBG);
         if (invertGet()) {
-            tft.drawRect(EINK_X - 1, EINK_Y - 1, EINK_W + 2, EINK_H + 2, COL_WHITE);
-            tft.drawRect(EINK_X - 2, EINK_Y - 2, EINK_W + 4, EINK_H + 4, COL_WHITE);
+            tft.drawRect(EINK_X - 1, EINK_Y - 1, BTN_SQ_W + 2, BTN_SQ_H + 2, COL_WHITE);
+            tft.drawRect(EINK_X - 2, EINK_Y - 2, BTN_SQ_W + 4, BTN_SQ_H + 4, COL_WHITE);
             tft.setTextColor(COL_BG, COL_INPUTBG);
         } else {
-            tft.drawRect(EINK_X, EINK_Y, EINK_W, EINK_H, g_themeColor);
+            tft.drawRect(EINK_X, EINK_Y, BTN_SQ_W, BTN_SQ_H, g_themeColor);
             tft.setTextColor(g_themeColor, COL_INPUTBG);
         }
-        tft.setTextFont(FONT_MD);
+        tft.setTextFont(FONT_SM);
         char einkLabel[12];
         snprintf(einkLabel, sizeof(einkLabel), "E-INK %s", invertGet() ? "ON" : "OFF");
         int elw = tft.textWidth(einkLabel);
-        tft.setCursor(EINK_X + (EINK_W - elw) / 2, EINK_Y + (EINK_H - 16) / 2);
+        tft.setCursor(EINK_X + (BTN_SQ_W - elw) / 2, EINK_Y + (BTN_SQ_H - 8) / 2);
         tft.print(einkLabel);
     }
 
-    // ── Power Off — right column, bottom ───────────────────────────────────────
+    // Top-right: Power Off
     {
-        tft.fillRect(EINK_X, PWR_Y, EINK_W, PWR_H, COL_INPUTBG);
-        tft.drawRect(EINK_X, PWR_Y, EINK_W, PWR_H, COL_RED);
-        tft.setTextFont(FONT_MD);
+        tft.fillRect(PWR_X, PWR_Y, BTN_SQ_W, BTN_SQ_H, COL_INPUTBG);
+        tft.drawRect(PWR_X, PWR_Y, BTN_SQ_W, BTN_SQ_H, COL_RED);
+        tft.setTextFont(FONT_SM);
         tft.setTextColor(COL_RED, COL_INPUTBG);
         const char *pwrLabel = s_pwrConfirm ? "SURE?" : "PWR OFF";
         int plw = tft.textWidth(pwrLabel);
-        tft.setCursor(EINK_X + (EINK_W - plw) / 2, PWR_Y + (PWR_H - 16) / 2);
+        tft.setCursor(PWR_X + (BTN_SQ_W - plw) / 2, PWR_Y + (BTN_SQ_H - 8) / 2);
         tft.print(pwrLabel);
+    }
+
+    // Bottom-left: Refresh Weather
+    {
+        tft.fillRect(REFRESH_X, REFRESH_Y, BTN_SQ_W, BTN_SQ_H, COL_INPUTBG);
+        tft.drawRect(REFRESH_X, REFRESH_Y, BTN_SQ_W, BTN_SQ_H, g_themeColor);
+        tft.setTextFont(FONT_SM);
+        tft.setTextColor(g_themeColor, COL_INPUTBG);
+        int rlw = tft.textWidth("REFRESH");
+        tft.setCursor(REFRESH_X + (BTN_SQ_W - rlw) / 2, REFRESH_Y + (BTN_SQ_H - 8) / 2);
+        tft.print("REFRESH");
+    }
+
+    // Bottom-right: Update Location
+    {
+        tft.fillRect(LOC_X, LOC_Y, BTN_SQ_W, BTN_SQ_H, COL_INPUTBG);
+        tft.drawRect(LOC_X, LOC_Y, BTN_SQ_W, BTN_SQ_H, COL_AMBER);
+        tft.setTextFont(FONT_SM);
+        tft.setTextColor(COL_AMBER, COL_INPUTBG);
+        int llw = tft.textWidth("LOCATION");
+        tft.setCursor(LOC_X + (BTN_SQ_W - llw) / 2, LOC_Y + (BTN_SQ_H - 8) / 2);
+        tft.print("LOCATION");
     }
 
     // Divider 1
@@ -218,20 +284,34 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.print(s_rotLabels[i]);
     }
 
-    // ── Section 2: Action buttons ─────────────────────────────────────────────
-    tft.fillRect(SEC2_X, BTN_Y, BTN_W, BTN_H, COL_INPUTBG);
-    tft.drawRect(SEC2_X, BTN_Y, BTN_W, BTN_H, g_themeColor);
+    // ── Section 2: Page Rotation checkboxes (single row) ──────────────────────
+    pageMaskLoad();
     tft.setTextFont(FONT_SM);
-    tft.setTextColor(g_themeColor, COL_INPUTBG);
-    tft.setCursor(SEC2_X + 6, BTN_Y + (BTN_H - 8) / 2);
-    tft.print("REFRESH WEATHER");
+    tft.setTextColor(g_themeColor, COL_BG);
+    tft.setCursor(SEC2_X, PAGE_LABEL_Y);
+    tft.print("PAGE ROTATION");
 
-    int btn2x = SEC2_X + BTN_W + 8;
-    tft.fillRect(btn2x, BTN_Y, BTN_W, BTN_H, COL_INPUTBG);
-    tft.drawRect(btn2x, BTN_Y, BTN_W, BTN_H, COL_AMBER);
-    tft.setTextColor(COL_AMBER, COL_INPUTBG);
-    tft.setCursor(btn2x + 6, BTN_Y + (BTN_H - 8) / 2);
-    tft.print("UPDATE LOCATION");
+    for (int i = 0; i < PAGE_COUNT; i++) {
+        int bx  = SEC2_X + i * (PAGE_BTN_W + PAGE_GAP);
+        int by  = PAGE_BTN_Y0;
+        bool enabled = (s_pageMask >> i) & 1;
+
+        tft.fillRect(bx, by, PAGE_BTN_W, PAGE_BTN_H, COL_INPUTBG);
+        tft.drawRect(bx, by, PAGE_BTN_W, PAGE_BTN_H, enabled ? g_themeColor : COL_DIM);
+
+        const int chkSize = 10;
+        int chkX = bx + 3;
+        int chkY = by + (PAGE_BTN_H - chkSize) / 2;
+        tft.drawRect(chkX, chkY, chkSize, chkSize, enabled ? g_themeColor : COL_DIM);
+        if (enabled)
+            tft.fillRect(chkX + 2, chkY + 2, chkSize - 4, chkSize - 4, g_themeColor);
+
+        char numBuf[3];
+        snprintf(numBuf, sizeof(numBuf), "%d", i + 1);
+        tft.setTextColor(enabled ? COL_WHITE : COL_DIM, COL_INPUTBG);
+        tft.setCursor(chkX + chkSize + 3, by + (PAGE_BTN_H - 8) / 2);
+        tft.print(numBuf);
+    }
 
     // Divider 2
     tft.drawFastHLine(0, DIV2_Y, SCREEN_W, COL_DIM);
@@ -251,25 +331,24 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     }
 }
 
+// ── Tap handling ──────────────────────────────────────────────────────────────
 bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
-    // Timeout stale power-off confirmation
     if (s_pwrConfirm && millis() - s_pwrConfirmMs > 5000) {
         s_pwrConfirm = false;
     }
 
-    // E-Ink toggle button
-    if (tx >= EINK_X && tx < EINK_X + EINK_W &&
-        ty >= EINK_Y && ty < EINK_Y + EINK_H) {
+    // E-Ink toggle (top-left)
+    if (tx >= EINK_X && tx < EINK_X + BTN_SQ_W &&
+        ty >= EINK_Y && ty < EINK_Y + BTN_SQ_H) {
         s_pwrConfirm = false;
         invertSet(!invertGet());
         return true;
     }
 
-    // Power Off button — two-tap confirmation
-    if (tx >= EINK_X && tx < EINK_X + EINK_W &&
-        ty >= PWR_Y  && ty < PWR_Y + PWR_H) {
+    // Power Off (top-right) — two-tap confirmation
+    if (tx >= PWR_X && tx < PWR_X + BTN_SQ_W &&
+        ty >= PWR_Y && ty < PWR_Y + BTN_SQ_H) {
         if (s_pwrConfirm && millis() - s_pwrConfirmMs < 5000) {
-            // Second tap within 5s — deep sleep
             tft.fillScreen(COL_BG);
             tft.setTextFont(FONT_MD);
             tft.setTextColor(g_themeColor, COL_BG);
@@ -281,6 +360,22 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
             s_pwrConfirm = true;
             s_pwrConfirmMs = millis();
         }
+        return true;
+    }
+
+    // Refresh Weather (bottom-left)
+    if (tx >= REFRESH_X && tx < REFRESH_X + BTN_SQ_W &&
+        ty >= REFRESH_Y && ty < REFRESH_Y + BTN_SQ_H) {
+        s_pwrConfirm = false;
+        s_refreshRequested = true;
+        return true;
+    }
+
+    // Update Location (bottom-right)
+    if (tx >= LOC_X && tx < LOC_X + BTN_SQ_W &&
+        ty >= LOC_Y && ty < LOC_Y + BTN_SQ_H) {
+        s_pwrConfirm = false;
+        s_refreshRequested = true;
         return true;
     }
 
@@ -306,16 +401,18 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
         }
     }
 
-    // Refresh button
-    if (tx >= SEC2_X && tx < SEC2_X + BTN_W &&
-        ty >= BTN_Y   && ty < BTN_Y + BTN_H)
-        s_refreshRequested = true;
-
-    // Location button
-    int btn2x = SEC2_X + BTN_W + 8;
-    if (tx >= btn2x && tx < btn2x + BTN_W &&
-        ty >= BTN_Y  && ty < BTN_Y + BTN_H)
-        s_refreshRequested = true;
+    // Page rotation checkboxes
+    pageMaskLoad();
+    for (int i = 0; i < PAGE_COUNT; i++) {
+        int bx = SEC2_X + i * (PAGE_BTN_W + PAGE_GAP);
+        if (tx >= bx && tx < bx + PAGE_BTN_W &&
+            ty >= PAGE_BTN_Y0 && ty < PAGE_BTN_Y0 + PAGE_BTN_H) {
+            s_pageMask ^= (1 << i);
+            if (s_pageMask == 0) s_pageMask = (1 << i);
+            pageMaskSave();
+            return true;
+        }
+    }
 
     // Theme swatches
     for (int i = 0; i < THEME_COUNT; i++) {

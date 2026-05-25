@@ -636,10 +636,12 @@ void loop() {
         s_lastMinute = millis();
     }
 
-    // Auto-rotate screens 0→1→2→0
+    // Auto-rotate through enabled pages
     if (screenSettingsGetAutoRotate() &&
         millis() - s_lastAutoRotate > screenSettingsGetAutoRotateMs()) {
-        gotoScreen(s_screen < 5 ? s_screen + 1 : 0);
+        int start = (s_screen == 8) ? 7 : s_screen;
+        int next = screenSettingsGetNextRotatePage(start);
+        if (next >= 0) gotoScreen(next);
     }
 
     // Touch
