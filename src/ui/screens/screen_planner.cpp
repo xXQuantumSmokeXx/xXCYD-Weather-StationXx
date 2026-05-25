@@ -87,7 +87,7 @@ static void drawRow(TFT_eSPI &tft, int y, const char *timeStr,
 
     if (note && note[0]) {
         int nw = tft.textWidth(note);
-        tft.setTextColor(COL_WHITE, COL_BG);
+        tft.setTextColor(color, COL_BG);
         tft.setCursor(SCREEN_W - 10 - nw, y);
         tft.print(note);
     }
