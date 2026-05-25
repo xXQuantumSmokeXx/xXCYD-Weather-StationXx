@@ -44,6 +44,14 @@ static int           s_lastWeatherHour     = -1;   // hour (0-23) of last fetch;
 static unsigned long s_lastWeatherAttempt  = 0;    // cooldown timer to prevent tight retry loops
 static int           s_lastSolarHour       = -1;
 static unsigned long s_lastSolarAttempt    = 0;
+static int           s_lastFiresHour       = -1;
+static unsigned long s_lastFiresAttempt    = 0;
+static int           s_lastUsgsHour        = -1;
+static unsigned long s_lastUsgsAttempt     = 0;
+static int           s_lastNewsHour        = -1;
+static unsigned long s_lastNewsAttempt     = 0;
+static int           s_lastAlertsHour      = -1;
+static unsigned long s_lastAlertsAttempt   = 0;
 static unsigned long s_lastMinute          = 0;
 static unsigned long s_lastAutoRotate      = 0;
 static char          s_updateStr[24]  = "Never";
@@ -563,19 +571,33 @@ void loop() {
         }
     }
 
-    // Solar auto-refresh — top of each new hour (async, Core 0)
-    if (s_wifiOk && !workerBusy() && !g_solarPending) {
-        bool solarShouldFetch = false;
+    // Hourly auto-refresh for all data screens (async, Core 0)
+    // Each triggers once per hour, independent of screen navigation
+    if (s_wifiOk && !workerBusy()) {
         if (timeIsValid()) {
             time_t now = time(nullptr);
             int curHour = localtime(&now)->tm_hour;
-            if (curHour != s_lastSolarHour) solarShouldFetch = true;
-        }
-        if (solarShouldFetch && millis() - s_lastSolarAttempt > 60000) {
-            s_lastSolarAttempt = millis();
-            s_lastSolarHour = -1;  // will be set on success in loop below
-            g_solarPending = true;
-            triggerSolarFetch();
+
+            if (!g_solarPending && curHour != s_lastSolarHour && millis() - s_lastSolarAttempt > 60000) {
+                s_lastSolarAttempt = millis(); s_lastSolarHour = -1;
+                g_solarPending = true; triggerSolarFetch();
+            }
+            if (!g_firesPending && curHour != s_lastFiresHour && millis() - s_lastFiresAttempt > 60000) {
+                s_lastFiresAttempt = millis(); s_lastFiresHour = -1;
+                g_firesPending = true; triggerFiresFetch();
+            }
+            if (!g_usgsPending && curHour != s_lastUsgsHour && millis() - s_lastUsgsAttempt > 60000) {
+                s_lastUsgsAttempt = millis(); s_lastUsgsHour = -1;
+                g_usgsPending = true; triggerUsgsFetch();
+            }
+            if (!g_newsPending && curHour != s_lastNewsHour && millis() - s_lastNewsAttempt > 60000) {
+                s_lastNewsAttempt = millis(); s_lastNewsHour = -1;
+                g_newsPending = true; triggerNewsFetch();
+            }
+            if (!g_alertsPending && curHour != s_lastAlertsHour && millis() - s_lastAlertsAttempt > 60000) {
+                s_lastAlertsAttempt = millis(); s_lastAlertsHour = -1;
+                g_alertsPending = true; triggerAlertsFetch();
+            }
         }
     }
 
@@ -595,6 +617,7 @@ void loop() {
         s_firesDone = false;
         g_firesPending = false;
         xSemaphoreGive(s_dataMutex);
+        if (timeIsValid()) { time_t now = time(nullptr); s_lastFiresHour = localtime(&now)->tm_hour; }
         if (s_screen == 4) s_needsRedraw = true;
     }
 
@@ -604,6 +627,7 @@ void loop() {
         s_usgsDone = false;
         g_usgsPending = false;
         xSemaphoreGive(s_dataMutex);
+        if (timeIsValid()) { time_t now = time(nullptr); s_lastUsgsHour = localtime(&now)->tm_hour; }
         if (s_screen == 5) s_needsRedraw = true;
     }
 
@@ -626,6 +650,7 @@ void loop() {
         s_newsDone = false;
         g_newsPending = false;
         xSemaphoreGive(s_dataMutex);
+        if (timeIsValid()) { time_t now = time(nullptr); s_lastNewsHour = localtime(&now)->tm_hour; }
         if (s_screen == 6) s_needsRedraw = true;
     }
 
@@ -635,6 +660,7 @@ void loop() {
         s_alertsDone = false;
         g_alertsPending = false;
         xSemaphoreGive(s_dataMutex);
+        if (timeIsValid()) { time_t now = time(nullptr); s_lastAlertsHour = localtime(&now)->tm_hour; }
         if (s_screen == 7) s_needsRedraw = true;
     }
 

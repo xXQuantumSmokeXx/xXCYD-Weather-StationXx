@@ -214,7 +214,9 @@ void screenFiresDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 4, 11);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    bool doFetch = stale() && wifiOk && !g_firesPending;
+    // Only fetch on first visit or explicit top-bar tap — time-based
+    // staleness is handled by the hourly auto-refresh in the main loop.
+    bool doFetch = (!s_fetchedOnce || s_forceRefresh) && wifiOk && !g_firesPending;
     s_forceRefresh = false;
 
     if (doFetch) {

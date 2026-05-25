@@ -307,7 +307,7 @@ void screenNewsDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 6, 11);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    bool doFetch = stale() && wifiOk && !g_newsPending;
+    bool doFetch = (!s_fetchedOnce || s_forceRefresh) && wifiOk && !g_newsPending;
     s_forceRefresh = false;
 
     if (doFetch) {

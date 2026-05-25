@@ -181,7 +181,7 @@ void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 5, 11);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    bool doFetch = stale() && wifiOk && !g_usgsPending;
+    bool doFetch = (!s_fetchedOnce || s_forceRefresh) && wifiOk && !g_usgsPending;
     s_forceRefresh = false;
 
     if (doFetch) {

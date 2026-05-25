@@ -214,7 +214,7 @@ void screenAlertsDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 7, 11);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    bool doFetch = stale() && wifiOk && !g_alertsPending;
+    bool doFetch = (!s_fetchedOnce || s_forceRefresh) && wifiOk && !g_alertsPending;
     s_forceRefresh = false;
 
     if (doFetch) {
