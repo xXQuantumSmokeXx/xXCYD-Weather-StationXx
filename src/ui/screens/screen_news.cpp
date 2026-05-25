@@ -304,7 +304,7 @@ void screenNewsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "NEWS", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 6, 11);
+    drawBottombar(tft, dateStr, 6, 9);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     bool doFetch = (!s_fetchedOnce || s_forceRefresh) && wifiOk && !g_newsPending;
@@ -330,8 +330,6 @@ void screenNewsDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.print(msg);
     }
 }
-
-const char* screenNewsGetFirstTitle() { return s_count > 0 ? s_items[0].title : ""; }
 
 void screenNewsTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {
     if (y <= TOPBAR_H && wifiOk) {

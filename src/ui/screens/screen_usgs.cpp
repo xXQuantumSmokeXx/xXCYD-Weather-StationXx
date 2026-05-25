@@ -178,7 +178,7 @@ void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "USGS", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 5, 11);
+    drawBottombar(tft, dateStr, 5, 9);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     bool doFetch = (!s_fetchedOnce || s_forceRefresh) && wifiOk && !g_usgsPending;
@@ -202,23 +202,6 @@ void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.setCursor(wifiOk ? 58 : 92, 104);
         tft.print(wifiOk ? "No quake data" : "USGS offline");
     }
-}
-
-int screenUsgsGetCount() { return s_quakeCount; }
-
-float screenUsgsGetMaxMag() {
-    float best = 0;
-    for (int i = 0; i < s_quakeCount; i++)
-        if (s_quakes[i].mag > best) best = s_quakes[i].mag;
-    return best;
-}
-
-const char* screenUsgsGetMaxPlace() {
-    float best = 0;
-    int idx = -1;
-    for (int i = 0; i < s_quakeCount; i++)
-        if (s_quakes[i].mag > best) { best = s_quakes[i].mag; idx = i; }
-    return idx >= 0 ? s_quakes[idx].place : "";
 }
 
 void screenUsgsTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {

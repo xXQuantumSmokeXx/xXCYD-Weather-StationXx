@@ -26,8 +26,6 @@
 #include "ui/screens/screen_fires.h"
 #include "ui/screens/screen_usgs.h"
 #include "ui/screens/screen_news.h"
-#include "ui/screens/screen_alerts.h"
-#include "ui/screens/screen_sitrep.h"
 #include "ui/screens/screen_planner.h"
 #include "modules/screenshot.h"
 
@@ -50,8 +48,6 @@ static int           s_lastUsgsHour        = -1;
 static unsigned long s_lastUsgsAttempt     = 0;
 static int           s_lastNewsHour        = -1;
 static unsigned long s_lastNewsAttempt     = 0;
-static int           s_lastAlertsHour      = -1;
-static unsigned long s_lastAlertsAttempt   = 0;
 static unsigned long s_lastMinute          = 0;
 static unsigned long s_lastAutoRotate      = 0;
 static char          s_updateStr[24]  = "Never";
@@ -72,8 +68,7 @@ enum FetchCmd : uint8_t {
     FETCH_FIRES,
     FETCH_USGS,
     FETCH_SOLAR,
-    FETCH_NEWS,
-    FETCH_ALERTS
+    FETCH_NEWS
 };
 
 static TaskHandle_t      s_fetchTask    = nullptr;
@@ -87,7 +82,6 @@ static volatile bool s_firesDone = false, s_firesOk = false;
 static volatile bool s_usgsDone  = false, s_usgsOk  = false;
 static volatile bool s_solarDone = false;
 static volatile bool s_newsDone = false, s_newsOk = false;
-static volatile bool s_alertsDone = false, s_alertsOk = false;
 
 static void fetchWorker(void *param) {
     while (true) {
@@ -186,14 +180,6 @@ static void fetchWorker(void *param) {
                 xSemaphoreGive(s_dataMutex);
                 break;
             }
-            case FETCH_ALERTS: {
-                bool ok = alertsFetch(s_wifiOk);
-                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
-                s_alertsOk = ok;
-                s_alertsDone = true;
-                xSemaphoreGive(s_dataMutex);
-                break;
-            }
             default:
                 break;
         }
@@ -243,14 +229,6 @@ void triggerNewsFetch() {
     if (!s_fetchTask || workerBusy()) return;
     s_newsDone = false;
     s_fetchCmd  = FETCH_NEWS;
-    ledSet(false, false, true);
-    xTaskNotifyGive(s_fetchTask);
-}
-
-void triggerAlertsFetch() {
-    if (!s_fetchTask || workerBusy()) return;
-    s_alertsDone = false;
-    s_fetchCmd  = FETCH_ALERTS;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
 }
@@ -372,9 +350,9 @@ static void fetchWeatherSync() {
     s_needsRedraw = true;
 }
 
-// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fires, 5=USGS, 6=News, 7=SITREP, 8=Planner, 9=Alerts, 10=Settings
+// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fires, 5=USGS, 6=News, 7=Planner, 8=Settings
 static void gotoScreen(int n) {
-    s_screen         = constrain(n, 0, 10);
+    s_screen         = constrain(n, 0, 8);
     s_lastAutoRotate = millis();
     s_needsRedraw    = true;
 }
@@ -388,10 +366,8 @@ static void redrawTo(TFT_eSPI &target) {
         case 4: screenFiresDraw(target, s_wifiOk);    break;
         case 5: screenUsgsDraw(target, s_wifiOk);     break;
         case 6: screenNewsDraw(target, s_wifiOk);     break;
-        case 7: screenSitrepDraw(target, s_wifiOk);   break;
-        case 8: screenPlannerDraw(target, s_wifiOk);  break;
-        case 9: screenAlertsDraw(target, s_wifiOk);   break;
-        case 10: screenSettingsDraw(target, s_wifiOk); break;
+        case 7: screenPlannerDraw(target, s_wifiOk);  break;
+        case 8: screenSettingsDraw(target, s_wifiOk); break;
     }
 }
 
@@ -594,10 +570,6 @@ void loop() {
                 s_lastNewsAttempt = millis(); s_lastNewsHour = -1;
                 g_newsPending = true; triggerNewsFetch();
             }
-            if (!g_alertsPending && curHour != s_lastAlertsHour && millis() - s_lastAlertsAttempt > 60000) {
-                s_lastAlertsAttempt = millis(); s_lastAlertsHour = -1;
-                g_alertsPending = true; triggerAlertsFetch();
-            }
         }
     }
 
@@ -654,21 +626,11 @@ void loop() {
         if (s_screen == 6) s_needsRedraw = true;
     }
 
-    // Alerts fetch completion
-    if (s_alertsDone) {
-        xSemaphoreTake(s_dataMutex, portMAX_DELAY);
-        s_alertsDone = false;
-        g_alertsPending = false;
-        xSemaphoreGive(s_dataMutex);
-        if (timeIsValid()) { time_t now = time(nullptr); s_lastAlertsHour = localtime(&now)->tm_hour; }
-        if (s_screen == 9) s_needsRedraw = true;
-    }
-
     // Clock tick — only update the time text, not a full redraw
     if (millis() - s_lastMinute > 60000) {
         if (s_screen <= 2 || s_screen >= 6) {
             char timeStr[10]; timeGetShort(timeStr);
-            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRES","USGS","NEWS","SITREP","PLANNER","ALERTS","SETTINGS"};
+            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRES","USGS","NEWS","PLANNER","SETTINGS"};
             drawTopbarTime(tft, timeStr, labels[s_screen]);
         }
         s_lastMinute = millis();
@@ -703,12 +665,6 @@ void loop() {
         s_needsRedraw = true;
     } else if (evt.swipe == SwipeDir::Down && s_screen == 6) {
         screenNewsSwipe(-1);
-        s_needsRedraw = true;
-    } else if (evt.swipe == SwipeDir::Up && s_screen == 9) {
-        screenAlertsSwipe(1);
-        s_needsRedraw = true;
-    } else if (evt.swipe == SwipeDir::Down && s_screen == 9) {
-        screenAlertsSwipe(-1);
         s_needsRedraw = true;
     } else if (evt.tap == TapEvent::Tap) {
         int tx = evt.tapX, ty = evt.tapY;
@@ -745,19 +701,10 @@ void loop() {
             }
         } else if (s_screen == 7) {
             if (ty < TOPBAR_H) {
-                screenSitrepTap(tft, tx, ty, s_wifiOk);
-            }
-        } else if (s_screen == 8) {
-            if (ty < TOPBAR_H) {
                 screenPlannerTap(tft, tx, ty, s_wifiOk);
                 s_needsRedraw = true;
             }
-        } else if (s_screen == 9) {
-            if (ty < TOPBAR_H && s_wifiOk) {
-                screenAlertsTap(tft, tx, ty, s_wifiOk);
-                s_needsRedraw = true;
-            }
-        } else if (s_screen == 10) {
+        } else if (s_screen == 8) {
             bool changed = screenSettingsTap(tft, tx, ty);
             if (changed) s_needsRedraw = true;
             if (screenSettingsRefreshTapped()) {
@@ -776,10 +723,8 @@ void loop() {
         if (cmd == 'R' || cmd == 'r') {
             Serial.println("READY");
         }
-        if ((cmd >= '0' && cmd <= '9') || cmd == 'a' || cmd == 'A') {
-            int n;
-            if (cmd == 'a' || cmd == 'A') n = 10;
-            else n = cmd - '0';
+        if (cmd >= '0' && cmd <= '8') {
+            int n = cmd - '0';
             gotoScreen(n);
             redraw();
         }

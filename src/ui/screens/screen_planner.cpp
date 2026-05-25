@@ -79,20 +79,19 @@ static const char *moonPhaseName(float phase) {
 }
 
 static void drawSection(TFT_eSPI &tft, int &y, const char *title) {
-    tft.setTextFont(FONT_MD);
+    tft.setTextFont(FONT_SM);
     tft.setTextColor(g_themeColor, COL_BG);
     tft.setCursor(8, y);
     tft.print(title);
-    tft.drawFastHLine(8, y + 16, SCREEN_W - 16, COL_DIM);
-    y += 20;
+    tft.drawFastHLine(8, y + 10, SCREEN_W - 16, COL_DIM);
+    y += 14;
 }
 
 static void drawTimeRow(TFT_eSPI &tft, int &y, const char *label, const char *time1, const char *time2 = nullptr) {
     tft.setTextFont(FONT_SM);
-    tft.setTextColor(COL_DIM, COL_BG);
-    tft.setCursor(12, y + 3);
+    tft.setTextColor(COL_WHITE, COL_BG);
+    tft.setCursor(12, y);
     tft.print(label);
-    tft.setTextFont(FONT_MD);
     tft.setTextColor(g_themeColor, COL_BG);
     if (time2) {
         char buf[48];
@@ -105,14 +104,14 @@ static void drawTimeRow(TFT_eSPI &tft, int &y, const char *label, const char *ti
         tft.setCursor(SCREEN_W - 8 - w, y);
         tft.print(time1);
     }
-    y += 22;
+    y += 14;
 }
 
 void screenPlannerDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "PLANNER", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 8, 11);
+    drawBottombar(tft, dateStr, 7, 9);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     int doy = dayOfYear();
@@ -175,23 +174,22 @@ void screenPlannerDraw(TFT_eSPI &tft, bool wifiOk) {
     float illum = (1.0f - cosf(phase * 2.0f * M_PI)) / 2.0f;
     const char *phaseStr = moonPhaseName(phase);
 
-    tft.setTextFont(FONT_MD);
+    tft.setTextFont(FONT_SM);
     tft.setTextColor(COL_WHITE, COL_BG);
     tft.setCursor(12, y);
     tft.print(phaseStr);
     snprintf(buf, sizeof(buf), "%.0f%% illum", illum * 100.0f);
-    tft.setTextFont(FONT_SM);
     int w = tft.textWidth(buf);
     tft.setTextColor(g_themeColor, COL_BG);
-    tft.setCursor(SCREEN_W - 8 - w, y + 3);
+    tft.setCursor(SCREEN_W - 8 - w, y);
     tft.print(buf);
-    y += 24;
+    y += 14;
 
     // Day length
     int dayLen = sunsetM - sunriseM;
     if (dayLen > 0) {
         y += 4;
-        tft.setTextFont(FONT_MD);
+        tft.setTextFont(FONT_SM);
         tft.setTextColor(g_themeColor, COL_BG);
         int h = dayLen / 60, m = dayLen % 60;
         snprintf(buf, sizeof(buf), "%dh %02dm day", h, m);

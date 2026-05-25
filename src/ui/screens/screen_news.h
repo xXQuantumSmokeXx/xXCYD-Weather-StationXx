@@ -9,6 +9,3 @@ void screenNewsSwipe(int dir);  // 1 = down (next page), -1 = up (prev page)
 bool newsFetch(bool wifiOk, const char *city);
 extern bool g_newsPending;
 void triggerNewsFetch();
-
-// Accessor for SITREP
-const char* screenNewsGetFirstTitle();

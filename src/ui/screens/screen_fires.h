@@ -9,7 +9,3 @@ void screenFiresSwipe(int dir);
 bool firesFetch(bool wifiOk);
 extern bool g_firesPending;
 void triggerFiresFetch();
-
-// Accessors for SITREP
-int screenFiresGetCount();
-const char* screenFiresGetFirstTitle();
