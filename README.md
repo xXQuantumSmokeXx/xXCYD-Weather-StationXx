@@ -72,7 +72,8 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 - WiFi status and IP, city, NTP time sync status, weather provider info
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
 - Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
-- Refresh Weather and Update Location buttons
+- 8 per-page rotation checkboxes — toggle which screens are included in auto-rotate
+- Refresh Weather and Location buttons in a 2x2 grid next to E-Ink and Power Off
 - 9 theme accent colors, saved across reboots
 - E-Ink mode — inverts display to white-background / black-foreground, toggled from the settings screen
 - Power Off — two-tap confirmation ("PWR OFF" then "SURE?") puts the device into deep sleep (wake via RST button)
