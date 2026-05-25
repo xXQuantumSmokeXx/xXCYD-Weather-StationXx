@@ -1,6 +1,6 @@
 # xXCYD-Weather-StationXx
 
-A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap Yellow Display), consolidating real-time weather, space weather, wildfire and earthquake tracking, breaking news, and customizable display profiles into a single portable unit.
+A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap Yellow Display), consolidating real-time weather, space weather, a solar day almanac, wildfire and earthquake tracking, breaking news, and customizable display profiles into a single portable unit.
 
 [![Support on Patreon](https://img.shields.io/badge/Support-Patreon-orange)](https://www.patreon.com/c/xXQuantumSmokeXx)
 
@@ -61,6 +61,13 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 - Tap title bar to force a data re-fetch; scroll position resets to top on refresh
 - No API key required
 
+**ALMANAC screen:**
+- Solar day timeline calculated from GPS coordinates — no API needed
+- 9 phases: astronomical dawn, nautical dawn, civil dawn, sunrise, solar noon, civil dusk, nautical dusk, astronomical dusk, sunset
+- Each phase shows calculated time, phase label, and practical field note (e.g. "Horizon visible", "Golden hour begins")
+- Daylight duration hero line at top (e.g. "10h 23m of daylight")
+- Falls back to OpenWeatherMap sunrise/sunset times when available
+
 **SETTINGS screen:**
 - WiFi status and IP, city, NTP time sync status, weather provider info
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
@@ -76,7 +83,7 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 - Refreshes at the top of each hour
 - Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, NEWS)
 - FIRES and USGS headline text uses the active theme color
-- 8 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRES, USGS, NEWS, SETTINGS
+- 9 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRES, USGS, NEWS, ALMANAC, SETTINGS
 
 ### Setup
 
