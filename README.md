@@ -6,9 +6,9 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 
 ## Screens
 
-| NOW | SETTINGS |
-|-----|----------|
-| ![NOW](ScreenShots/NOW.png) | ![SETTINGS](ScreenShots/SETTINGS.png) |
+| NOW | ALMANAC | SETTINGS |
+|-----|---------|----------|
+| ![NOW](ScreenShots/NOW.png) | ![ALMANAC](ScreenShots/ALMANAC.png) | ![SETTINGS](ScreenShots/SETTINGS.png) |
 
 | HOURLY | 5-DAY | SOLAR |
 |--------|-------|-------|
