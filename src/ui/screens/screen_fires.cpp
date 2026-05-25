@@ -179,7 +179,7 @@ bool firesFetch(bool wifiOk) {
 static void drawFireList(TFT_eSPI &tft) {
     const int HEADER_H = 22;
     tft.setTextFont(FONT_SM);
-    tft.setTextColor(g_themeColor, COL_BG);
+    tft.setTextColor(COL_WHITE, COL_BG);
     char hdr[32];
     snprintf(hdr, sizeof(hdr), "OPEN WILDFIRES: %d", s_fireCount);
     tft.setCursor(8, CONTENT_Y + 4);

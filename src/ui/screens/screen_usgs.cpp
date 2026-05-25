@@ -138,7 +138,7 @@ bool usgsFetch(bool wifiOk) {
 static void drawQuakeList(TFT_eSPI &tft) {
     const int HEADER_H = 22;
     tft.setTextFont(FONT_SM);
-    tft.setTextColor(g_themeColor, COL_BG);
+    tft.setTextColor(COL_WHITE, COL_BG);
     char hdr[34];
     snprintf(hdr, sizeof(hdr), "M3.5+ QUAKES: %d", s_quakeCount);
     tft.setCursor(8, CONTENT_Y + 4);

@@ -7,12 +7,12 @@
 const ThemeEntry g_themes[THEME_COUNT] = {
     { "CYAN",   0x07FFu },
     { "GREEN",  0x07E0u },
-    { "RED",    0xF986u },
-    { "ORANGE", 0xFC60u },
+    { "RED",    0xF800u },
+    { "ORANGE", 0xFD00u },
     { "YELLOW", 0xFFE0u },
-    { "GRAY",   0x8410u },
-    { "PURPLE", 0xA81Fu },
-    { "PINK",   0xFB56u },
+    { "GRAY",   0xCE79u },
+    { "PURPLE", 0xF81Fu },
+    { "PINK",   0xFC18u },
     { "WHITE",  0xFFFFu },
 };
 
