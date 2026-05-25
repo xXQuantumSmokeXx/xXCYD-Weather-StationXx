@@ -27,7 +27,6 @@ static float equationOfTime(int doy) {
     return 9.87f * sinf(2.0f * B) - 7.53f * cosf(B) - 1.5f * sinf(B);
 }
 
-// Hour angle in radians for a given solar altitude (altRad: -6=civil, -12=nautical, -18=astro)
 static float hourAngleForAltitude(float latRad, float decRad, float altRad) {
     float num = sinf(altRad) - sinf(latRad) * sinf(decRad);
     float den = cosf(latRad) * cosf(decRad);
@@ -38,7 +37,6 @@ static float hourAngleForAltitude(float latRad, float decRad, float altRad) {
     return acosf(val);
 }
 
-// Time from midnight (minutes) for a given hour angle, EoT, and UTC offset
 static int timeFromNoonMins(float haRad, float eotMin) {
     float haDeg = haRad * 180.0f / M_PI;
     float mins = 720.0f + haDeg * 4.0f - eotMin;
@@ -78,33 +76,18 @@ static const char *moonPhaseName(float phase) {
     return "WAN CRESC";
 }
 
-static void drawSection(TFT_eSPI &tft, int &y, const char *title) {
+// Draw a row: time on the left, label on the right
+static void drawTimelineRow(TFT_eSPI &tft, int &y, const char *timeStr,
+                            const char *label, uint16_t labelColor) {
+    const int ROW_H = 13;
     tft.setTextFont(FONT_SM);
     tft.setTextColor(g_themeColor, COL_BG);
-    tft.setCursor(8, y);
-    tft.print(title);
-    tft.drawFastHLine(8, y + 10, SCREEN_W - 16, COL_DIM);
-    y += 14;
-}
-
-static void drawTimeRow(TFT_eSPI &tft, int &y, const char *label, const char *time1, const char *time2 = nullptr) {
-    tft.setTextFont(FONT_SM);
-    tft.setTextColor(COL_WHITE, COL_BG);
-    tft.setCursor(12, y);
+    tft.setCursor(24, y);
+    tft.print(timeStr);
+    tft.setTextColor(labelColor, COL_BG);
+    tft.setCursor(80, y);
     tft.print(label);
-    tft.setTextColor(g_themeColor, COL_BG);
-    if (time2) {
-        char buf[48];
-        snprintf(buf, sizeof(buf), "%s - %s", time1, time2);
-        int w = tft.textWidth(buf);
-        tft.setCursor(SCREEN_W - 8 - w, y);
-        tft.print(buf);
-    } else {
-        int w = tft.textWidth(time1);
-        tft.setCursor(SCREEN_W - 8 - w, y);
-        tft.print(time1);
-    }
-    y += 14;
+    y += ROW_H;
 }
 
 void screenPlannerDraw(TFT_eSPI &tft, bool wifiOk) {
@@ -119,7 +102,6 @@ void screenPlannerDraw(TFT_eSPI &tft, bool wifiOk) {
     float decRad = solarDeclination(doy);
     float eotMin = equationOfTime(doy);
 
-    // Twilight hour angles
     float haCivil   = hourAngleForAltitude(latRad, decRad, -6.0f  * D2R);
     float haNaut    = hourAngleForAltitude(latRad, decRad, -12.0f * D2R);
     float haAstro   = hourAngleForAltitude(latRad, decRad, -18.0f * D2R);
@@ -137,69 +119,95 @@ void screenPlannerDraw(TFT_eSPI &tft, bool wifiOk) {
 
     char buf[16], buf2[16];
 
-    // Sunrise/Sunset section
-    int y = CONTENT_Y + 6;
-    drawSection(tft, y, "SUN");
+    // ── Day length hero ──────────────────────────────────────────
+    int y = CONTENT_Y + 2;
+    int dayLen = sunsetM - sunriseM;
+    if (dayLen > 0) {
+        int h = dayLen / 60, m = dayLen % 60;
+        snprintf(buf, sizeof(buf), "%dh %02dm of daylight", h, m);
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(g_themeColor, COL_BG);
+        int tw = tft.textWidth(buf);
+        tft.setCursor((SCREEN_W - tw) / 2, y);
+        tft.print(buf);
+        y += 18;
+    }
+    // Accent line under hero
+    tft.drawFastHLine(40, y, SCREEN_W - 80, g_themeColor);
+    y += 6;
+
+    char astD[8], nauD[8], civD[8], sunR[8], noon[8], sunS[8], civS[8], nauS[8], astS[8];
 
     if (g_daily[0].sunset[0]) {
-        // Use Open-Meteo if available (more accurate with terrain refraction)
-        drawTimeRow(tft, y, "Sunrise", g_daily[0].sunrise);
-        drawTimeRow(tft, y, "Sunset",  g_daily[0].sunset);
+        // Use Open-Meteo sunrise/sunset if available
+        snprintf(sunR, sizeof(sunR), "%s", g_daily[0].sunrise);
+        snprintf(sunS, sizeof(sunS), "%s", g_daily[0].sunset);
     } else {
-        minsToHMA(buf, sizeof(buf), sunriseM);
-        minsToHMA(buf2, sizeof(buf2), sunsetM);
-        drawTimeRow(tft, y, "Sunrise", buf);
-        drawTimeRow(tft, y, "Sunset",  buf2);
+        minsToHMA(sunR, sizeof(sunR), sunriseM);
+        minsToHMA(sunS, sizeof(sunS), sunsetM);
     }
-    minsToHMA(buf, sizeof(buf), noonM);
-    drawTimeRow(tft, y, "Solar Noon", buf);
-    y += 2;
+    minsToHMA(astD, sizeof(astD), astStart);
+    minsToHMA(nauD, sizeof(nauD), nautStart);
+    minsToHMA(civD, sizeof(civD), civStart);
+    minsToHMA(noon, sizeof(noon), noonM);
+    minsToHMA(civS, sizeof(civS), civEnd);
+    minsToHMA(nauS, sizeof(nauS), nautEnd);
+    minsToHMA(astS, sizeof(astS), astEnd);
 
-    // Twilight section
-    drawSection(tft, y, "TWILIGHT");
-    minsToHMA(buf, sizeof(buf), civStart);
-    minsToHMA(buf2, sizeof(buf2), civEnd);
-    drawTimeRow(tft, y, "Civil", buf, buf2);
-    minsToHMA(buf, sizeof(buf), nautStart);
-    minsToHMA(buf2, sizeof(buf2), nautEnd);
-    drawTimeRow(tft, y, "Nautical", buf, buf2);
-    minsToHMA(buf, sizeof(buf), astStart);
-    minsToHMA(buf2, sizeof(buf2), astEnd);
-    drawTimeRow(tft, y, "Astro", buf, buf2);
-    y += 2;
+    // ── Dawn sector ──────────────────────────────────────────────
+    tft.setTextFont(FONT_SM);
+    tft.setTextColor(COL_DIM, COL_BG);
+    tft.setCursor(24, y);
+    tft.print("DAWN");
+    y += 12;
 
-    // Moon section
-    drawSection(tft, y, "MOON");
+    drawTimelineRow(tft, y, astD, "Astronomical", COL_DIM);
+    drawTimelineRow(tft, y, nauD, "Nautical",    COL_DIM);
+    drawTimelineRow(tft, y, civD, "Civil",       COL_WHITE);
+    drawTimelineRow(tft, y, sunR, "Sunrise",     COL_AMBER);
+
+    // Thin separator
+    y += 2;
+    tft.drawFastHLine(24, y, SCREEN_W - 48, g_themeColor);
+    y += 4;
+
+    // ── Day sector ───────────────────────────────────────────────
+    drawTimelineRow(tft, y, noon, "Solar Noon",   g_themeColor);
+
+    y += 2;
+    tft.drawFastHLine(24, y, SCREEN_W - 48, g_themeColor);
+    y += 4;
+
+    // ── Dusk sector ──────────────────────────────────────────────
+    drawTimelineRow(tft, y, sunS, "Sunset",       COL_AMBER);
+    drawTimelineRow(tft, y, civS, "Civil",        COL_WHITE);
+    drawTimelineRow(tft, y, nauS, "Nautical",     COL_DIM);
+    drawTimelineRow(tft, y, astS, "Astronomical", COL_DIM);
+
+    // Separator before moon
+    y += 2;
+    tft.drawFastHLine(40, y, SCREEN_W - 80, g_themeColor);
+    y += 4;
+
+    // ── Moon ─────────────────────────────────────────────────────
     float phase = moonPhase();
     float illum = (1.0f - cosf(phase * 2.0f * M_PI)) / 2.0f;
     const char *phaseStr = moonPhaseName(phase);
 
     tft.setTextFont(FONT_SM);
-    tft.setTextColor(COL_WHITE, COL_BG);
-    tft.setCursor(12, y);
-    tft.print(phaseStr);
-    snprintf(buf, sizeof(buf), "%.0f%% illum", illum * 100.0f);
-    int w = tft.textWidth(buf);
     tft.setTextColor(g_themeColor, COL_BG);
+    tft.setCursor(24, y);
+    tft.print("Moon:");
+    tft.setTextColor(COL_WHITE, COL_BG);
+    tft.setCursor(64, y);
+    tft.print(phaseStr);
+    snprintf(buf, sizeof(buf), "%.0f%% illuminated", illum * 100.0f);
+    int w = tft.textWidth(buf);
+    tft.setTextColor(COL_DIM, COL_BG);
     tft.setCursor(SCREEN_W - 8 - w, y);
     tft.print(buf);
-    y += 14;
-
-    // Day length
-    int dayLen = sunsetM - sunriseM;
-    if (dayLen > 0) {
-        y += 4;
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(g_themeColor, COL_BG);
-        int h = dayLen / 60, m = dayLen % 60;
-        snprintf(buf, sizeof(buf), "%dh %02dm day", h, m);
-        int tw = tft.textWidth(buf);
-        tft.setCursor((SCREEN_W - tw) / 2, y);
-        tft.print(buf);
-    }
 }
 
 void screenPlannerTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {
-    // No action — recalculates on next draw
     if (y <= TOPBAR_H) { /* trigger redraw */ }
 }
