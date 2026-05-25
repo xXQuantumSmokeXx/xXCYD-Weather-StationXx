@@ -331,6 +331,8 @@ void screenNewsDraw(TFT_eSPI &tft, bool wifiOk) {
     }
 }
 
+const char* screenNewsGetFirstTitle() { return s_count > 0 ? s_items[0].title : ""; }
+
 void screenNewsTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {
     if (y <= TOPBAR_H && wifiOk) {
         s_forceRefresh = true;

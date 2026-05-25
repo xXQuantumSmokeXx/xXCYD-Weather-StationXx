@@ -3,6 +3,7 @@
 #include "screen_fires.h"
 #include "screen_usgs.h"
 #include "screen_alerts.h"
+#include "screen_news.h"
 #include "../theme.h"
 #include "../widgets.h"
 #include "../../config/config.h"
@@ -38,7 +39,7 @@ void screenSitrepDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SITREP", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 8, 11);
+    drawBottombar(tft, dateStr, 7, 11);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     int y = CONTENT_Y + 6;
@@ -97,7 +98,7 @@ void screenSitrepDraw(TFT_eSPI &tft, bool wifiOk) {
         drawThreatRow(tft, y, "FIRES:", buf, COL_AMBER);
         // Show newest fire title below
         tft.setTextFont(FONT_SM);
-        tft.setTextColor(COL_DIM, COL_BG);
+        tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(12, y);
         tft.print(fs);
         y += 14;
@@ -134,10 +135,8 @@ void screenSitrepDraw(TFT_eSPI &tft, bool wifiOk) {
                  wmoDescription(g_current.weather_code));
         drawCondRow(tft, y, "Temp:", buf);
 
-        snprintf(buf, sizeof(buf), "%s%d%sF / %d%sF",
-                 g_invert ? "" : "",
+        snprintf(buf, sizeof(buf), "%dF / %dF",
                  (int)roundf(g_current.today_max),
-                 g_invert ? "" : "",
                  (int)roundf(g_current.today_min));
         drawCondRow(tft, y, "Hi/Lo:", buf);
 
@@ -156,6 +155,23 @@ void screenSitrepDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.setCursor(12, y);
         tft.print("Weather data not loaded");
         y += 14;
+    }
+
+    // Latest news headline
+    const char *newsHead = screenNewsGetFirstTitle();
+    if (newsHead && newsHead[0]) {
+        y += 4;
+        tft.setTextFont(FONT_SM);
+        tft.setTextColor(g_themeColor, COL_BG);
+        tft.setCursor(8, y);
+        tft.print("NEWS:");
+        tft.setTextColor(COL_WHITE, COL_BG);
+        tft.setCursor(56, y);
+        char nb[48];
+        int nl = strlen(newsHead);
+        if (nl > 44) { memcpy(nb, newsHead, 44); nb[44] = '.'; nb[45] = '.'; nb[46] = '\0'; }
+        else { snprintf(nb, sizeof(nb), "%s", newsHead); }
+        tft.print(nb);
     }
 }
 
