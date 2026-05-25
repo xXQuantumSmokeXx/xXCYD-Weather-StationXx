@@ -358,9 +358,9 @@ static void drawSolarContent(TFT_eSPI &tft) {
     stats[3].label = "XRAY"; stats[3].color = COL_AMBER;
     snprintf(stats[4].value, sizeof(stats[4].value), "%s", s_solar.flareClass);
     stats[4].label = "FLR"; stats[4].color = COL_AMBER;
-    if (s_solar.cmeSpeedKms > 0) snprintf(stats[5].value, sizeof(stats[5].value), "%.0f km/s", s_solar.cmeSpeedKms);
+    if (s_solar.cmeSpeedKms > 0) snprintf(stats[5].value, sizeof(stats[5].value), "%.0f", s_solar.cmeSpeedKms);
     else snprintf(stats[5].value, sizeof(stats[5].value), "%s", s_solar.cmeTime);
-    stats[5].label = "CME"; stats[5].color = (s_solar.cmeSpeedKms > 0 || strcmp(s_solar.cmeTime, "NONE") != 0) ? COL_RED : COL_WHITE;
+    stats[5].label = "CME kms"; stats[5].color = (s_solar.cmeSpeedKms > 0 || strcmp(s_solar.cmeTime, "NONE") != 0) ? COL_RED : COL_WHITE;
 
     for (int i = 0; i < 6; ++i) {
         int col = i / 3;

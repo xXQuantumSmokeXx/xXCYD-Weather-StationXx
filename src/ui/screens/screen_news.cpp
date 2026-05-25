@@ -258,7 +258,7 @@ static void drawNewsList(TFT_eSPI &tft) {
 
     tft.setTextFont(FONT_SM);
 
-    tft.setTextColor(g_themeColor, COL_BG);
+    tft.setTextColor(COL_WHITE, COL_BG);
     tft.setCursor(MARGIN, curY);
     tft.print("BREAKING NEWS");
     curY += 14;
