@@ -45,7 +45,7 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 **FIRES screen:**
 - NIFC WFIGS active wildfire events — fire name, state, acreage, cause, and containment %
 - Sorted newest-first, scrollable via swipe up/down
-- Tap title bar to force a refresh; auto-refreshes every 15 minutes
+- Tap title bar to force a refresh
 - Prescribed burns automatically filtered out
 
 **USGS screen:**

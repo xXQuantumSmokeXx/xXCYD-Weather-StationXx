@@ -10,6 +10,25 @@
 #include <ctime>
 
 #define D2R (M_PI / 180.0)
+#define ROW_H 19
+
+static const char *rowLabels[9] = {
+    "Astro dawn", "Naut dawn", "Civil dawn",
+    "Sunrise",    "Solar noon","Civil dusk",
+    "Naut dusk",  "Astro dusk","Sunset",
+};
+
+static const char *rowNotes[9] = {
+    "True darkness ends",
+    "Horizon visible",
+    "Outdoor light begins",
+    "Sun breaks the horizon",
+    "Sun at highest point",
+    "Streetlights come on",
+    "Stars visible overhead",
+    "Deep sky observing",
+    "Golden hour begins",
+};
 
 static int dayOfYear() {
     time_t now = time(nullptr);
@@ -55,32 +74,29 @@ static void minsToHMA(char *out, size_t len, int mins) {
     snprintf(out, len, "%d:%02d%c", h12, m, am);
 }
 
-static void drawRow(TFT_eSPI &tft, int &y, const char *timeStr, const char *label,
-                    const char *note, uint16_t color) {
-    // Time — FONT_MD, larger
+static void drawRow(TFT_eSPI &tft, int y, const char *timeStr,
+                    const char *label, const char *note, uint16_t color) {
     tft.setTextFont(FONT_MD);
     tft.setTextColor(color, COL_BG);
-    tft.setCursor(10, y);
+    tft.setCursor(6, y);
     tft.print(timeStr);
 
-    // Label — FONT_SM
-    tft.setTextFont(FONT_SM);
-    tft.setCursor(74, y + 3);
+    tft.setTextFont(FONT_MD);
+    tft.setCursor(58, y);
     tft.print(label);
 
-    // Note — FONT_SM, right-aligned
     if (note && note[0]) {
         int nw = tft.textWidth(note);
-        tft.setCursor(SCREEN_W - 8 - nw, y + 3);
+        tft.setTextColor(COL_WHITE, COL_BG);
+        tft.setCursor(SCREEN_W - 10 - nw, y);
         tft.print(note);
     }
-    y += 16;
 }
 
 void screenPlannerDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
-    drawTopbar(tft, g_location.valid ? g_location.city : "", "PLANNER", timeStr, wifiOk);
+    drawTopbar(tft, g_location.valid ? g_location.city : "", "ALMANAC", timeStr, wifiOk);
     drawBottombar(tft, dateStr, 7, 9);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
@@ -122,10 +138,11 @@ void screenPlannerDraw(TFT_eSPI &tft, bool wifiOk) {
     minsToHMA(nauS, sizeof(nauS), nautEnd);
     minsToHMA(astS, sizeof(astS), astEnd);
 
+    const char *times[9] = {astD, nauD, civD, sunR, noon, civS, nauS, astS, sunS};
+
     char buf[48];
     int y = CONTENT_Y + 2;
 
-    // ── Day length hero ──────────────────────────────────────────
     int dayLen = sunsetM - sunriseM;
     if (dayLen > 0) {
         int h = dayLen / 60, m = dayLen % 60;
@@ -140,19 +157,12 @@ void screenPlannerDraw(TFT_eSPI &tft, bool wifiOk) {
     tft.drawFastHLine(40, y, SCREEN_W - 80, g_themeColor);
     y += 5;
 
-    // ── Timeline with practical notes ────────────────────────────
-    drawRow(tft, y, astD, "Astro dawn",    "True darkness ends",       g_themeColor);
-    drawRow(tft, y, nauD, "Naut dawn",     "Horizon visible",          g_themeColor);
-    drawRow(tft, y, civD, "Civil dawn",    "Outdoor light begins",     g_themeColor);
-    drawRow(tft, y, sunR, "Sunrise",       "Sun breaks the horizon",   g_themeColor);
-    drawRow(tft, y, noon, "Solar noon",    "Sun at highest point",     g_themeColor);
-    drawRow(tft, y, sunS, "Sunset",        "Golden hour begins",       g_themeColor);
-    drawRow(tft, y, civS, "Civil dusk",    "Streetlights come on",     g_themeColor);
-    drawRow(tft, y, nauS, "Naut dusk",     "Stars visible overhead",   g_themeColor);
-    drawRow(tft, y, astS, "Astro dusk",    "Deep sky observing",       g_themeColor);
-
+    for (int i = 0; i < 9; i++) {
+        drawRow(tft, y, times[i], rowLabels[i], rowNotes[i], g_themeColor);
+        y += ROW_H;
+    }
 }
 
 void screenPlannerTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {
-    if (y <= TOPBAR_H) { /* trigger redraw */ }
+    if (y <= TOPBAR_H) { /* trigger redraw via caller */ }
 }

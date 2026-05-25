@@ -630,7 +630,7 @@ void loop() {
     if (millis() - s_lastMinute > 60000) {
         if (s_screen <= 2 || s_screen >= 6) {
             char timeStr[10]; timeGetShort(timeStr);
-            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRES","USGS","NEWS","PLANNER","SETTINGS"};
+            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRES","USGS","NEWS","ALMANAC","SETTINGS"};
             drawTopbarTime(tft, timeStr, labels[s_screen]);
         }
         s_lastMinute = millis();
@@ -646,8 +646,10 @@ void loop() {
     TouchEvent evt = touchPoll();
     if (evt.swipe == SwipeDir::Left) {
         gotoScreen(s_screen + 1);
+        s_needsRedraw = true;
     } else if (evt.swipe == SwipeDir::Right) {
         gotoScreen(s_screen - 1);
+        s_needsRedraw = true;
     } else if (evt.swipe == SwipeDir::Up && s_screen == 4) {
         screenFiresSwipe(1);
         s_needsRedraw = true;
@@ -669,7 +671,6 @@ void loop() {
     } else if (evt.tap == TapEvent::Tap) {
         int tx = evt.tapX, ty = evt.tapY;
         int botY = SCREEN_H - BOTBAR_H;
-        // Corner arrow tap zones — bottom-left < and bottom-right >
         if (ty >= botY) {
             if (tx < 50)               gotoScreen(s_screen - 1);
             else if (tx > SCREEN_W - 50) gotoScreen(s_screen + 1);
@@ -700,10 +701,8 @@ void loop() {
                 s_needsRedraw = true;
             }
         } else if (s_screen == 7) {
-            if (ty < TOPBAR_H) {
-                screenPlannerTap(tft, tx, ty, s_wifiOk);
-                s_needsRedraw = true;
-            }
+            screenPlannerTap(tft, tx, ty, s_wifiOk);
+            s_needsRedraw = true;
         } else if (s_screen == 8) {
             bool changed = screenSettingsTap(tft, tx, ty);
             if (changed) s_needsRedraw = true;
@@ -717,7 +716,7 @@ void loop() {
     screenshotLoop();
     if (screenshotNeedsRedraw()) s_needsRedraw = true;
 
-    // Serial commands: '0'-'7' = switch screen, 'R' = ready check, 'S' = capture
+    // Serial commands: '0'-'8' = switch screen, 'R' = ready check, 'S' = capture
     if (Serial.available()) {
         int cmd = Serial.read();
         if (cmd == 'R' || cmd == 'r') {
