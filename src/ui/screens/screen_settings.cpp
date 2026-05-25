@@ -20,18 +20,18 @@
 #define INFO_LINE_H  12
 
 // Right column — 2×2 grid, same height as brightness buttons
-#define BTN_X1       195
-#define BTN_X2       (BTN_X1 + BTN_SQ_W + 2)   // 252
-#define BTN_SQ_W     55
+#define BTN_X1       180
+#define BTN_X2       (BTN_X1 + BTN_SQ_W + 2)   // 247
+#define BTN_SQ_W     65
 #define BTN_SQ_H     18   // matches BRI_BTN_H
 
-#define EINK_X       BTN_X1                    // 195
+#define EINK_X       BTN_X1                    // 180
 #define EINK_Y       INFO_Y0                   // 27
-#define PWR_X        BTN_X2                    // 252
+#define PWR_X        BTN_X2                    // 247
 #define PWR_Y        INFO_Y0                   // 27
-#define REFRESH_X    BTN_X1                    // 195
+#define REFRESH_X    BTN_X1                    // 180
 #define REFRESH_Y    (EINK_Y + BTN_SQ_H + 2)   // 47
-#define LOC_X        BTN_X2                    // 252
+#define LOC_X        BTN_X2                    // 247
 #define LOC_Y        (EINK_Y + BTN_SQ_H + 2)   // 47
 
 // Divider between info and controls
