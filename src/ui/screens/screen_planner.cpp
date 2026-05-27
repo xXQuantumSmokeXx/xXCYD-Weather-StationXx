@@ -14,8 +14,8 @@
 
 static const char *rowLabels[9] = {
     "Astro dawn", "Naut dawn", "Civil dawn",
-    "Sunrise",    "Solar noon","Civil dusk",
-    "Naut dusk",  "Astro dusk","Sunset",
+    "Sunrise",    "Solar noon","Sunset",
+    "Civil dusk", "Naut dusk", "Astro dusk",
 };
 
 static const char *rowNotes[9] = {
@@ -24,10 +24,10 @@ static const char *rowNotes[9] = {
     "Outdoor light begins",
     "Sun breaks the horizon",
     "Sun at highest point",
+    "Golden hour begins",
     "Streetlights come on",
     "Stars visible overhead",
     "Deep sky observing",
-    "Golden hour begins",
 };
 
 static int dayOfYear() {
@@ -59,7 +59,8 @@ static float hourAngleForAltitude(float latRad, float decRad, float altRad) {
 static int timeFromNoonMins(float haRad, float eotMin) {
     float haDeg = haRad * 180.0f / M_PI;
     float mins = 720.0f + haDeg * 4.0f - eotMin;
-    mins += g_location.utcOffset / 60.0f;
+    mins -= 4.0f * g_location.lon;            // longitude correction (lon is negative for W)
+    mins += g_location.utcOffset / 60.0f;     // then shift to local wall-clock time
     while (mins < 0) mins += 1440;
     while (mins >= 1440) mins -= 1440;
     return (int)mins;
@@ -138,7 +139,7 @@ void screenPlannerDraw(TFT_eSPI &tft, bool wifiOk) {
     minsToHMA(nauS, sizeof(nauS), nautEnd);
     minsToHMA(astS, sizeof(astS), astEnd);
 
-    const char *times[9] = {astD, nauD, civD, sunR, noon, civS, nauS, astS, sunS};
+    const char *times[9] = {astD, nauD, civD, sunR, noon, sunS, civS, nauS, astS};
 
     char buf[48];
     int y = CONTENT_Y + 2;
