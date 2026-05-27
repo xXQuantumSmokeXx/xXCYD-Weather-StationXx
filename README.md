@@ -8,7 +8,7 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 
 | NOW | ALMANAC | SETTINGS |
 |-----|---------|----------|
-| ![NOW](ScreenShots/NOW.png) | ![ALMANAC](ScreenShots/ALMANAC.png) | ![SETTINGS](https://raw.githubusercontent.com/xXQuantumSmokeXx/xXCYD-Weather-StationXx/master/ScreenShots/SETTINGS.png) |
+| ![NOW](ScreenShots/NOW.png) | ![ALMANAC](ScreenShots/ALMANAC.png) | ![SETTINGS](ScreenShots/SETTINGS-2026.png) |
 
 | HOURLY | 5-DAY | SOLAR |
 |--------|-------|-------|
@@ -63,7 +63,7 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 
 **ALMANAC screen:**
 - Solar day timeline calculated from GPS coordinates — no API needed
-- 9 phases: astronomical dawn, nautical dawn, civil dawn, sunrise, solar noon, civil dusk, nautical dusk, astronomical dusk, sunset
+- 9 phases: astronomical dawn, nautical dawn, civil dawn, sunrise, solar noon, sunset, civil dusk, nautical dusk, astronomical dusk
 - Each phase shows calculated time, phase label, and practical field note (e.g. "Horizon visible", "Golden hour begins")
 - Daylight duration hero line at top (e.g. "10h 23m of daylight")
 - Falls back to OpenWeatherMap sunrise/sunset times when available
