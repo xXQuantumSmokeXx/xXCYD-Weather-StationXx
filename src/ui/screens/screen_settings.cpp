@@ -88,14 +88,14 @@ static void autoRotLoad() {
 }
 
 // ── Page rotation mask ────────────────────────────────────────────────────────
-// Bit 0 = page 0 (NOW), bit 1 = page 1 (HOURLY), ..., bit 7 = page 7 (ALMANAC)
-static uint8_t s_pageMask   = 0xFF;
-static bool    s_pageLoaded = false;
+// Bit 0 = page 0 (NOW), bit 1 = page 1 (HOURLY), ..., bit 8 = page 8 (SCANNER)
+static uint16_t s_pageMask  = 0x1FF;  // 9 pages (0-8)
+static bool     s_pageLoaded = false;
 
 static void pageMaskLoad() {
     if (s_pageLoaded) return;
-    s_pageMask = (uint8_t)nvsGetInt("page_mask", 0xFF);
-    if (s_pageMask == 0) s_pageMask = 0xFF;
+    s_pageMask = (uint16_t)nvsGetInt("page_mask", 0x1FF);
+    if (s_pageMask == 0) s_pageMask = 0x1FF;
     s_pageLoaded = true;
 }
 
