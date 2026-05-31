@@ -1,2 +1,3 @@
 .pio/
 src/config/secrets.h
+ScreenShots/*.bmp
