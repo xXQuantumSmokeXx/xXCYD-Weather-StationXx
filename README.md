@@ -6,9 +6,13 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 
 ## Screens
 
-| NOW | ALMANAC | SETTINGS |
-|-----|---------|----------|
-| ![NOW](ScreenShots/NOW.png) | ![ALMANAC](ScreenShots/ALMANAC.png) | ![SETTINGS](ScreenShots/SETTINGS-2026.png) |
+| NOW | ALMANAC | SCANNER |
+|-----|---------|---------|
+| ![NOW](ScreenShots/NOW.png) | ![ALMANAC](ScreenShots/ALMANAC.png) | ![SCANNER](ScreenShots/screen_almanac.bmp) |
+
+| SETTINGS |
+|----------|
+| ![SETTINGS](ScreenShots/SETTINGS-2026.png) |
 
 | HOURLY | 5-DAY | SOLAR |
 |--------|-------|-------|
@@ -68,6 +72,12 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 - Daylight duration hero line at top (e.g. "10h 23m of daylight")
 - Falls back to OpenWeatherMap sunrise/sunset times when available
 
+**SCANNER screen:**
+- WiFi AP radar — sweeping visualization of nearby access points with themed color
+- Inner ring (strong signal) and outer ring (weak signal) with left/right labeled lists
+- Auto-scans every 5 seconds; shows AP count and scanning status
+- Node labels appear as the sweep line passes over each AP dot
+
 **SETTINGS screen:**
 - WiFi status and IP, city, NTP time sync status, weather provider info
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
@@ -84,7 +94,7 @@ A tactical environmental monitoring station for the ESP32-2432S028 (CYD / Cheap 
 - Refreshes at the top of each hour
 - Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, NEWS)
 - FIRES and USGS headline text uses the active theme color
-- 9 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRES, USGS, NEWS, ALMANAC, SETTINGS
+- 10 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRES, USGS, NEWS, ALMANAC, SCANNER, SETTINGS
 
 ### Setup
 

@@ -351,7 +351,7 @@ static void fetchWeatherSync() {
     s_needsRedraw = true;
 }
 
-// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fires, 5=USGS, 6=News, 7=Planner, 8=Settings, 9=Scanner
+// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fires, 5=USGS, 6=News, 7=Planner, 8=Scanner, 9=Settings
 static void gotoScreen(int n) {
     s_screen         = constrain(n, 0, 9);
     s_lastAutoRotate = millis();
@@ -368,8 +368,8 @@ static void redrawTo(TFT_eSPI &target) {
         case 5: screenUsgsDraw(target, s_wifiOk);     break;
         case 6: screenNewsDraw(target, s_wifiOk);     break;
         case 7: screenPlannerDraw(target, s_wifiOk);  break;
-        case 8: screenSettingsDraw(target, s_wifiOk); break;
-        case 9: screenScannerDraw(target, s_wifiOk);  break;
+        case 8: screenScannerDraw(target, s_wifiOk);  break;
+        case 9: screenSettingsDraw(target, s_wifiOk); break;
     }
 }
 
@@ -632,7 +632,7 @@ void loop() {
     if (millis() - s_lastMinute > 60000) {
         if (s_screen <= 2 || s_screen >= 6) {
             char timeStr[10]; timeGetShort(timeStr);
-            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRES","USGS","NEWS","ALMANAC","SETTINGS","SCANNER"};
+            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRES","USGS","NEWS","ALMANAC","SCANNER","SETTINGS"};
             drawTopbarTime(tft, timeStr, labels[s_screen]);
         }
         s_lastMinute = millis();
@@ -641,16 +641,16 @@ void loop() {
     // Auto-rotate through enabled pages
     if (screenSettingsGetAutoRotate() &&
         millis() - s_lastAutoRotate > screenSettingsGetAutoRotateMs()) {
-        int start = (s_screen == 8) ? 7 : s_screen;
+        int start = (s_screen == 9) ? 8 : s_screen;
         int next = screenSettingsGetNextRotatePage(start);
         if (next >= 0) gotoScreen(next);
     }
 
-    // Scanner animation — continuous redraw for radar sweep (~12 fps)
-    if (s_screen == 9 && !workerBusy()) {
+    // Scanner animation — light sweep-line update, no full redraw
+    if (s_screen == 8 && !workerBusy()) {
         static unsigned long lastScannerFrame = 0;
         if (millis() - lastScannerFrame > 80) {
-            s_needsRedraw = true;
+            screenScannerAnimate(tft);
             lastScannerFrame = millis();
         }
     }
@@ -716,7 +716,7 @@ void loop() {
         } else if (s_screen == 7) {
             screenPlannerTap(tft, tx, ty, s_wifiOk);
             s_needsRedraw = true;
-        } else if (s_screen == 8) {
+        } else if (s_screen == 9) {
             bool changed = screenSettingsTap(tft, tx, ty);
             if (changed) s_needsRedraw = true;
             if (screenSettingsRefreshTapped()) {
