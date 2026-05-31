@@ -45,10 +45,33 @@ void brightnessRestore() {
 }
 
 int batteryPct() {
-    int raw = analogRead(BATT_PIN);
-    if (raw < 50) return -1;                       // near-zero = floating/disconnected
-    float v = (raw / 4095.0f) * 3.3f * 2.0f;     // ×2 for 100k/100k voltage divider
-    int pct = (int)((v - 3.0f) / (4.2f - 3.0f) * 100.0f);  // 3.0V=0%, 4.2V=100%
+    // Multi-sample averaging to reduce ESP32 ADC noise
+    long sum = 0;
+    const int samples = 10;
+    for (int i = 0; i < samples; i++) {
+        sum += analogReadMilliVolts(BATT_PIN);
+        delay(2);
+    }
+    int pinMv = sum / samples;
+
+    if (pinMv < 100) return -1;  // near-zero mV = floating/disconnected
+
+    // analogReadMilliVolts uses factory eFuse calibration — gives actual pin mV
+    float vBat = (pinMv / 1000.0f) * 2.0f;  // ×2 for 100k/100k voltage divider
+
+    // Piecewise LiPo discharge curve — linear mapping badly overestimates
+    // because LiPo voltage hovers near 3.7-3.8V for most of the discharge.
+    int pct;
+    if      (vBat >= 4.2f) pct = 100;
+    else if (vBat >= 4.1f) pct = (int)(90.0f + (vBat - 4.1f) / 0.1f * 10.0f);
+    else if (vBat >= 4.0f) pct = (int)(78.0f + (vBat - 4.0f) / 0.1f * 12.0f);
+    else if (vBat >= 3.9f) pct = (int)(63.0f + (vBat - 3.9f) / 0.1f * 15.0f);
+    else if (vBat >= 3.8f) pct = (int)(43.0f + (vBat - 3.8f) / 0.1f * 20.0f);
+    else if (vBat >= 3.7f) pct = (int)(20.0f + (vBat - 3.7f) / 0.1f * 23.0f);
+    else if (vBat >= 3.6f) pct = (int)( 6.0f + (vBat - 3.6f) / 0.1f * 14.0f);
+    else if (vBat >= 3.5f) pct = (int)( 1.0f + (vBat - 3.5f) / 0.1f *  5.0f);
+    else                   pct = 0;
+
     if (pct < 0)   pct = 0;
     if (pct > 100) pct = 100;
     return pct;

@@ -30,12 +30,12 @@
 #define SD_SCLK 18
 
 // ── RGB LED ──────────────────────────────────────────────────────────────
-#define LED_R  4
+#define LED_R 22
 #define LED_G 16
 #define LED_B 17
 
 // ── LDR (light sensor for auto-brightness) ───────────────────────────────
-#define LDR_PIN 34
+#define LDR_PIN 35   // LDR is on GPIO35 on CYD boards (GPIO34 = battery voltage divider)
 
 // ── Screen geometry ───────────────────────────────────────────────────────
 #define SCREEN_W   320
