@@ -11,7 +11,7 @@ Examples:
   python screenshot.py solar
   python screenshot.py COM11 5 ScreenShots\screen_usgs.bmp
 
-Screens: current, now/0, hourly/1, forecast/2, solar/3, fires/4, usgs/5, news/6, almanac/7, settings/8
+Screens: current, now/0, hourly/1, forecast/2, solar/3, fires/4, usgs/5, news/6, almanac/7, scanner/8, settings/9
 Default port: COM11
 """
 
@@ -56,8 +56,10 @@ SCREENS = {
     "7": ("almanac", b"7", "ScreenShots\\screen_almanac.bmp"),
     "almanac": ("almanac", b"7", "ScreenShots\\screen_almanac.bmp"),
     "alm": ("almanac", b"7", "ScreenShots\\screen_almanac.bmp"),
-    "8": ("settings", b"8", "ScreenShots\\screen_settings.bmp"),
-    "settings": ("settings", b"8", "ScreenShots\\screen_settings.bmp"),
+    "8": ("scanner", b"8", "ScreenShots\\screen_scanner.bmp"),
+    "scanner": ("scanner", b"8", "ScreenShots\\screen_scanner.bmp"),
+    "9": ("settings", b"9", "ScreenShots\\screen_settings.bmp"),
+    "settings": ("settings", b"9", "ScreenShots\\screen_settings.bmp"),
 }
 
 COM_RE = re.compile(r"^COM\d+$", re.IGNORECASE)
@@ -68,7 +70,7 @@ def normalize_screen(value):
         return SCREENS["current"]
     key = value.strip().lower()
     if key not in SCREENS:
-        valid = "current, now, hourly, forecast, solar, fires, usgs, news, almanac, settings"
+        valid = "current, now, hourly, forecast, solar, fires, usgs, news, almanac, scanner, settings"
         raise ValueError(f"Unknown screen '{value}'. Valid screens: {valid}")
     return SCREENS[key]
 
@@ -119,7 +121,8 @@ def ask_interactive():
     print("  5 = USGS")
     print("  6 = NEWS")
     print("  7 = ALMANAC")
-    print("  8 = SETTINGS")
+    print("  8 = SCANNER")
+    print("  9 = SETTINGS")
     screen_arg = input("Screen to capture [current]: ").strip() or "current"
     screen_name, screen_cmd, default_out = normalize_screen(screen_arg)
     outfile = input(f"Output file [{default_out}]: ").strip() or default_out
