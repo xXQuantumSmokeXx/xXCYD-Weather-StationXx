@@ -27,6 +27,7 @@
 #include "ui/screens/screen_usgs.h"
 #include "ui/screens/screen_news.h"
 #include "ui/screens/screen_planner.h"
+#include "ui/screens/screen_scanner.h"
 #include "modules/screenshot.h"
 
 static TFT_eSPI tft;
@@ -350,9 +351,9 @@ static void fetchWeatherSync() {
     s_needsRedraw = true;
 }
 
-// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fires, 5=USGS, 6=News, 7=Planner, 8=Settings
+// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fires, 5=USGS, 6=News, 7=Planner, 8=Settings, 9=Scanner
 static void gotoScreen(int n) {
-    s_screen         = constrain(n, 0, 8);
+    s_screen         = constrain(n, 0, 9);
     s_lastAutoRotate = millis();
     s_needsRedraw    = true;
 }
@@ -368,6 +369,7 @@ static void redrawTo(TFT_eSPI &target) {
         case 6: screenNewsDraw(target, s_wifiOk);     break;
         case 7: screenPlannerDraw(target, s_wifiOk);  break;
         case 8: screenSettingsDraw(target, s_wifiOk); break;
+        case 9: screenScannerDraw(target, s_wifiOk);  break;
     }
 }
 
@@ -630,7 +632,7 @@ void loop() {
     if (millis() - s_lastMinute > 60000) {
         if (s_screen <= 2 || s_screen >= 6) {
             char timeStr[10]; timeGetShort(timeStr);
-            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRES","USGS","NEWS","ALMANAC","SETTINGS"};
+            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRES","USGS","NEWS","ALMANAC","SETTINGS","SCANNER"};
             drawTopbarTime(tft, timeStr, labels[s_screen]);
         }
         s_lastMinute = millis();
@@ -642,6 +644,15 @@ void loop() {
         int start = (s_screen == 8) ? 7 : s_screen;
         int next = screenSettingsGetNextRotatePage(start);
         if (next >= 0) gotoScreen(next);
+    }
+
+    // Scanner animation — continuous redraw for radar sweep (~12 fps)
+    if (s_screen == 9 && !workerBusy()) {
+        static unsigned long lastScannerFrame = 0;
+        if (millis() - lastScannerFrame > 80) {
+            s_needsRedraw = true;
+            lastScannerFrame = millis();
+        }
     }
 
     // Touch
@@ -724,7 +735,7 @@ void loop() {
         if (cmd == 'R' || cmd == 'r') {
             Serial.println("READY");
         }
-        if (cmd >= '0' && cmd <= '8') {
+        if (cmd >= '0' && cmd <= '9') {
             int n = cmd - '0';
             gotoScreen(n);
             redraw();

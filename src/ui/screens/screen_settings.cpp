@@ -56,7 +56,7 @@
 #define PAGE_BTN_Y0  (PAGE_LABEL_Y + 8)               // 149
 #define PAGE_BTN_H   18
 #define PAGE_GAP     2
-#define PAGE_COUNT   8
+#define PAGE_COUNT   9
 #define PAGE_BTN_W   ((SEC2_W - (PAGE_COUNT - 1) * PAGE_GAP) / PAGE_COUNT)  // 36
 
 // Divider between controls and theme
@@ -123,7 +123,7 @@ int screenSettingsGetNextRotatePage(int current) {
 void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SETTINGS", timeStr, wifiOk);
-    drawBottombar(tft, "", 8, 9);
+    drawBottombar(tft, "", 8, 10);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     // ── Section 1: Info ───────────────────────────────────────────────────────
