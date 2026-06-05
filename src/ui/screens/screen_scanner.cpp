@@ -292,7 +292,7 @@ void screenScannerDraw(TFT_eSPI &tft, bool wifiOk) {
     timeGetDateLong(dateStr, sizeof(dateStr));
 
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SCANNER", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 8, 10);
+    drawBottombar(tft, dateStr, 9, 11);
 
     // Clear full content area
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);

@@ -11,7 +11,7 @@ Examples:
   python screenshot.py solar
   python screenshot.py COM11 5 ScreenShots\screen_usgs.bmp
 
-Screens: current, now/0, hourly/1, forecast/2, solar/3, fires/4, usgs/5, news/6, almanac/7, scanner/8, settings/9
+Screens: current, now/0, hourly/1, forecast/2, solar/3, fires/4, usgs/5, volcanoes/6, news/7, almanac/8, scanner/9, settings/A
 Default port: COM11
 """
 
@@ -51,15 +51,19 @@ SCREENS = {
     "usgs": ("usgs", b"5", "ScreenShots\\screen_usgs.bmp"),
     "quake": ("usgs", b"5", "ScreenShots\\screen_usgs.bmp"),
     "quakes": ("usgs", b"5", "ScreenShots\\screen_usgs.bmp"),
-    "6": ("news", b"6", "ScreenShots\\screen_news.bmp"),
-    "news": ("news", b"6", "ScreenShots\\screen_news.bmp"),
-    "7": ("almanac", b"7", "ScreenShots\\screen_almanac.bmp"),
-    "almanac": ("almanac", b"7", "ScreenShots\\screen_almanac.bmp"),
-    "alm": ("almanac", b"7", "ScreenShots\\screen_almanac.bmp"),
-    "8": ("scanner", b"8", "ScreenShots\\screen_scanner.bmp"),
-    "scanner": ("scanner", b"8", "ScreenShots\\screen_scanner.bmp"),
-    "9": ("settings", b"9", "ScreenShots\\screen_settings.bmp"),
-    "settings": ("settings", b"9", "ScreenShots\\screen_settings.bmp"),
+    "6": ("volcanoes", b"6", "ScreenShots\\screen_volcanoes.bmp"),
+    "volcanoes": ("volcanoes", b"6", "ScreenShots\\screen_volcanoes.bmp"),
+    "volcano": ("volcanoes", b"6", "ScreenShots\\screen_volcanoes.bmp"),
+    "7": ("news", b"7", "ScreenShots\\screen_news.bmp"),
+    "news": ("news", b"7", "ScreenShots\\screen_news.bmp"),
+    "8": ("almanac", b"8", "ScreenShots\\screen_almanac.bmp"),
+    "almanac": ("almanac", b"8", "ScreenShots\\screen_almanac.bmp"),
+    "alm": ("almanac", b"8", "ScreenShots\\screen_almanac.bmp"),
+    "9": ("scanner", b"9", "ScreenShots\\screen_scanner.bmp"),
+    "scanner": ("scanner", b"9", "ScreenShots\\screen_scanner.bmp"),
+    "A": ("settings", b"A", "ScreenShots\\screen_settings.bmp"),
+    "a": ("settings", b"A", "ScreenShots\\screen_settings.bmp"),
+    "settings": ("settings", b"A", "ScreenShots\\screen_settings.bmp"),
 }
 
 COM_RE = re.compile(r"^COM\d+$", re.IGNORECASE)
@@ -70,7 +74,7 @@ def normalize_screen(value):
         return SCREENS["current"]
     key = value.strip().lower()
     if key not in SCREENS:
-        valid = "current, now, hourly, forecast, solar, fires, usgs, news, almanac, scanner, settings"
+        valid = "current, now, hourly, forecast, solar, fires, usgs, volcanoes, news, almanac, scanner, settings"
         raise ValueError(f"Unknown screen '{value}'. Valid screens: {valid}")
     return SCREENS[key]
 

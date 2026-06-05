@@ -14,9 +14,13 @@ ESP32 CYD tactical monitoring station — real-time weather, space weather, sola
 |--------|-------|-------|
 | ![HOURLY](ScreenShots/HOURLY.png) | ![5-DAY](ScreenShots/5-DAY.png) | ![SOLAR](ScreenShots/SOLAR.png) |
 
-| FIRES | USGS | NEWS |
-|-------|------|------|
-| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | ![NEWS](ScreenShots/NEWS.png) |
+| FIRES | USGS | VOLCANOES |
+|-------|------|-----------|
+| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | ![VOLCANOES](ScreenShots/VOLCANOES.png) |
+
+| NEWS |
+|------|
+| ![NEWS](ScreenShots/NEWS.png) |
 
 ### Features
 
@@ -52,6 +56,13 @@ ESP32 CYD tactical monitoring station — real-time weather, space weather, sola
 - USGS earthquake feed — M3.5+ events with magnitude, location, and time
 - Sorted newest-first, scrollable via swipe up/down
 - Tap title bar to force a refresh; auto-refreshes every 15 minutes
+
+**VOLCANOES screen:**
+- USGS volcano activity — Yellowstone volcano tracking plus currently elevated volcanoes
+- Color-coded status dot: GREEN (normal), YELLOW (advisory), ORANGE (watch), RED (warning)
+- Two-line per volcano: name on top, observatory / alert level / last-update timestamp below
+- Sorted newest-first; tap title bar to force a refresh
+- Auto-refreshes on the hour
 
 **NEWS screen:**
 - Breaking news from r/news — crime, disasters, major incidents. Strictly moderated (no fluff, no opinion).
@@ -90,7 +101,7 @@ ESP32 CYD tactical monitoring station — real-time weather, space weather, sola
 - Refreshes at the top of each hour
 - Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, NEWS)
 - FIRES and USGS headline text uses the active theme color
-- 10 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRES, USGS, NEWS, ALMANAC, SCANNER, SETTINGS
+- 11 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRES, USGS, VOLCANOES, NEWS, ALMANAC, SCANNER, SETTINGS
 
 ### Setup
 

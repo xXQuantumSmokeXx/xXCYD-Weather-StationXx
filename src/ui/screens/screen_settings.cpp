@@ -56,7 +56,7 @@
 #define PAGE_BTN_Y0  (PAGE_LABEL_Y + 8)               // 149
 #define PAGE_BTN_H   18
 #define PAGE_GAP     2
-#define PAGE_COUNT   9
+#define PAGE_COUNT   10
 #define PAGE_BTN_W   ((SEC2_W - (PAGE_COUNT - 1) * PAGE_GAP) / PAGE_COUNT)  // 36
 
 // Divider between controls and theme
@@ -88,14 +88,14 @@ static void autoRotLoad() {
 }
 
 // ── Page rotation mask ────────────────────────────────────────────────────────
-// Bit 0 = page 0 (NOW), bit 1 = page 1 (HOURLY), ..., bit 8 = page 8 (SCANNER)
-static uint16_t s_pageMask  = 0x1FF;  // 9 pages (0-8)
+// Bit 0 = page 0 (NOW), bit 1 = page 1 (HOURLY), ..., bit 9 = page 9 (SCANNER)
+static uint16_t s_pageMask  = 0x3FF;  // 10 pages (0-9)
 static bool     s_pageLoaded = false;
 
 static void pageMaskLoad() {
     if (s_pageLoaded) return;
-    s_pageMask = (uint16_t)nvsGetInt("page_mask", 0x1FF);
-    if (s_pageMask == 0) s_pageMask = 0x1FF;
+    s_pageMask = (uint16_t)nvsGetInt("page_mask", 0x3FF);
+    if (s_pageMask == 0) s_pageMask = 0x3FF;
     s_pageLoaded = true;
 }
 
@@ -123,7 +123,7 @@ int screenSettingsGetNextRotatePage(int current) {
 void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SETTINGS", timeStr, wifiOk);
-    drawBottombar(tft, "", 9, 10);
+    drawBottombar(tft, "", 10, 11);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     // ── Section 1: Info ───────────────────────────────────────────────────────
