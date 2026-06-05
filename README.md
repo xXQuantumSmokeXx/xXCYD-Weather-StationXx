@@ -14,9 +14,9 @@ ESP32 CYD tactical monitoring station — real-time weather, space weather, sola
 |--------|-------|-------|
 | ![HOURLY](ScreenShots/HOURLY.png) | ![5-DAY](ScreenShots/5-DAY.png) | ![SOLAR](ScreenShots/SOLAR.png) |
 
-| FIRES | USGS | VOLCANOES |
-|-------|------|-----------|
-| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | ![VOLCANOES](ScreenShots/VOLCANOES.png) |
+| FIRES | USGS |
+|-------|------|
+| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) |
 
 | NEWS |
 |------|
