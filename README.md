@@ -82,7 +82,7 @@ ESP32 CYD tactical monitoring station — real-time weather, space weather, sola
 - Refresh Weather and Location buttons in a 2x2 grid next to E-Ink and Power Off
 - 9 theme accent colors, saved across reboots
 - E-Ink mode — inverts display to white-background / black-foreground, toggled from the settings screen
-- Power Off — two-tap confirmation ("PWR OFF" then "SURE?") puts the device into deep sleep (wake via RST button)
+- Power Off — two-tap confirmation ("PWR OFF" → "SURE?") engages **Somnus Deep-Sleep Recovery**: ESP32 enters ultra-low-power deep sleep with EXT0 touch-IRQ wake on GPIO 36. A single screen tap reanimates the device instantly — no hardware reset required.
 
 **General:**
 - Auto-detects location via IP geolocation; no config needed beyond WiFi credentials

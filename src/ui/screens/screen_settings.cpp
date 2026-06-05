@@ -355,6 +355,8 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
             tft.setCursor(80, 110);
             tft.print("Shutting down...");
             delay(500);
+            // Deep sleep — wake on touch IRQ (GPIO 36, active low)
+            esp_sleep_enable_ext0_wakeup(GPIO_NUM_36, 0);
             esp_deep_sleep_start();
         } else {
             s_pwrConfirm = true;
