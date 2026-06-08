@@ -496,7 +496,19 @@ void setup() {
 
     // TFT_eSPI init
     tft.init();
-    tft.setRotation(1);   // landscape; try 3 if upside-down
+
+    // ── Display rotation ─────────────────────────────────────────────────
+    // CYD 2.8" two hardware revisions:
+    //   ESP32-32E (1-USB): standard landscape → rotation 1
+    //   2-USB:              landscape + Mirror Y, MADCTL = MY, no invert
+#if CYD_USB_VERSION == 2
+    tft.setRotation(1);           // landscape memory window
+    tft.writecommand(TFT_MADCTL);
+    tft.writedata(TFT_MAD_MY);    // mirror Y only
+#else
+    tft.setRotation(1);           // ESP32-32E: standard landscape
+#endif
+
     tft.fillScreen(COL_BG);
     brightnessInit();
 

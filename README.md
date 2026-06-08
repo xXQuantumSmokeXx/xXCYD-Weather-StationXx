@@ -1,6 +1,6 @@
 # xXCYD-Weather-StationXx
 
-ESP32-32E CYD (Cheap Yellow Display) tactical monitoring station — real-time weather, space weather, solar day almanac, volcano activity tracking, wildfire & earthquake tracking, breaking news, WiFi scanner, customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
+ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — real-time weather, space weather, solar day almanac, volcano activity tracking, wildfire & earthquake tracking, breaking news, WiFi scanner, customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
 
 [![Support on Patreon](https://img.shields.io/badge/Support-Patreon-orange)](https://www.patreon.com/c/xXQuantumSmokeXx)
 
@@ -101,7 +101,12 @@ ESP32-32E CYD (Cheap Yellow Display) tactical monitoring station — real-time w
 
 ### Setup
 
-Flash `firmware.bin` from the latest release, then provision WiFi from the SD card:
+| Board | Firmware File |
+|-------|--------------|
+| **ESP32-32E** (1-USB) | `firmware.bin` |
+| **2USB** (2 USB ports) | `firmware-2usb.bin` |
+
+Flash the correct firmware for your board from the latest release, then provision WiFi from the SD card:
 
 1. Create `wifi.txt` on the SD card.
 2. Put your WiFi network name on line 1.
@@ -115,10 +120,14 @@ Flash `firmware.bin` from the latest release, then provision WiFi from the SD ca
 Build from source with PlatformIO:
 
 ```bash
+# ESP32-32E (1-USB)
 pio run --environment cyd_weather
+
+# 2USB
+pio run --environment cyd_weather_2usb
 ```
 
-The generated firmware is written to `.pio/build/cyd_weather/firmware.bin`.
+Firmware is written to `.pio/build/<env>/firmware.bin`.
 
 ### Credential Safety
 

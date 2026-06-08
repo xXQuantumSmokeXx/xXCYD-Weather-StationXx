@@ -1,5 +1,17 @@
 #pragma once
 
+// ── Hardware version ─────────────────────────────────────────────────────────
+// CYD 2.8" boards have two hardware revisions:
+//   1 = ESP32-32E (1-USB, original)               → standard landscape rotation 1
+//   2 = 2-USB (newer, 2 USB ports)                 → landscape + mirror Y
+// The 2-USB version has the LCD physically flipped compared to the 1-USB.
+//
+// Default is 1 (ESP32-32E).
+// For 2-USB, override in platformio.ini build_flags with -DCYD_USB_VERSION=2
+#ifndef CYD_USB_VERSION
+#define CYD_USB_VERSION  1
+#endif
+
 // ── Display (ILI9341 on HSPI) ─────────────────────────────────────────────
 #define TFT_MOSI   13
 #define TFT_MISO   12

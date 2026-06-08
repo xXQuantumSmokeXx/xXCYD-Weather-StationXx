@@ -30,7 +30,7 @@ static bool rawToScreen(int16_t *sx, int16_t *sy) {
 void touchInit() {
     g_touchSPI.begin(TOUCH_SCLK, TOUCH_MISO, TOUCH_MOSI, TOUCH_CS);
     g_ts.begin(g_touchSPI);
-    g_ts.setRotation(0);   // raw coords, we remap manually
+    g_ts.setRotation(CYD_USB_VERSION == 2 ? 2 : 0);   // 2USB: 180° touch, ESP32-32E: raw coords
 }
 
 TouchEvent touchPoll() {
