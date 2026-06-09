@@ -136,3 +136,5 @@ Firmware is written to `.pio/build/<env>/firmware.bin`.
 - Open-Meteo is used for weather data, so no weather service token is baked into the build.
 
 Built by xXQuantum-SmokeXx, with development assistance from Codex and Claude Code.
+
+Check out my other project: [xXCYD-PokerXx](https://github.com/xXQuantumSmokeXx/xXCYD-PokerXx)
