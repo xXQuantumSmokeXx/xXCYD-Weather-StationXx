@@ -644,7 +644,7 @@ static void touchCalibrate() {
     bool dirty = false;
 
     while (true) {
-        int tx, ty;
+        int16_t tx, ty;
         bool nowTouched = touchIsHeld(&tx, &ty);
 
         if (nowTouched) {
