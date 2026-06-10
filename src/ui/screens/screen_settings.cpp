@@ -248,7 +248,7 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     tft.print("RECAL");
 
     // Divider 1
-    tft.drawFastHLine(0, DIV1_Y, SCREEN_W, g_themeColor);
+    tft.drawFastHLine(0, DIV1_Y, SCREEN_W, COL_DIM);
 
     // ── Section 2: Brightness ─────────────────────────────────────────────────
     tft.setTextFont(FONT_SM);

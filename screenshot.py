@@ -28,8 +28,20 @@ except ImportError:
     sys.exit(1)
 
 BAUD = 115200
-DEFAULT_PORT = "COM11"
 W, H = 320, 240
+
+def find_port():
+    """Auto-detect CYD serial port, or fall back to COM11."""
+    try:
+        import serial.tools.list_ports
+        for p in serial.tools.list_ports.comports():
+            if any(x in (p.description or "") for x in ["CH340", "CP210", "USB-SERIAL", "USB Serial"]):
+                return p.device
+    except Exception:
+        pass
+    return "COM11"
+
+DEFAULT_PORT = find_port()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 SCREENS = {
@@ -123,10 +135,11 @@ def ask_interactive():
     print("  3 = SOLAR")
     print("  4 = FIRES")
     print("  5 = USGS")
-    print("  6 = NEWS")
-    print("  7 = ALMANAC")
-    print("  8 = SCANNER")
-    print("  9 = SETTINGS")
+    print("  6 = VOLCANOES")
+    print("  7 = NEWS")
+    print("  8 = ALMANAC")
+    print("  9 = SCANNER")
+    print("  A = SETTINGS")
     screen_arg = input("Screen to capture [current]: ").strip() or "current"
     screen_name, screen_cmd, default_out = normalize_screen(screen_arg)
     outfile = input(f"Output file [{default_out}]: ").strip() or default_out
