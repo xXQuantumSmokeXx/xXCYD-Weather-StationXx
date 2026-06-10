@@ -488,27 +488,37 @@ static void redraw() {
 // Runs once; persisted via NVS key "rot_cal". Only for CYD_USB_VERSION == 2.
 
 static int  s_rotation = 1;   // default landscape, overridden by NVS or calibration
-static bool s_mirrorY   = true; // Y-mirror for 2USB panels, NVS-backed
+
+// ── ILI9341 MADCTL configuration for 2USB landscape displays ──────────────
+// Different CYD boards mount the LCD glass in different orientations.  We
+// combine two bits to cover all variants:
+//   MV (bit 5): row/column swap — fixes 90° rotation on portrait-native glass
+//   MY (bit 7): Y-axis mirror — fixes upside-down display
+// Four combos cycle via calibration; the chosen value is stored in NVS.
+static uint8_t s_madctl = 0x80;   // NVS-backed MADCTL value
 
 static void applyRotation() {
 #if CYD_USB_VERSION == 2
-    // Call setRotation to set TFT_eSPI's internal width/height and CASET/RASET.
-    // Then apply mirror as a standalone MY bit override.
-    //
-    // The original CYD 2USB code (v1.1.7) wrote just TFT_MAD_MY (0x80) after
-    // setRotation(1), which cleared all other MADCTL bits.  This happens to
-    // be correct for 2USB boards where the ILI9341 is physically mounted in
-    // landscape orientation — they don't need the MV (row/column swap) that
-    // setRotation adds for portrait-native panels.
-    //
-    // Mirror ON:  write 0x80 (MY bit only — correct for landscape-native panel)
-    // Mirror OFF: write 0x00 (no mirroring, no swap — clean landscape)
-    tft.setRotation(1);
-    tft.writecommand(TFT_MADCTL);
-    tft.writedata(s_mirrorY ? TFT_MAD_MY : 0x00);
+    tft.setRotation(1);                              // landscape dimensions
+    tft.writecommand(TFT_MADCTL);                    // override MADCTL set by setRotation
+    tft.writedata(s_madctl);
 #else
     tft.setRotation(s_rotation);
 #endif
+}
+
+// Build the MADCTL value for a given combo index (0-3).
+// 0: MV=1, MY=0 → 0x28 (swap, no mirror  — portrait glass)
+// 1: MV=1, MY=1 → 0xA8 (swap + mirror)
+// 2: MV=0, MY=0 → 0x00 (no swap, no mirror — landscape glass)
+// 3: MV=0, MY=1 → 0x80 (no swap, mirror   — landscape glass flipped)
+static uint8_t madctlForCombo(int idx) {
+    switch (idx & 3) {
+        case 0:  return TFT_MAD_MV | TFT_MAD_BGR;           // 0x28
+        case 1:  return TFT_MAD_MV | TFT_MAD_MY | TFT_MAD_BGR; // 0xA8
+        case 2:  return 0x00;                               // 0x00
+        default: return TFT_MAD_MY;                          // 0x80
+    }
 }
 
 // ── Calibration version ─────────────────────────────────────────────────────
@@ -516,74 +526,74 @@ static void applyRotation() {
 // isn't CURRENT_CAL_VER (e.g. after an upgrade or fresh flash), all calibration
 // screens re-run.  This avoids the v1.1.8 bug where individual keys were
 // silently filled by the upgrade-path code, suppressing the actual screens.
-#define CURRENT_CAL_VER  1
+#define CURRENT_CAL_VER  2
 
 // ── First-boot display calibration (2USB only) ────────────────────────────
-// 2USB boards may have the LCD physically flipped in Y.  User toggles mirror
-// ON/OFF and holds 2s to confirm.  Then touch calibration runs.
-// Serial M toggles mirror, T cycles touch rotation.
+// Cycles through the 4 MADCTL combinations so the user can find the correct
+// one.  Shows a large asymmetric pattern that makes the orientation obvious.
+// Serial M cycles MADCTL combos; T cycles touch rotation.
 static void displayCalibrate() {
 #if CYD_USB_VERSION == 2
     if (nvsGetInt("cal_ver", -1) >= CURRENT_CAL_VER) {
-        s_rotation = nvsGetInt("rot_cal", 1);
-        s_mirrorY  = nvsGetInt("mirror_cal", 1) != 0;
+        s_madctl = (uint8_t)nvsGetInt("madctl", 0x80);
         return;
     }
 
-    s_rotation = 1;  // always landscape — the only orientation that works with TFT_eSPI's ILI9341 driver
-    s_mirrorY  = nvsGetInt("mirror_cal", 1) != 0;
-
+    s_madctl = madctlForCombo(0);  // start at combo 0
     digitalWrite(TFT_BL, HIGH);
 
-    // ── Mirror calibration ────────────────────────────────────────────────
-    // Shows a large asymmetric reference pattern so the user can see the mirror
-    // effect clearly.  Tap to toggle mirror, hold 2s to confirm.
-
-    auto drawMirrorScreen = [&]() {
+    auto drawDisplayCal = [&]() {
         tft.fillScreen(COL_BG);
         applyRotation();
         tft.fillScreen(COL_BG);
 
-        // Big asymmetric corner markers — visually obvious when they swap
-        // Top-left: filled amber triangle pointing down-right
+        // ── Distinctive corner markers ──
+        // Top-left: amber filled triangle pointing down-right
         tft.fillTriangle(2, 2, 60, 2, 2, 60, COL_AMBER);
         tft.fillTriangle(4, 4, 56, 4, 4, 56, COL_BG);
         tft.fillTriangle(2, 2, 60, 2, 2, 60, COL_AMBER);
 
-        // Top-right: "L" shape
+        // Top-right: colored "L" bracket
         tft.fillRect(SCREEN_W - 50, 2, 48, 8, g_themeColor);
         tft.fillRect(SCREEN_W - 8, 2, 6, 48, g_themeColor);
 
-        // Bottom-left: filled circle
+        // Bottom-left: amber ring
         tft.fillCircle(24, SCREEN_H - 24, 20, COL_AMBER);
         tft.fillCircle(24, SCREEN_H - 24, 16, COL_BG);
         tft.fillCircle(24, SCREEN_H - 24, 20, COL_AMBER);
 
-        // Bottom-right: target cross
+        // Bottom-right: crosshair + circle
         tft.drawLine(SCREEN_W - 40, SCREEN_H - 24, SCREEN_W - 8, SCREEN_H - 24, g_themeColor);
         tft.drawLine(SCREEN_W - 24, SCREEN_H - 40, SCREEN_W - 24, SCREEN_H - 8, g_themeColor);
         tft.drawCircle(SCREEN_W - 24, SCREEN_H - 24, 14, g_themeColor);
 
-        // Center: "T" for orientation
+        // Center: "T" orientation letter
         tft.fillRect(SCREEN_W / 2 - 16, SCREEN_H / 2 - 24, 32, 6, COL_WHITE);
         tft.fillRect(SCREEN_W / 2 - 4, SCREEN_H / 2 - 24, 8, 48, COL_WHITE);
 
-        // Mirror state text
+        // ── Combo number and description ──
+        int idx;
+        if      (s_madctl == (TFT_MAD_MV | TFT_MAD_BGR))             idx = 0;
+        else if (s_madctl == (TFT_MAD_MV | TFT_MAD_MY | TFT_MAD_BGR)) idx = 1;
+        else if (s_madctl == 0x00)                                    idx = 2;
+        else                                                          idx = 3;
+
         tft.setTextFont(FONT_LG);
         tft.setTextColor(g_themeColor, COL_BG);
-        const char *msg = s_mirrorY ? "MIRROR: ON" : "MIRROR: OFF";
-        int tw = tft.textWidth(msg);
+        char buf[16]; snprintf(buf, sizeof(buf), "MODE %d", idx);
+        int tw = tft.textWidth(buf);
         tft.setCursor((SCREEN_W - tw) / 2, 68);
-        tft.print(msg);
+        tft.print(buf);
 
-        // Instruction
+        // Tap instruction
         tft.setTextFont(FONT_MD);
         tft.setTextColor(COL_WHITE, COL_BG);
-        msg = "Tap to toggle";
+        const char *msg = "Tap to change";
         tw = tft.textWidth(msg);
         tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H - 72);
         tft.print(msg);
 
+        // Hold instruction
         tft.setTextFont(FONT_SM);
         tft.setTextColor(COL_DIM, COL_BG);
         msg = "Hold 2s to confirm";
@@ -592,11 +602,12 @@ static void displayCalibrate() {
         tft.print(msg);
     };
 
-    drawMirrorScreen();
+    drawDisplayCal();
 
     {
         unsigned long holdStart = 0;
         bool wasTouched = false;
+        int  curCombo = 0;
 
         while (true) {
             bool nowTouched = touchIsHeld();
@@ -605,8 +616,9 @@ static void displayCalibrate() {
                 holdStart = millis();
             } else if (!nowTouched && wasTouched && holdStart > 0) {
                 if (millis() - holdStart < 1200) {
-                    s_mirrorY = !s_mirrorY;
-                    drawMirrorScreen();
+                    curCombo = (curCombo + 1) & 3;
+                    s_madctl = madctlForCombo(curCombo);
+                    drawDisplayCal();
                 }
             }
 
@@ -622,9 +634,8 @@ static void displayCalibrate() {
         delay(200);
     }
 
-    nvsPutInt("rot_cal", 1);
-    nvsPutInt("mirror_cal", s_mirrorY ? 1 : 0);
-    // cal_ver is written by touchCalibrate() after touch completes
+    nvsPutInt("madctl", s_madctl);
+    // cal_ver is written by touchCalibrate() below
 #endif
 }
 
@@ -1073,12 +1084,18 @@ void loop() {
             Serial.println("READY");
         }
         if (cmd == 'M' || cmd == 'm') {
-            s_mirrorY = !s_mirrorY;
-            nvsPutInt("mirror_cal", s_mirrorY ? 1 : 0);
+            // Cycle through MADCTL combos 0→1→2→3→0
+            int cur = 3;
+            if      (s_madctl == (TFT_MAD_MV | TFT_MAD_BGR))                cur = 0;
+            else if (s_madctl == (TFT_MAD_MV | TFT_MAD_MY | TFT_MAD_BGR))  cur = 1;
+            else if (s_madctl == 0x00)                                       cur = 2;
+            cur = (cur + 1) & 3;
+            s_madctl = madctlForCombo(cur);
+            nvsPutInt("madctl", s_madctl);
             nvsPutInt("cal_ver", CURRENT_CAL_VER);   // manual override counts as calibrated
             applyRotation();
-            Serial.print("MIRROR_Y:");
-            Serial.println(s_mirrorY ? "ON" : "OFF");
+            Serial.print("MADCTL_MODE:");
+            Serial.println(cur);
             s_needsRedraw = true;
         }
         if (cmd == 'T' || cmd == 't') {
