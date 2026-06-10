@@ -263,7 +263,7 @@ void triggerVolcanoesFetch() {
 
 // ── Splash art — quantum smoke / orbital design ───────────────────────────
 static void drawSplashArt(TFT_eSPI &tft) {
-    const int cx = 160, cy = 52;
+    const int cx = 160, cy = 60;
 
     // 12 dim radiating spokes
     for (int i = 0; i < 12; i++) {
