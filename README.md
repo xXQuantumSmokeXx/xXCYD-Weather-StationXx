@@ -82,7 +82,7 @@ ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — re
 - Node labels appear as the sweep line passes over each AP dot
 
 **SETTINGS screen:**
-- WiFi status and IP, city, NTP time sync status, weather provider info
+- Sleep timer — backlight auto-off after inactivity (OFF / 15s / 30s / 1m / 5m). Tap or swipe to wake
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
 - Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
 - 8 per-page rotation checkboxes — toggle which screens are included in auto-rotate

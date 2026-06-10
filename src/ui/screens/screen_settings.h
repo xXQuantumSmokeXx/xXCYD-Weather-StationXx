@@ -9,4 +9,4 @@ bool     screenSettingsGetAutoRotate();
 uint32_t screenSettingsGetAutoRotateMs();
 bool     screenSettingsGetPageEnabled(int page);
 int      screenSettingsGetNextRotatePage(int current);
-int      screenSettingsGetSleepTimerMins();  // 0 = OFF, 15/30/60/120/240/480
+int      screenSettingsGetSleepTimerSecs();  // 0=OFF, 15/30/60/300 seconds
