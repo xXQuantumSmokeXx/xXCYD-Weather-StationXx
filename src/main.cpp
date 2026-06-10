@@ -483,6 +483,93 @@ static void redraw() {
     s_needsRedraw = false;
 }
 
+// ── First-boot rotation calibration (2USB only) ──────────────────────────────
+// Some 2USB panels are physically rotated — tap to cycle rotation, hold 2s to confirm.
+// Runs once; persisted via NVS key "rot_cal". Only for CYD_USB_VERSION == 2.
+
+static int s_rotation = 1;   // default landscape, overridden by NVS or calibration
+
+static void applyRotation() {
+#if CYD_USB_VERSION == 2
+    tft.setRotation(s_rotation);
+    tft.writecommand(TFT_MADCTL);
+    tft.writedata(TFT_MAD_MY);    // mirror Y on 2USB, preserved across setRotation
+#else
+    tft.setRotation(s_rotation);
+#endif
+}
+
+static void rotationCalibrate() {
+#if CYD_USB_VERSION == 2
+    // Already calibrated?
+    int saved = nvsGetInt("rot_cal", -1);
+    if (saved >= 0) { s_rotation = saved; return; }
+
+    digitalWrite(TFT_BL, HIGH);
+
+    auto redraw = []() {
+        tft.fillScreen(COL_BG);
+        applyRotation();
+        tft.fillScreen(COL_BG);
+
+        // Rotation number dead center
+        tft.setTextFont(FONT_LG);
+        tft.setTextColor(g_themeColor, COL_BG);
+        char buf[4]; snprintf(buf, sizeof(buf), "%d", s_rotation);
+        int tw = tft.textWidth(buf);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 - 35);
+        tft.print(buf);
+
+        // Tap instruction
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(COL_WHITE, COL_BG);
+        const char *msg = "Tap to rotate";
+        tw = tft.textWidth(msg);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 10);
+        tft.print(msg);
+
+        // Hold instruction
+        tft.setTextFont(FONT_SM);
+        tft.setTextColor(COL_DIM, COL_BG);
+        msg = "Hold 2s to confirm";
+        tw = tft.textWidth(msg);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 40);
+        tft.print(msg);
+    };
+
+    redraw();
+
+    unsigned long holdStart = 0;
+    bool wasTouched = false;
+
+    while (true) {
+        bool nowTouched = touchIsHeld();
+
+        if (nowTouched && !wasTouched) {
+            holdStart = millis();          // touch began
+        } else if (!nowTouched && wasTouched && holdStart > 0) {
+            // Released — short tap or long hold?
+            if (millis() - holdStart < 1200) {
+                s_rotation = (s_rotation + 1) % 4;   // cycle 0→1→2→3→0
+                redraw();
+            }
+            // Long hold (>= 2s) handled below — on release we confirm
+        }
+
+        if (nowTouched && wasTouched && holdStart > 0) {
+            if (millis() - holdStart >= 2000) {
+                break;   // confirmed
+            }
+        }
+
+        wasTouched = nowTouched;
+        delay(30);
+    }
+
+    nvsPutInt("rot_cal", s_rotation);
+#endif
+}
+
 // ── First-boot touch calibration ─────────────────────────────────────────────
 // Shows a target in the top-left corner. If the user taps it and the reported
 // position lands in the bottom-right (180° opposite), touch needs flipping.
@@ -558,16 +645,9 @@ void setup() {
     tft.init();
 
     // ── Display rotation ─────────────────────────────────────────────────
-    // CYD 2.8" two hardware revisions:
-    //   ESP32-32E (1-USB): standard landscape → rotation 1
-    //   2-USB:              landscape + Mirror Y, MADCTL = MY, no invert
-#if CYD_USB_VERSION == 2
-    tft.setRotation(1);           // landscape memory window
-    tft.writecommand(TFT_MADCTL);
-    tft.writedata(TFT_MAD_MY);    // mirror Y only
-#else
-    tft.setRotation(1);           // ESP32-32E: standard landscape
-#endif
+    // ESP32-32E (1-USB): standard landscape → rotation 1
+    // 2-USB:              NVS-backed rotation (calibrated on first boot)
+    applyRotation();
 
     tft.fillScreen(COL_BG);
     brightnessInit();
@@ -575,7 +655,9 @@ void setup() {
     // Touch on VSPI (separate from TFT_eSPI's HSPI bus)
     touchInit();
 
-    // First-boot calibration — only on 2USB, only once
+    // First-boot calibrations — only on 2USB, only once each
+    rotationCalibrate();
+    applyRotation();   // re-apply in case calibration changed it
     touchCalibrate();
 
     showSplash("Starting up...");
