@@ -116,6 +116,69 @@ Flash the correct firmware for your board from the latest release, then provisio
 - The release firmware does not require an API key.
 - Open-Meteo is used for weather data, so no weather service token is baked into the build.
 
+## First-Boot Calibration (2USB only)
+
+On first boot, the firmware walks through three calibration steps to accommodate the known 2USB hardware variants. All settings are saved to NVS and never repeat — wipe NVS (`nvs_erase_all`) or flash a fresh device to re-trigger:
+
+### 1. Rotation (display orientation)
+- Tap the screen to cycle through rotations 0–3
+- The display content reorients each tap — choose the one that reads properly
+- Hold your finger for 2 seconds to confirm
+- Screen waits for finger lift before continuing
+
+### 2. Mirror (Y-axis flip)
+- Taps toggle Mirror ON / OFF — look at the on-screen text and triangle markers to see which reads correctly
+- Some 2USB panels have the LCD physically flipped; mirror corrects this
+- Hold 2 seconds to confirm
+
+### 3. Touch (digitizer orientation)
+- A touch cursor follows your finger — four crosshair targets appear in the corners
+- Tap to cycle through digitizer rotations
+- The cursor should track your finger without offset
+- Hold 2 seconds to confirm — you can re-run this anytime from **Settings → Touch Flip**
+
+If any calibration step feels wrong after setup, use the serial commands below to fix without reflashing.
+
+## Serial Commands
+
+Connect at 115200 baud. Commands are single characters, no newline required:
+
+| Command | Effect |
+|---------|--------|
+| `R` | Responds with `READY` — useful for serial monitor sync |
+| `T` | Cycle touch digitizer rotation (0→1→2→3). Fixes offset touch without re-flashing |
+| `M` | Toggle Y-mirror ON/OFF. Fixes physically-flipped panel |
+| `0`–`9` | Jump directly to screen 0–9 |
+| `A` | Jump to Settings screen |
+| `S` | RGB332 screenshot capture (for `screenshot.py`) |
+
+## 2USB Variant Notes
+
+The CYD "2-USB" label covers several hardware revisions. Known differences:
+
+- **Touch controller**: All known 2USB variants use XPT2046 (same as 1-USB), but digitizer rotation varies — the first-boot calibration handles this.
+- **Display rotation**: Some 2USB panels are physically rotated or flipped relative to the standard — calibration cycles through rotation + mirror combinations.
+- **TFT_RST pin**: Most 2USB boards work with RST unconnected (the ILI9341 self-resets on power-on). A subset need RST connected to GPIO 4. If you get a **solid black screen with a faint red LED** on power-up, try the `_2usb` binary from the release — if that also fails, compile with `-DTFT_RST=4` added to `build_flags`.
+- **SPI frequency**: The default 27 MHz works on all tested boards. If you see display corruption, try dropping to 20 MHz by adding `-DSPI_FREQUENCY=20000000` to `build_flags`.
+
+### Still having trouble?
+
+Open an issue with:
+- What you see on screen (black, scrambled, rotated wrong, touch doesn't match tap location)
+- RGB LED color (faint red, bright green, etc.)
+- WiFi connection status
+- Whether the first-boot calibration screens appear
+- Your board's USB port count and any markings near the ESP32 chip
+
+## 2USB Troubleshooting Checklist
+
+If the screen stays black after flashing:
+
+1. **Verify the right binary** — `_2usb` for 2-USB boards, plain version for 1-USB
+2. **Offset 0x00** — flash the merged binary at offset 0, not the raw firmware.bin
+3. **Try TFT_RST=4** — some 2USB boards need GPIO4 as display reset. Add `-DTFT_RST=4` to `platformio.ini build_flags` and recompile
+4. **First-boot calibration** — if the screen lights up but looks wrong, the on-screen calibration should find the right rotation + mirror combination. If calibration doesn't appear, connect via serial and type `T` to cycle touch, `M` to toggle mirror
+
 Built by xXQuantum-SmokeXx, with development assistance from Codex and Claude Code.
 
 Check out my other project: [xXCYD-PokerXx](https://github.com/xXQuantumSmokeXx/xXCYD-PokerXx)

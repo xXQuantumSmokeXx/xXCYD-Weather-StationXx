@@ -45,8 +45,15 @@ void invertSet(bool on) {
     g_invert = on;
     g_themeColor = on ? 0x0000u : s_themeStored;
     // Flashlight: max backlight when inverted, restore previous when off
-    if (on) ledcWrite(0, 255);
-    else    brightnessRestore();
+    if (on) {
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+        ledcWrite(TFT_BL, 255);
+#else
+        ledcWrite(0, 255);
+#endif
+    } else {
+        brightnessRestore();
+    }
     nvsPutInt("invert", on ? 1 : 0);
 }
 

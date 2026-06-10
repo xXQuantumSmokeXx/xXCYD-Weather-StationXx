@@ -31,6 +31,12 @@
 #include "ui/screens/screen_scanner.h"
 #include "modules/screenshot.h"
 
+// TFT_eSPI doesn't expose RD_MADCTL in all versions — define it ourselves.
+// 0x0B is the ILI9341 register read command for MADCTL (always the same).
+#ifndef TFT_RD_MADCTL
+#define TFT_RD_MADCTL 0x0B
+#endif
+
 static TFT_eSPI tft;
 
 bool g_spriteCapture = false;
@@ -487,23 +493,117 @@ static void redraw() {
 // Some 2USB panels are physically rotated — tap to cycle rotation, hold 2s to confirm.
 // Runs once; persisted via NVS key "rot_cal". Only for CYD_USB_VERSION == 2.
 
-static int s_rotation = 1;   // default landscape, overridden by NVS or calibration
+static int  s_rotation = 1;   // default landscape, overridden by NVS or calibration
+static bool s_mirrorY   = true; // Y-mirror for 2USB panels, NVS-backed
 
 static void applyRotation() {
 #if CYD_USB_VERSION == 2
     tft.setRotation(s_rotation);
-    tft.writecommand(TFT_MADCTL);
-    tft.writedata(TFT_MAD_MY);    // mirror Y on 2USB, preserved across setRotation
+    if (s_mirrorY) {
+        // Read-modify-write: preserve MX/MV/MY bits that setRotation configured,
+        // then add Y-mirror on top.  The old code used writedata(TFT_MAD_MY)
+        // which overwrote the ENTIRE MADCTL register, clearing MX/MV and making
+        // every rotation look identical.
+        tft.writecommand(TFT_MADCTL);
+        tft.writedata(tft.readcommand8(TFT_RD_MADCTL, 1) | TFT_MAD_MY);
+    }
 #else
     tft.setRotation(s_rotation);
 #endif
 }
 
+// ── First-boot mirror calibration (2USB only) ────────────────────────────
+// After rotation is confirmed, the user toggles Y-mirror on/off to handle
+// 2USB boards where the display is physically flipped in Y.
+static void mirrorCalibrate() {
+#if CYD_USB_VERSION == 2
+    tft.fillScreen(COL_BG);
+    applyRotation();
+    tft.fillScreen(COL_BG);
+
+    auto drawMirror = [&]() {
+        tft.fillScreen(COL_BG);
+
+        // Asymmetric corner markers — with mirror they swap positions
+        tft.fillTriangle(10,         10, 40,         10,       10,         40,        COL_AMBER);
+        tft.fillTriangle(SCREEN_W-10, SCREEN_H-10, SCREEN_W-40, SCREEN_H-10, SCREEN_W-10, SCREEN_H-40, g_themeColor);
+        tft.fillCircle(SCREEN_W / 2, SCREEN_H / 2, 4, COL_WHITE);
+
+        // Mirror state text
+        tft.setTextFont(FONT_LG);
+        tft.setTextColor(g_themeColor, COL_BG);
+        const char *msg = s_mirrorY ? "MIRROR: ON" : "MIRROR: OFF";
+        int tw = tft.textWidth(msg);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 - 35);
+        tft.print(msg);
+
+        // Instruction
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(COL_WHITE, COL_BG);
+        msg = "Tap to toggle";
+        tw = tft.textWidth(msg);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 10);
+        tft.print(msg);
+
+        tft.setTextFont(FONT_SM);
+        tft.setTextColor(COL_DIM, COL_BG);
+        msg = "Hold 2s to confirm";
+        tw = tft.textWidth(msg);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 40);
+        tft.print(msg);
+    };
+
+    drawMirror();
+
+    unsigned long holdStart = 0;
+    bool wasTouched = false;
+
+    while (true) {
+        bool nowTouched = touchIsHeld();
+
+        if (nowTouched && !wasTouched) {
+            holdStart = millis();
+        } else if (!nowTouched && wasTouched && holdStart > 0) {
+            if (millis() - holdStart < 1200) {
+                s_mirrorY = !s_mirrorY;
+                drawMirror();
+            }
+        }
+
+        if (nowTouched && wasTouched && holdStart > 0) {
+            if (millis() - holdStart >= 2000) {
+                break;
+            }
+        }
+
+        wasTouched = nowTouched;
+        delay(30);
+    }
+
+    while (touchIsHeld()) { delay(30); }
+    delay(200);
+#endif
+}
+
+// ── First-boot rotation calibration (2USB only) ────────────────────────────
+// Some 2USB panels are physically rotated — tap to cycle rotation, hold 2s to confirm.
+// After rotation is confirmed, if mirror hasn't been calibrated yet, runs mirror
+// calibration as well.  Both persisted to NVS.
 static void rotationCalibrate() {
 #if CYD_USB_VERSION == 2
-    // Already calibrated?
-    int saved = nvsGetInt("rot_cal", -1);
-    if (saved >= 0) { s_rotation = saved; return; }
+    // Check if both rotation and mirror are already calibrated
+    int rotCal = nvsGetInt("rot_cal", -1);
+    int mirCal = nvsGetInt("mirror_cal", -1);
+
+    if (rotCal >= 0 && mirCal >= 0) {
+        s_rotation = rotCal;
+        s_mirrorY  = mirCal != 0;
+        return;
+    }
+
+    // Partial calibration — shouldn't happen in normal flow, but handle it
+    if (rotCal >= 0) { s_rotation = rotCal; s_mirrorY = true; nvsPutInt("mirror_cal", 1); return; }
+    if (mirCal >= 0) { s_mirrorY = mirCal != 0; s_rotation = 1; nvsPutInt("rot_cal", 1);   return; }
 
     digitalWrite(TFT_BL, HIGH);
 
@@ -553,7 +653,6 @@ static void rotationCalibrate() {
                 s_rotation = (s_rotation + 1) % 4;   // cycle 0→1→2→3→0
                 redraw();
             }
-            // Long hold (>= 2s) handled below — on release we confirm
         }
 
         if (nowTouched && wasTouched && holdStart > 0) {
@@ -567,11 +666,15 @@ static void rotationCalibrate() {
     }
 
     // Wait for finger to lift so the held touch doesn't bleed into
-    // touchCalibrate() and instantly dismiss it.
+    // the mirror calibration screen.
     while (touchIsHeld()) { delay(30); }
-    delay(200);  // small debounce window after release
+    delay(200);
 
     nvsPutInt("rot_cal", s_rotation);
+
+    // Stage 2: Mirror calibration
+    mirrorCalibrate();
+    nvsPutInt("mirror_cal", s_mirrorY ? 1 : 0);
 #endif
 }
 
@@ -1017,6 +1120,14 @@ void loop() {
         int cmd = Serial.read();
         if (cmd == 'R' || cmd == 'r') {
             Serial.println("READY");
+        }
+        if (cmd == 'M' || cmd == 'm') {
+            s_mirrorY = !s_mirrorY;
+            nvsPutInt("mirror_cal", s_mirrorY ? 1 : 0);
+            applyRotation();
+            Serial.print("MIRROR_Y:");
+            Serial.println(s_mirrorY ? "ON" : "OFF");
+            s_needsRedraw = true;
         }
         if (cmd == 'T' || cmd == 't') {
             int rot = (touchGetRotation() + 1) % 4;
