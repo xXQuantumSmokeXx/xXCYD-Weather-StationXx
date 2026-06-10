@@ -566,6 +566,11 @@ static void rotationCalibrate() {
         delay(30);
     }
 
+    // Wait for finger to lift so the held touch doesn't bleed into
+    // touchCalibrate() and instantly dismiss it.
+    while (touchIsHeld()) { delay(30); }
+    delay(200);  // small debounce window after release
+
     nvsPutInt("rot_cal", s_rotation);
 #endif
 }
