@@ -55,6 +55,10 @@ void brightnessRestore() {
     }
 }
 
+void brightnessOff() {
+    applyBri(0);
+}
+
 int batteryPct() {
     // Multi-sample averaging to reduce ESP32 ADC noise
     long sum = 0;

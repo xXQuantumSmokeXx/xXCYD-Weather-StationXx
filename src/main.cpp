@@ -54,6 +54,8 @@ static int           s_lastVolcanoesHour     = -1;
 static unsigned long s_lastVolcanoesAttempt  = 0;
 static unsigned long s_lastMinute          = 0;
 static unsigned long s_lastAutoRotate      = 0;
+static unsigned long s_lastTouchMs         = 0;    // sleep timer — last touch activity
+static bool         s_backlightOff         = false; // sleep timer — backlight state
 static char          s_updateStr[24]  = "Never";
 
 // ── RGB LED ───────────────────────────────────────────────────────────────
@@ -845,6 +847,7 @@ void setup() {
     }
 
     ledSet(false, false, false);
+    s_lastTouchMs = millis();          // prevent sleep timer from firing immediately
     s_needsRedraw = true;
     Serial.println("READY");
 }
@@ -1070,6 +1073,61 @@ void loop() {
             if (screenSettingsRefreshTapped()) {
                 showSplash("Refreshing...");
                 triggerFetch(true);
+            }
+        }
+    }
+
+    // ── Touch activity tracking (for sleep timer) ──────────────────────────
+    if (evt.swipe != SwipeDir::None || evt.tap != TapEvent::None) {
+        s_lastTouchMs = millis();
+        if (s_backlightOff) {
+            s_backlightOff = false;
+            brightnessRestore();
+        }
+    }
+
+    // ── Sleep timer — backlight off after inactivity ──────────────────────
+    int slpMins = screenSettingsGetSleepTimerMins();
+    if (slpMins > 0 && !g_invert && !s_backlightOff) {
+        if (millis() - s_lastTouchMs >= (unsigned long)slpMins * 60UL * 1000UL) {
+            s_backlightOff = true;
+            brightnessOff();
+        }
+    }
+
+    // ── Scheduled deep sleep ──────────────────────────────────────────────
+    if (timeIsValid() && nvsGetInt("slp_enable", 0)) {
+        time_t now = time(nullptr);
+        struct tm *info = localtime(&now);
+        int curMin  = info->tm_hour * 60 + info->tm_min;
+        int sleepMin = nvsGetInt("slp_on_h", 22) * 60 + nvsGetInt("slp_on_m", 0);
+        int wakeMin = nvsGetInt("slp_wake_h", 7) * 60 + nvsGetInt("slp_wake_m", 0);
+
+        // Guard: if sleep and wake are at the same time, skip
+        if (sleepMin != wakeMin) {
+            // Overnight: sleepMin > wakeMin means sleep crosses midnight
+            // Same-day: sleepMin < wakeMin means sleep and wake are same day
+            bool insideWindow;
+            if (sleepMin < wakeMin) {
+                insideWindow = (curMin >= sleepMin && curMin < wakeMin);
+            } else {
+                insideWindow = (curMin >= sleepMin || curMin < wakeMin);
+            }
+
+            if (insideWindow) {
+                // Calculate minutes until wake time
+                int minsUntilWake;
+                if (wakeMin > curMin) {
+                    minsUntilWake = wakeMin - curMin;
+                } else {
+                    minsUntilWake = (24 * 60 - curMin) + wakeMin;
+                }
+                if (minsUntilWake < 1) minsUntilWake = 1;
+
+                uint64_t sleepUs = (uint64_t)minsUntilWake * 60ULL * 1000000ULL;
+                esp_sleep_enable_timer_wakeup(sleepUs);
+                esp_sleep_enable_ext0_wakeup(GPIO_NUM_36, 0);  // touch to wake
+                esp_deep_sleep_start();
             }
         }
     }
