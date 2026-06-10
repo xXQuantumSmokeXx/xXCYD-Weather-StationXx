@@ -576,60 +576,125 @@ static void rotationCalibrate() {
 }
 
 // ── First-boot touch calibration ─────────────────────────────────────────────
-// Shows a target in the top-left corner. If the user taps it and the reported
-// position lands in the bottom-right (180° opposite), touch needs flipping.
-// Runs once; persisted via NVS key "touch_cal". Serial 'T' can toggle any time.
+// 2USB boards ship with digitizers in one of four orientations. This cycles
+// through all four XPT2046 rotations (0-3) so the user can find the one where
+// the touch cursor follows their finger correctly.
+// Tap to cycle; hold 2s to confirm. Runs once; NVS key "touch_cal".
+// Serial 'T' can re-trigger any time.
 static void touchCalibrate() {
 #if CYD_USB_VERSION == 2
     if (nvsGetInt("touch_cal", 0) != 0) return;
 
-    // Backlight on in case brightnessInit hasn't run yet
     digitalWrite(TFT_BL, HIGH);
 
-    tft.fillScreen(COL_BG);
+    // ── Draw static background (rotation number, instructions, corner targets) ──
+    auto drawStatic = []() {
+        tft.fillScreen(COL_BG);
 
-    // Draw target box in top-left
-    const int TX = 20, TY = CONTENT_Y, TW = 80, TH = 50;
-    tft.fillRect(TX, TY, TW, TH, g_themeColor);
-    tft.setTextFont(FONT_MD);
-    tft.setTextColor(COL_BG, g_themeColor);
-    tft.setCursor(TX + 8, TY + TH / 2 - 8);
-    tft.print("TAP");
+        // Rotation number dead center
+        tft.setTextFont(FONT_LG);
+        tft.setTextColor(g_themeColor, COL_BG);
+        char buf[4]; snprintf(buf, sizeof(buf), "%d", touchGetRotation());
+        int tw = tft.textWidth(buf);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 - 40);
+        tft.print(buf);
 
-    // Instructions at screen center — invariant under 180° rotation,
-    // so the text is readable even if touch orientation is wrong.
-    {
+        // Primary instruction
         tft.setTextFont(FONT_MD);
         tft.setTextColor(COL_WHITE, COL_BG);
-        const char *msg = "Tap the box above";
-        int tw = tft.textWidth(msg);
-        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 - 20);
-        tft.print(msg);
-
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(COL_DIM, COL_BG);
-        msg = "(or wait 15s for default)";
+        const char *msg = "Tap to cycle touch";
         tw = tft.textWidth(msg);
         tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2);
         tft.print(msg);
+
+        // Secondary instruction
+        tft.setTextFont(FONT_SM);
+        tft.setTextColor(COL_DIM, COL_BG);
+        msg = "Hold 2s to confirm";
+        tw = tft.textWidth(msg);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 30);
+        tft.print(msg);
+
+        // Four corner crosshair targets — touch each to verify cursor alignment
+        const int CX = 14, CY = 14, CS = 18;
+        uint16_t tc = COL_DIM;
+        tft.drawRect(CX, CY, CS, CS, tc);
+        tft.drawLine(CX, CY, CX + CS, CY + CS, tc);
+        tft.drawLine(CX, CY + CS, CX + CS, CY, tc);
+
+        tft.drawRect(SCREEN_W - CX - CS, CY, CS, CS, tc);
+        tft.drawLine(SCREEN_W - CX - CS, CY, SCREEN_W - CX, CY + CS, tc);
+        tft.drawLine(SCREEN_W - CX - CS, CY + CS, SCREEN_W - CX, CY, tc);
+
+        tft.drawRect(CX, SCREEN_H - CY - CS, CS, CS, tc);
+        tft.drawLine(CX, SCREEN_H - CY, CX + CS, SCREEN_H - CY - CS, tc);
+        tft.drawLine(CX, SCREEN_H - CY - CS, CX + CS, SCREEN_H - CY, tc);
+
+        tft.drawRect(SCREEN_W - CX - CS, SCREEN_H - CY - CS, CS, CS, tc);
+        tft.drawLine(SCREEN_W - CX, SCREEN_H - CY, SCREEN_W - CX - CS, SCREEN_H - CY - CS, tc);
+        tft.drawLine(SCREEN_W - CX - CS, SCREEN_H - CY, SCREEN_W - CX, SCREEN_H - CY - CS, tc);
+    };
+
+    drawStatic();
+
+    unsigned long holdStart = 0;
+    bool wasTouched = false;
+    int  curX = -1, curY = -1;
+    int  lastX = -1, lastY = -1;
+    bool dirty = false;
+
+    while (true) {
+        int tx, ty;
+        bool nowTouched = touchIsHeld(&tx, &ty);
+
+        if (nowTouched) {
+            curX = tx; curY = ty;
+        }
+
+        // ── Touch-down ──
+        if (nowTouched && !wasTouched) {
+            holdStart = millis();
+            lastX = curX; lastY = curY;
+            dirty = true;                // draw cursor
+        }
+        // ── Released ──
+        else if (!nowTouched && wasTouched && holdStart > 0) {
+            if (millis() - holdStart < 1200) {
+                touchSetRotation((touchGetRotation() + 1) % 4);
+                drawStatic();
+                // Re-draw cursor if finger is back down (edge: retap within one frame)
+            }
+            // Erase cursor
+            tft.fillCircle(lastX, lastY, 7, COL_BG);
+            lastX = lastY = -1;
+            dirty = false;
+        }
+        // ── Hold-to-confirm ──
+        else if (nowTouched && wasTouched && holdStart > 0) {
+            if (millis() - holdStart >= 2000) {
+                // Erase cursor before we leave
+                if (lastX >= 0) tft.fillCircle(lastX, lastY, 7, COL_BG);
+                break;
+            }
+        }
+
+        // ── Update cursor position ──
+        if (nowTouched && dirty && (curX != lastX || curY != lastY)) {
+            // Erase old position
+            if (lastX >= 0) tft.fillCircle(lastX, lastY, 7, COL_BG);
+            // Draw new position
+            tft.fillCircle(curX, curY, 6, COL_AMBER);
+            tft.drawCircle(curX, curY, 6, COL_WHITE);
+            lastX = curX; lastY = curY;
+        }
+
+        wasTouched = nowTouched;
+        delay(30);
     }
 
-    // Poll for a single tap
-    unsigned long start = millis();
-    while (millis() - start < 15000) {
-        TouchEvent evt = touchPoll();
-        if (evt.tap == TapEvent::Tap) {
-            int tx = evt.tapX, ty = evt.tapY;
-            // If the user tapped the visible target (top-left) but the
-            // touch reports bottom-right coords, the digitizer is 180° off.
-            // Target: x=20..100, y=27..77  →  180°-rotated: x=220..300, y=163..213
-            if (tx >= 220 && tx <= 300 && ty >= 163 && ty <= 213) {
-                touchSetFlipped(!touchGetFlipped());
-            }
-            break;
-        }
-        delay(20);
-    }
+    // Wait for finger to lift
+    while (touchIsHeld()) { delay(30); }
+    delay(200);
 
     nvsPutInt("touch_cal", 1);
 #endif
@@ -954,10 +1019,11 @@ void loop() {
             Serial.println("READY");
         }
         if (cmd == 'T' || cmd == 't') {
-            touchSetFlipped(!touchGetFlipped());
+            int rot = (touchGetRotation() + 1) % 4;
+            touchSetRotation(rot);
             nvsPutInt("touch_cal", 1);   // skip first-boot calibration from now on
-            Serial.print("TOUCH:");
-            Serial.println(touchGetFlipped() ? "FLIPPED" : "NORMAL");
+            Serial.print("TOUCH_ROT:");
+            Serial.println(rot);
             s_needsRedraw = true;
         }
         if (cmd >= '0' && cmd <= '9') {

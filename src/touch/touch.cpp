@@ -8,7 +8,7 @@
 static SPIClass            g_touchSPI(VSPI);
 static XPT2046_Touchscreen g_ts(TOUCH_CS);   // no IRQ pin — poll directly
 
-static bool s_touchFlipped = false;   // runtime 180° flip, NVS-backed
+static int s_touchRotation = 2;   // 0-3, NVS-backed; default rotates 2 (180°)
 
 #define SWIPE_THRESHOLD 30
 #define SWIPE_RATIO      2
@@ -39,11 +39,17 @@ void touchInit() {
     g_touchSPI.begin(TOUCH_SCLK, TOUCH_MISO, TOUCH_MOSI, TOUCH_CS);
     g_ts.begin(g_touchSPI);
 #if CYD_USB_VERSION == 2
-    // 2USB boards have two touch-digitizer orientations. Default to flipped
-    // (rotation 2) which works on most boards. If touch is 180° off, toggle
-    // via Settings UI or serial 'T' command — persists to NVS.
-    s_touchFlipped = nvsGetInt("touch_flip", 1) != 0;
-    g_ts.setRotation(s_touchFlipped ? 2 : 0);
+    // 2USB boards have multiple touch-digitizer orientations.
+    // "touch_rot" (0-3) stores the XPT2046 rotation index.
+    // Migrate from old "touch_flip" boolean if present.
+    int rot = nvsGetInt("touch_rot", -1);
+    if (rot < 0) {
+        int oldFlip = nvsGetInt("touch_flip", 1);   // old default: flipped
+        rot = oldFlip ? 2 : 0;
+        nvsPutInt("touch_rot", rot);                // migrate
+    }
+    s_touchRotation = rot;
+    g_ts.setRotation(s_touchRotation);
 #else
     g_ts.setRotation(0);   // ESP32-32E: raw coords
 #endif
@@ -91,14 +97,14 @@ bool touchIsHeld(int16_t *ox, int16_t *oy) {
     return t;
 }
 
-void touchSetFlipped(bool flipped) {
-    s_touchFlipped = flipped;
-    nvsPutInt("touch_flip", flipped ? 1 : 0);
+void touchSetRotation(int rotation) {
+    s_touchRotation = rotation & 3;
+    nvsPutInt("touch_rot", s_touchRotation);
 #if CYD_USB_VERSION == 2
-    g_ts.setRotation(flipped ? 2 : 0);
+    g_ts.setRotation(s_touchRotation);
 #endif
 }
 
-bool touchGetFlipped() {
-    return s_touchFlipped;
+int touchGetRotation() {
+    return s_touchRotation;
 }

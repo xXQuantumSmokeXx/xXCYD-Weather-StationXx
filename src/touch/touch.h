@@ -14,5 +14,5 @@ struct TouchEvent {
 void       touchInit();
 TouchEvent touchPoll();
 bool       touchIsHeld(int16_t *ox = nullptr, int16_t *oy = nullptr);
-void       touchSetFlipped(bool flipped);   // runtime 180° touch flip (NVS-backed)
-bool       touchGetFlipped();
+void       touchSetRotation(int rotation);   // 0-3, NVS-backed
+int        touchGetRotation();

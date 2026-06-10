@@ -329,12 +329,13 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     tft.print("TOUCH:");
 
     {
-        bool flipped = touchGetFlipped();
+        int rot = touchGetRotation();
         tft.setTextColor(COL_WHITE, COL_BG);
         tft.setCursor(SEC2_X + tft.textWidth("TOUCH: "), TOUCH_Y);
-        tft.print(flipped ? "FLIPPED" : "NORMAL");
+        tft.print("ROT ");
+        tft.print(rot);
         tft.setTextColor(COL_DIM, COL_BG);
-        tft.setCursor(SEC2_X + tft.textWidth("TOUCH: NORMAL  "), TOUCH_Y);
+        tft.setCursor(SEC2_X + tft.textWidth("TOUCH: ROT 0  "), TOUCH_Y);
         tft.print("(calibrated)");
 
         // Recalibrate button (right-aligned, same row)
