@@ -492,91 +492,22 @@ static bool s_mirrorY   = true; // Y-mirror for 2USB panels, NVS-backed
 
 static void applyRotation() {
 #if CYD_USB_VERSION == 2
-    tft.setRotation(s_rotation);
-    if (s_mirrorY) {
-        // Apply Y-mirror via hardware register.  This overwrites MADCTL (clears
-        // MX/MV bits setRotation configured), but that's what the panel needs on
-        // physically-flipped 2USB boards.  When mirror is OFF we skip the register
-        // write entirely and let the clean setRotation() take effect — this fixes
-        // boards where the read-modify-write approach (v1.1.8) clipped the display.
-        tft.writecommand(TFT_MADCTL);
-        tft.writedata(TFT_MAD_MY);
-    }
+    // Call setRotation to set TFT_eSPI's internal width/height and CASET/RASET.
+    // Then apply mirror as a standalone MY bit override.
+    //
+    // The original CYD 2USB code (v1.1.7) wrote just TFT_MAD_MY (0x80) after
+    // setRotation(1), which cleared all other MADCTL bits.  This happens to
+    // be correct for 2USB boards where the ILI9341 is physically mounted in
+    // landscape orientation — they don't need the MV (row/column swap) that
+    // setRotation adds for portrait-native panels.
+    //
+    // Mirror ON:  write 0x80 (MY bit only — correct for landscape-native panel)
+    // Mirror OFF: write 0x00 (no mirroring, no swap — clean landscape)
+    tft.setRotation(1);
+    tft.writecommand(TFT_MADCTL);
+    tft.writedata(s_mirrorY ? TFT_MAD_MY : 0x00);
 #else
     tft.setRotation(s_rotation);
-#endif
-}
-
-// ── First-boot mirror calibration (2USB only) ────────────────────────────
-// After rotation is confirmed, the user toggles Y-mirror on/off to handle
-// 2USB boards where the display is physically flipped in Y.
-static void mirrorCalibrate() {
-#if CYD_USB_VERSION == 2
-    tft.fillScreen(COL_BG);
-    applyRotation();
-    tft.fillScreen(COL_BG);
-
-    auto drawMirror = [&]() {
-        tft.fillScreen(COL_BG);
-
-        // Asymmetric corner markers — with mirror they swap positions
-        tft.fillTriangle(10,         10, 40,         10,       10,         40,        COL_AMBER);
-        tft.fillTriangle(SCREEN_W-10, SCREEN_H-10, SCREEN_W-40, SCREEN_H-10, SCREEN_W-10, SCREEN_H-40, g_themeColor);
-        tft.fillCircle(SCREEN_W / 2, SCREEN_H / 2, 4, COL_WHITE);
-
-        // Mirror state text
-        tft.setTextFont(FONT_LG);
-        tft.setTextColor(g_themeColor, COL_BG);
-        const char *msg = s_mirrorY ? "MIRROR: ON" : "MIRROR: OFF";
-        int tw = tft.textWidth(msg);
-        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 - 35);
-        tft.print(msg);
-
-        // Instruction
-        tft.setTextFont(FONT_MD);
-        tft.setTextColor(COL_WHITE, COL_BG);
-        msg = "Tap to toggle";
-        tw = tft.textWidth(msg);
-        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 10);
-        tft.print(msg);
-
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(COL_DIM, COL_BG);
-        msg = "Hold 2s to confirm";
-        tw = tft.textWidth(msg);
-        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 40);
-        tft.print(msg);
-    };
-
-    drawMirror();
-
-    unsigned long holdStart = 0;
-    bool wasTouched = false;
-
-    while (true) {
-        bool nowTouched = touchIsHeld();
-
-        if (nowTouched && !wasTouched) {
-            holdStart = millis();
-        } else if (!nowTouched && wasTouched && holdStart > 0) {
-            if (millis() - holdStart < 1200) {
-                s_mirrorY = !s_mirrorY;
-                drawMirror();
-            }
-        }
-
-        if (nowTouched && wasTouched && holdStart > 0) {
-            if (millis() - holdStart >= 2000) {
-                break;
-            }
-        }
-
-        wasTouched = nowTouched;
-        delay(30);
-    }
-
-    while (touchIsHeld()) { delay(30); }
-    delay(200);
 #endif
 }
 
@@ -587,57 +518,81 @@ static void mirrorCalibrate() {
 // silently filled by the upgrade-path code, suppressing the actual screens.
 #define CURRENT_CAL_VER  1
 
-// ── First-boot rotation + mirror calibration (2USB only) ──────────────────
-// Some 2USB panels are physically rotated or flipped.  The user cycles through
-// rotations (tap), confirms (hold 2s), then toggles Y-mirror the same way.
-// Both persisted to NVS.  Serial M toggles mirror, T cycles touch rotation.
-static void rotationCalibrate() {
+// ── First-boot display calibration (2USB only) ────────────────────────────
+// 2USB boards may have the LCD physically flipped in Y.  User toggles mirror
+// ON/OFF and holds 2s to confirm.  Then touch calibration runs.
+// Serial M toggles mirror, T cycles touch rotation.
+static void displayCalibrate() {
 #if CYD_USB_VERSION == 2
     if (nvsGetInt("cal_ver", -1) >= CURRENT_CAL_VER) {
-        // Already calibrated — load saved values
         s_rotation = nvsGetInt("rot_cal", 1);
         s_mirrorY  = nvsGetInt("mirror_cal", 1) != 0;
         return;
     }
 
-    // Pre-load any old values from prior firmwares so we don't start from scratch
-    s_rotation = nvsGetInt("rot_cal", 1);
+    s_rotation = 1;  // always landscape — the only orientation that works with TFT_eSPI's ILI9341 driver
     s_mirrorY  = nvsGetInt("mirror_cal", 1) != 0;
 
-    // ── Stage 1: Rotation calibration ──────────────────────────────────────
     digitalWrite(TFT_BL, HIGH);
 
-    auto drawRot = [&]() {
+    // ── Mirror calibration ────────────────────────────────────────────────
+    // Shows a large asymmetric reference pattern so the user can see the mirror
+    // effect clearly.  Tap to toggle mirror, hold 2s to confirm.
+
+    auto drawMirrorScreen = [&]() {
         tft.fillScreen(COL_BG);
         applyRotation();
         tft.fillScreen(COL_BG);
 
-        // Rotation number dead center
+        // Big asymmetric corner markers — visually obvious when they swap
+        // Top-left: filled amber triangle pointing down-right
+        tft.fillTriangle(2, 2, 60, 2, 2, 60, COL_AMBER);
+        tft.fillTriangle(4, 4, 56, 4, 4, 56, COL_BG);
+        tft.fillTriangle(2, 2, 60, 2, 2, 60, COL_AMBER);
+
+        // Top-right: "L" shape
+        tft.fillRect(SCREEN_W - 50, 2, 48, 8, g_themeColor);
+        tft.fillRect(SCREEN_W - 8, 2, 6, 48, g_themeColor);
+
+        // Bottom-left: filled circle
+        tft.fillCircle(24, SCREEN_H - 24, 20, COL_AMBER);
+        tft.fillCircle(24, SCREEN_H - 24, 16, COL_BG);
+        tft.fillCircle(24, SCREEN_H - 24, 20, COL_AMBER);
+
+        // Bottom-right: target cross
+        tft.drawLine(SCREEN_W - 40, SCREEN_H - 24, SCREEN_W - 8, SCREEN_H - 24, g_themeColor);
+        tft.drawLine(SCREEN_W - 24, SCREEN_H - 40, SCREEN_W - 24, SCREEN_H - 8, g_themeColor);
+        tft.drawCircle(SCREEN_W - 24, SCREEN_H - 24, 14, g_themeColor);
+
+        // Center: "T" for orientation
+        tft.fillRect(SCREEN_W / 2 - 16, SCREEN_H / 2 - 24, 32, 6, COL_WHITE);
+        tft.fillRect(SCREEN_W / 2 - 4, SCREEN_H / 2 - 24, 8, 48, COL_WHITE);
+
+        // Mirror state text
         tft.setTextFont(FONT_LG);
         tft.setTextColor(g_themeColor, COL_BG);
-        char buf[4]; snprintf(buf, sizeof(buf), "%d", s_rotation);
-        int tw = tft.textWidth(buf);
-        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 - 35);
-        tft.print(buf);
-
-        // Tap instruction
-        tft.setTextFont(FONT_MD);
-        tft.setTextColor(COL_WHITE, COL_BG);
-        const char *msg = "Tap to rotate";
-        tw = tft.textWidth(msg);
-        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 10);
+        const char *msg = s_mirrorY ? "MIRROR: ON" : "MIRROR: OFF";
+        int tw = tft.textWidth(msg);
+        tft.setCursor((SCREEN_W - tw) / 2, 68);
         tft.print(msg);
 
-        // Hold instruction
+        // Instruction
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(COL_WHITE, COL_BG);
+        msg = "Tap to toggle";
+        tw = tft.textWidth(msg);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H - 72);
+        tft.print(msg);
+
         tft.setTextFont(FONT_SM);
         tft.setTextColor(COL_DIM, COL_BG);
         msg = "Hold 2s to confirm";
         tw = tft.textWidth(msg);
-        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 40);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H - 52);
         tft.print(msg);
     };
 
-    drawRot();
+    drawMirrorScreen();
 
     {
         unsigned long holdStart = 0;
@@ -650,8 +605,8 @@ static void rotationCalibrate() {
                 holdStart = millis();
             } else if (!nowTouched && wasTouched && holdStart > 0) {
                 if (millis() - holdStart < 1200) {
-                    s_rotation = (s_rotation + 1) % 4;
-                    drawRot();
+                    s_mirrorY = !s_mirrorY;
+                    drawMirrorScreen();
                 }
             }
 
@@ -667,13 +622,9 @@ static void rotationCalibrate() {
         delay(200);
     }
 
-    nvsPutInt("rot_cal", s_rotation);
-
-    // ── Stage 2: Mirror calibration ────────────────────────────────────────
-    mirrorCalibrate();
+    nvsPutInt("rot_cal", 1);
     nvsPutInt("mirror_cal", s_mirrorY ? 1 : 0);
-
-    // Don't write cal_ver yet — touchCalibrate() is the last stage
+    // cal_ver is written by touchCalibrate() after touch completes
 #endif
 }
 
@@ -829,7 +780,7 @@ void setup() {
     touchInit();
 
     // First-boot calibrations — only on 2USB, only once each
-    rotationCalibrate();
+    displayCalibrate();
     applyRotation();   // re-apply in case calibration changed it
     touchCalibrate();
 
