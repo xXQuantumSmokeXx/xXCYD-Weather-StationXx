@@ -103,8 +103,10 @@ ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — re
 
 | Board | Firmware File |
 |-------|--------------|
-| **ESP32-32E** (1-USB) | `firmware.bin` |
-| **2USB** (2 USB ports) | `firmware-2usb.bin` |
+| **ESP32-32E** (1-USB) | `merged-firmware-cyd_weather.bin` |
+| **2USB** (2 USB ports) | `merged-firmware-cyd_weather_2usb.bin` |
+
+These are **merged flash images** — bootloader + partition table + application firmware combined into a single file. Flash at offset `0x00` with any ESP32 tool (esptool, ESP32 Flash Download Tool, BinForge, etc.). No need to hunt down separate bootloader or partition files.
 
 Flash the correct firmware for your board from the latest release, then provision WiFi from the SD card:
 
@@ -127,7 +129,19 @@ pio run --environment cyd_weather
 pio run --environment cyd_weather_2usb
 ```
 
-Firmware is written to `.pio/build/<env>/firmware.bin`.
+After a successful build, three files are generated in `.pio/build/<env>/`:
+- `bootloader.bin` — ESP32 bootloader (offset 0x1000)
+- `partitions.bin` — partition table (offset 0x8000)
+- `firmware.bin` — application firmware (offset 0x10000)
+
+These are automatically merged into a single flashable image at the project root:
+
+| Environment | Merged Output |
+|-------------|--------------|
+| `cyd_weather` | `merged-firmware-cyd_weather.bin` |
+| `cyd_weather_2usb` | `merged-firmware-cyd_weather_2usb.bin` |
+
+Flash the merged file at offset `0x00`. The post-build merge step uses esptool.py (bundled with PlatformIO) — no extra dependencies needed.
 
 ### Credential Safety
 
