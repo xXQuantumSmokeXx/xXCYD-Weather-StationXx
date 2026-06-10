@@ -454,6 +454,9 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
     // Touch recalibrate button
     if (tx >= RECAL_X && tx < RECAL_X + RECAL_W &&
         ty >= RECAL_Y && ty < RECAL_Y + RECAL_H) {
+        nvsPutInt("cal_ver", -1);        // invalidate versioned key so all calibrations re-run
+        nvsPutInt("rot_cal", -1);        // also invalidate old individual keys
+        nvsPutInt("mirror_cal", -1);
         nvsPutInt("touch_cal", 0);
         tft.fillScreen(COL_BG);
         tft.setTextFont(FONT_MD);

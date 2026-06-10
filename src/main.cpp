@@ -31,12 +31,6 @@
 #include "ui/screens/screen_scanner.h"
 #include "modules/screenshot.h"
 
-// TFT_eSPI doesn't expose RD_MADCTL in all versions — define it ourselves.
-// 0x0B is the ILI9341 register read command for MADCTL (always the same).
-#ifndef TFT_RD_MADCTL
-#define TFT_RD_MADCTL 0x0B
-#endif
-
 static TFT_eSPI tft;
 
 bool g_spriteCapture = false;
@@ -500,12 +494,13 @@ static void applyRotation() {
 #if CYD_USB_VERSION == 2
     tft.setRotation(s_rotation);
     if (s_mirrorY) {
-        // Read-modify-write: preserve MX/MV/MY bits that setRotation configured,
-        // then add Y-mirror on top.  The old code used writedata(TFT_MAD_MY)
-        // which overwrote the ENTIRE MADCTL register, clearing MX/MV and making
-        // every rotation look identical.
+        // Apply Y-mirror via hardware register.  This overwrites MADCTL (clears
+        // MX/MV bits setRotation configured), but that's what the panel needs on
+        // physically-flipped 2USB boards.  When mirror is OFF we skip the register
+        // write entirely and let the clean setRotation() take effect — this fixes
+        // boards where the read-modify-write approach (v1.1.8) clipped the display.
         tft.writecommand(TFT_MADCTL);
-        tft.writedata(tft.readcommand8(TFT_RD_MADCTL, 1) | TFT_MAD_MY);
+        tft.writedata(TFT_MAD_MY);
     }
 #else
     tft.setRotation(s_rotation);
