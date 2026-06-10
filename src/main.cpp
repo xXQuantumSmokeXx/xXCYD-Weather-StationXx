@@ -585,59 +585,66 @@ static void mirrorCalibrate() {
 #endif
 }
 
-// ── First-boot rotation calibration (2USB only) ────────────────────────────
-// Some 2USB panels are physically rotated — tap to cycle rotation, hold 2s to confirm.
-// After rotation is confirmed, if mirror hasn't been calibrated yet, runs mirror
-// calibration as well.  Both persisted to NVS.
+// ── Calibration version ─────────────────────────────────────────────────────
+// Single versioned key replaces the old individual-key approach.  If cal_ver
+// isn't CURRENT_CAL_VER (e.g. after an upgrade or fresh flash), all calibration
+// screens re-run.  This avoids the v1.1.8 bug where individual keys were
+// silently filled by the upgrade-path code, suppressing the actual screens.
+#define CURRENT_CAL_VER  1
+
+// ── First-boot rotation + mirror calibration (2USB only) ──────────────────
+// Some 2USB panels are physically rotated or flipped.  The user cycles through
+// rotations (tap), confirms (hold 2s), then toggles Y-mirror the same way.
+// Both persisted to NVS.  Serial M toggles mirror, T cycles touch rotation.
 static void rotationCalibrate() {
 #if CYD_USB_VERSION == 2
-    // Check which calibrations are already done (from a previous boot or firmware)
-    int rotCal = nvsGetInt("rot_cal", -1);
-    int mirCal = nvsGetInt("mirror_cal", -1);
+    if (nvsGetInt("cal_ver", -1) >= CURRENT_CAL_VER) {
+        // Already calibrated — load saved values
+        s_rotation = nvsGetInt("rot_cal", 1);
+        s_mirrorY  = nvsGetInt("mirror_cal", 1) != 0;
+        return;
+    }
 
-    if (rotCal >= 0) s_rotation = rotCal;
-    if (mirCal >= 0) s_mirrorY  = mirCal != 0;
-
-    // Both already calibrated — nothing to show
-    if (rotCal >= 0 && mirCal >= 0) return;
+    // Pre-load any old values from prior firmwares so we don't start from scratch
+    s_rotation = nvsGetInt("rot_cal", 1);
+    s_mirrorY  = nvsGetInt("mirror_cal", 1) != 0;
 
     // ── Stage 1: Rotation calibration ──────────────────────────────────────
-    if (rotCal < 0) {
-        s_rotation = 1;
-        digitalWrite(TFT_BL, HIGH);
+    digitalWrite(TFT_BL, HIGH);
 
-        auto redraw = [&]() {
-            tft.fillScreen(COL_BG);
-            applyRotation();
-            tft.fillScreen(COL_BG);
+    auto drawRot = [&]() {
+        tft.fillScreen(COL_BG);
+        applyRotation();
+        tft.fillScreen(COL_BG);
 
-            // Rotation number dead center
-            tft.setTextFont(FONT_LG);
-            tft.setTextColor(g_themeColor, COL_BG);
-            char buf[4]; snprintf(buf, sizeof(buf), "%d", s_rotation);
-            int tw = tft.textWidth(buf);
-            tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 - 35);
-            tft.print(buf);
+        // Rotation number dead center
+        tft.setTextFont(FONT_LG);
+        tft.setTextColor(g_themeColor, COL_BG);
+        char buf[4]; snprintf(buf, sizeof(buf), "%d", s_rotation);
+        int tw = tft.textWidth(buf);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 - 35);
+        tft.print(buf);
 
-            // Tap instruction
-            tft.setTextFont(FONT_MD);
-            tft.setTextColor(COL_WHITE, COL_BG);
-            const char *msg = "Tap to rotate";
-            tw = tft.textWidth(msg);
-            tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 10);
-            tft.print(msg);
+        // Tap instruction
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(COL_WHITE, COL_BG);
+        const char *msg = "Tap to rotate";
+        tw = tft.textWidth(msg);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 10);
+        tft.print(msg);
 
-            // Hold instruction
-            tft.setTextFont(FONT_SM);
-            tft.setTextColor(COL_DIM, COL_BG);
-            msg = "Hold 2s to confirm";
-            tw = tft.textWidth(msg);
-            tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 40);
-            tft.print(msg);
-        };
+        // Hold instruction
+        tft.setTextFont(FONT_SM);
+        tft.setTextColor(COL_DIM, COL_BG);
+        msg = "Hold 2s to confirm";
+        tw = tft.textWidth(msg);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 40);
+        tft.print(msg);
+    };
 
-        redraw();
+    drawRot();
 
+    {
         unsigned long holdStart = 0;
         bool wasTouched = false;
 
@@ -645,38 +652,33 @@ static void rotationCalibrate() {
             bool nowTouched = touchIsHeld();
 
             if (nowTouched && !wasTouched) {
-                holdStart = millis();          // touch began
+                holdStart = millis();
             } else if (!nowTouched && wasTouched && holdStart > 0) {
-                // Released — short tap or long hold?
                 if (millis() - holdStart < 1200) {
-                    s_rotation = (s_rotation + 1) % 4;   // cycle 0→1→2→3→0
-                    redraw();
+                    s_rotation = (s_rotation + 1) % 4;
+                    drawRot();
                 }
             }
 
             if (nowTouched && wasTouched && holdStart > 0) {
-                if (millis() - holdStart >= 2000) {
-                    break;   // confirmed
-                }
+                if (millis() - holdStart >= 2000) break;
             }
 
             wasTouched = nowTouched;
             delay(30);
         }
 
-        // Wait for finger to lift so the held touch doesn't bleed into
-        // the mirror calibration screen.
         while (touchIsHeld()) { delay(30); }
         delay(200);
-
-        nvsPutInt("rot_cal", s_rotation);
     }
+
+    nvsPutInt("rot_cal", s_rotation);
 
     // ── Stage 2: Mirror calibration ────────────────────────────────────────
-    if (mirCal < 0) {
-        mirrorCalibrate();
-        nvsPutInt("mirror_cal", s_mirrorY ? 1 : 0);
-    }
+    mirrorCalibrate();
+    nvsPutInt("mirror_cal", s_mirrorY ? 1 : 0);
+
+    // Don't write cal_ver yet — touchCalibrate() is the last stage
 #endif
 }
 
@@ -684,11 +686,11 @@ static void rotationCalibrate() {
 // 2USB boards ship with digitizers in one of four orientations. This cycles
 // through all four XPT2046 rotations (0-3) so the user can find the one where
 // the touch cursor follows their finger correctly.
-// Tap to cycle; hold 2s to confirm. Runs once; NVS key "touch_cal".
-// Serial 'T' can re-trigger any time.
+// Tap to cycle; hold 2s to confirm. Runs once (cal_ver guard shared with
+// rotation/mirror).  Serial 'T' and Settings → Touch Flip re-trigger.
 static void touchCalibrate() {
 #if CYD_USB_VERSION == 2
-    if (nvsGetInt("touch_cal", 0) != 0) return;
+    if (nvsGetInt("cal_ver", -1) >= CURRENT_CAL_VER) return;
 
     digitalWrite(TFT_BL, HIGH);
 
@@ -801,7 +803,8 @@ static void touchCalibrate() {
     while (touchIsHeld()) { delay(30); }
     delay(200);
 
-    nvsPutInt("touch_cal", 1);
+    nvsPutInt("cal_ver", CURRENT_CAL_VER);  // marks ALL calibrations complete
+    nvsPutInt("touch_cal", 1);              // keep old key for backwards compat
 #endif
 }
 
@@ -1126,6 +1129,7 @@ void loop() {
         if (cmd == 'M' || cmd == 'm') {
             s_mirrorY = !s_mirrorY;
             nvsPutInt("mirror_cal", s_mirrorY ? 1 : 0);
+            nvsPutInt("cal_ver", CURRENT_CAL_VER);   // manual override counts as calibrated
             applyRotation();
             Serial.print("MIRROR_Y:");
             Serial.println(s_mirrorY ? "ON" : "OFF");
