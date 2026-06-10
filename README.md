@@ -209,15 +209,6 @@ The "2-USB" label covers several hardware revisions. Known differences:
 - Type `T` over serial to cycle through touch rotations.
 - Or re-run full calibration from **Settings → RECAL**.
 
-### Reporting Issues
-
-Still having trouble? Open a GitHub issue with:
-- What you see on screen (black, scrambled, rotated, touch off)
-- RGB LED color on boot (faint red, bright green, etc.)
-- WiFi connection status
-- Whether first-boot calibration screens appear
-- Your board's USB port count and chip markings
-
 Built by xXQuantum-SmokeXx, with development assistance from Codex and Claude Code.
 
 Check out my other project: [xXCYD-PokerXx](https://github.com/xXQuantumSmokeXx/xXCYD-PokerXx)
