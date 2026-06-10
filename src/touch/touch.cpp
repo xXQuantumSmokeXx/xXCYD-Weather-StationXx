@@ -1,11 +1,14 @@
 #include "touch.h"
 #include "../config/config.h"
+#include "../config/nvs_config.h"
 #include <XPT2046_Touchscreen.h>
 #include <SPI.h>
 #include <cstdlib>
 
 static SPIClass            g_touchSPI(VSPI);
 static XPT2046_Touchscreen g_ts(TOUCH_CS);   // no IRQ pin — poll directly
+
+static bool s_touchFlipped = false;   // runtime 180° flip, NVS-backed
 
 #define SWIPE_THRESHOLD 30
 #define SWIPE_RATIO      2
@@ -22,6 +25,11 @@ static bool rawToScreen(int16_t *sx, int16_t *sy) {
     // Map raw XPT2046 coords → screen pixels (landscape rotation 1)
     *sx = map(p.y, TOUCH_Y_MIN, TOUCH_Y_MAX, 0,           SCREEN_W - 1);
     *sy = map(p.x, TOUCH_X_MIN, TOUCH_X_MAX, SCREEN_H - 1, 0);
+#if CYD_USB_VERSION == 2
+    // 2USB display has MY mirror: both axes need flipping for touch
+    *sx = SCREEN_W - 1 - *sx;
+    *sy = SCREEN_H - 1 - *sy;
+#endif
     *sx = constrain(*sx, 0, SCREEN_W - 1);
     *sy = constrain(*sy, 0, SCREEN_H - 1);
     return true;
@@ -30,7 +38,15 @@ static bool rawToScreen(int16_t *sx, int16_t *sy) {
 void touchInit() {
     g_touchSPI.begin(TOUCH_SCLK, TOUCH_MISO, TOUCH_MOSI, TOUCH_CS);
     g_ts.begin(g_touchSPI);
-    g_ts.setRotation(CYD_USB_VERSION == 2 ? 2 : 0);   // 2USB: 180° touch, ESP32-32E: raw coords
+#if CYD_USB_VERSION == 2
+    // 2USB boards have two touch-digitizer orientations. Default to flipped
+    // (rotation 2) which works on most boards. If touch is 180° off, toggle
+    // via Settings UI or serial 'T' command — persists to NVS.
+    s_touchFlipped = nvsGetInt("touch_flip", 1) != 0;
+    g_ts.setRotation(s_touchFlipped ? 2 : 0);
+#else
+    g_ts.setRotation(0);   // ESP32-32E: raw coords
+#endif
 }
 
 TouchEvent touchPoll() {
@@ -73,4 +89,16 @@ bool touchIsHeld(int16_t *ox, int16_t *oy) {
     if (t && ox) *ox = tx;
     if (t && oy) *oy = ty;
     return t;
+}
+
+void touchSetFlipped(bool flipped) {
+    s_touchFlipped = flipped;
+    nvsPutInt("touch_flip", flipped ? 1 : 0);
+#if CYD_USB_VERSION == 2
+    g_ts.setRotation(flipped ? 2 : 0);
+#endif
+}
+
+bool touchGetFlipped() {
+    return s_touchFlipped;
 }

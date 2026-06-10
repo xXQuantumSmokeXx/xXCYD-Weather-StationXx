@@ -8,6 +8,7 @@
 #include "../../modules/location.h"
 #include "../../modules/time_sync.h"
 #include "../../modules/brightness.h"
+#include "../../touch/touch.h"
 #include <WiFi.h>
 #include <esp_sleep.h>
 #include <cstdio>
@@ -59,12 +60,20 @@
 #define PAGE_COUNT   10
 #define PAGE_BTN_W   ((SEC2_W - (PAGE_COUNT - 1) * PAGE_GAP) / PAGE_COUNT)  // 36
 
-// Divider between controls and theme
-#define DIV2_Y       (PAGE_BTN_Y0 + PAGE_BTN_H + 4)   // 171
+// Touch orientation — sits between PAGE and THEME sections
+#define TOUCH_Y       (PAGE_BTN_Y0 + PAGE_BTN_H + 3)   // 170
+#define TOUCH_H       12
+#define RECAL_X       258
+#define RECAL_W       52
+#define RECAL_Y       TOUCH_Y
+#define RECAL_H       TOUCH_H
+
+// Divider between page/touch and theme
+#define DIV2_Y       (TOUCH_Y + TOUCH_H + 2)            // 183
 
 // Section 3 — Theme Color (bottom)
-#define THEME_LABEL_Y (DIV2_Y + 4)          // 175
-#define SWATCH_Y0     (THEME_LABEL_Y + 12)  // 187
+#define THEME_LABEL_Y (DIV2_Y + 2)          // 185
+#define SWATCH_Y0     (THEME_LABEL_Y + 10)  // 195
 #define SWATCH_H      20
 #define SWATCH_W      ((SEC2_W - (THEME_COUNT - 1) * 2) / THEME_COUNT)  // 32
 #define SWATCH_PAD    2
@@ -313,6 +322,31 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.print(numBuf);
     }
 
+    // ── Section 2: Touch Orientation ──────────────────────────────────────────
+    tft.setTextFont(FONT_SM);
+    tft.setTextColor(g_themeColor, COL_BG);
+    tft.setCursor(SEC2_X, TOUCH_Y);
+    tft.print("TOUCH:");
+
+    {
+        bool flipped = touchGetFlipped();
+        tft.setTextColor(COL_WHITE, COL_BG);
+        tft.setCursor(SEC2_X + tft.textWidth("TOUCH: "), TOUCH_Y);
+        tft.print(flipped ? "FLIPPED" : "NORMAL");
+        tft.setTextColor(COL_DIM, COL_BG);
+        tft.setCursor(SEC2_X + tft.textWidth("TOUCH: NORMAL  "), TOUCH_Y);
+        tft.print("(calibrated)");
+
+        // Recalibrate button (right-aligned, same row)
+        tft.fillRect(RECAL_X, RECAL_Y, RECAL_W, RECAL_H, COL_INPUTBG);
+        tft.drawRect(RECAL_X, RECAL_Y, RECAL_W, RECAL_H, COL_AMBER);
+        tft.setTextColor(COL_AMBER, COL_INPUTBG);
+        const char *rl = "RECAL";
+        int rlw = tft.textWidth(rl);
+        tft.setCursor(RECAL_X + (RECAL_W - rlw) / 2, RECAL_Y + (RECAL_H - 8) / 2);
+        tft.print(rl);
+    }
+
     // Divider 2
     tft.drawFastHLine(0, DIV2_Y, SCREEN_W, COL_DIM);
 
@@ -414,6 +448,20 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
             pageMaskSave();
             return true;
         }
+    }
+
+    // Touch recalibrate button
+    if (tx >= RECAL_X && tx < RECAL_X + RECAL_W &&
+        ty >= RECAL_Y && ty < RECAL_Y + RECAL_H) {
+        nvsPutInt("touch_cal", 0);
+        tft.fillScreen(COL_BG);
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(COL_WHITE, COL_BG);
+        tft.setCursor(80, 110);
+        tft.print("Recalibrating...");
+        delay(500);
+        ESP.restart();
+        return true;
     }
 
     // Theme swatches

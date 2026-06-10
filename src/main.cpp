@@ -483,6 +483,66 @@ static void redraw() {
     s_needsRedraw = false;
 }
 
+// ── First-boot touch calibration ─────────────────────────────────────────────
+// Shows a target in the top-left corner. If the user taps it and the reported
+// position lands in the bottom-right (180° opposite), touch needs flipping.
+// Runs once; persisted via NVS key "touch_cal". Serial 'T' can toggle any time.
+static void touchCalibrate() {
+#if CYD_USB_VERSION == 2
+    if (nvsGetInt("touch_cal", 0) != 0) return;
+
+    // Backlight on in case brightnessInit hasn't run yet
+    digitalWrite(TFT_BL, HIGH);
+
+    tft.fillScreen(COL_BG);
+
+    // Draw target box in top-left
+    const int TX = 20, TY = CONTENT_Y, TW = 80, TH = 50;
+    tft.fillRect(TX, TY, TW, TH, g_themeColor);
+    tft.setTextFont(FONT_MD);
+    tft.setTextColor(COL_BG, g_themeColor);
+    tft.setCursor(TX + 8, TY + TH / 2 - 8);
+    tft.print("TAP");
+
+    // Instructions at screen center — invariant under 180° rotation,
+    // so the text is readable even if touch orientation is wrong.
+    {
+        tft.setTextFont(FONT_MD);
+        tft.setTextColor(COL_WHITE, COL_BG);
+        const char *msg = "Tap the box above";
+        int tw = tft.textWidth(msg);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 - 20);
+        tft.print(msg);
+
+        tft.setTextFont(FONT_SM);
+        tft.setTextColor(COL_DIM, COL_BG);
+        msg = "(or wait 15s for default)";
+        tw = tft.textWidth(msg);
+        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2);
+        tft.print(msg);
+    }
+
+    // Poll for a single tap
+    unsigned long start = millis();
+    while (millis() - start < 15000) {
+        TouchEvent evt = touchPoll();
+        if (evt.tap == TapEvent::Tap) {
+            int tx = evt.tapX, ty = evt.tapY;
+            // If the user tapped the visible target (top-left) but the
+            // touch reports bottom-right coords, the digitizer is 180° off.
+            // Target: x=20..100, y=27..77  →  180°-rotated: x=220..300, y=163..213
+            if (tx >= 220 && tx <= 300 && ty >= 163 && ty <= 213) {
+                touchSetFlipped(!touchGetFlipped());
+            }
+            break;
+        }
+        delay(20);
+    }
+
+    nvsPutInt("touch_cal", 1);
+#endif
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 void setup() {
     Serial.begin(115200);
@@ -514,6 +574,9 @@ void setup() {
 
     // Touch on VSPI (separate from TFT_eSPI's HSPI bus)
     touchInit();
+
+    // First-boot calibration — only on 2USB, only once
+    touchCalibrate();
 
     showSplash("Starting up...");
     ledSet(false, true, false);
@@ -802,6 +865,13 @@ void loop() {
         int cmd = Serial.read();
         if (cmd == 'R' || cmd == 'r') {
             Serial.println("READY");
+        }
+        if (cmd == 'T' || cmd == 't') {
+            touchSetFlipped(!touchGetFlipped());
+            nvsPutInt("touch_cal", 1);   // skip first-boot calibration from now on
+            Serial.print("TOUCH:");
+            Serial.println(touchGetFlipped() ? "FLIPPED" : "NORMAL");
+            s_needsRedraw = true;
         }
         if (cmd >= '0' && cmd <= '9') {
             int n = cmd - '0';

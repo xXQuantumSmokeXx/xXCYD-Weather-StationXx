@@ -21,6 +21,7 @@
 #define LOAD_FONT4
 #define LOAD_FONT6
 #define LOAD_FONT7
+#define LOAD_FONT8
 #define SMOOTH_FONT
 
 #define SPI_FREQUENCY       27000000

@@ -9,11 +9,22 @@
 static const uint8_t s_vals[BRI_LEVELS] = { 0, 60, 100, 150, 200, 255 };
 static int s_level = 0;
 
+// Arduino-ESP32 3.x replaced ledcSetup/ledcAttachPin with ledcAttach,
+// and ledcWrite(channel, duty) with ledcWrite(pin, duty).
+// Keep backward compatibility so the platform can float on latest.
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+static void applyBri(uint8_t v) { ledcWrite(TFT_BL, v); }
+#else
 static void applyBri(uint8_t v) { ledcWrite(0, v); }
+#endif
 
 void brightnessInit() {
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+    ledcAttach(TFT_BL, 5000, 8);
+#else
     ledcSetup(0, 5000, 8);
     ledcAttachPin(TFT_BL, 0);
+#endif
     s_level = nvsGetInt("bri_level", 0);
     if (s_level < 0 || s_level >= BRI_LEVELS) s_level = 0;
     applyBri(s_level > 0 ? s_vals[s_level] : 200);
