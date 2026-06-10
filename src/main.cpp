@@ -591,90 +591,92 @@ static void mirrorCalibrate() {
 // calibration as well.  Both persisted to NVS.
 static void rotationCalibrate() {
 #if CYD_USB_VERSION == 2
-    // Check if both rotation and mirror are already calibrated
+    // Check which calibrations are already done (from a previous boot or firmware)
     int rotCal = nvsGetInt("rot_cal", -1);
     int mirCal = nvsGetInt("mirror_cal", -1);
 
-    if (rotCal >= 0 && mirCal >= 0) {
-        s_rotation = rotCal;
-        s_mirrorY  = mirCal != 0;
-        return;
-    }
+    if (rotCal >= 0) s_rotation = rotCal;
+    if (mirCal >= 0) s_mirrorY  = mirCal != 0;
 
-    // Partial calibration — shouldn't happen in normal flow, but handle it
-    if (rotCal >= 0) { s_rotation = rotCal; s_mirrorY = true; nvsPutInt("mirror_cal", 1); return; }
-    if (mirCal >= 0) { s_mirrorY = mirCal != 0; s_rotation = 1; nvsPutInt("rot_cal", 1);   return; }
+    // Both already calibrated — nothing to show
+    if (rotCal >= 0 && mirCal >= 0) return;
 
-    digitalWrite(TFT_BL, HIGH);
+    // ── Stage 1: Rotation calibration ──────────────────────────────────────
+    if (rotCal < 0) {
+        s_rotation = 1;
+        digitalWrite(TFT_BL, HIGH);
 
-    auto redraw = []() {
-        tft.fillScreen(COL_BG);
-        applyRotation();
-        tft.fillScreen(COL_BG);
+        auto redraw = [&]() {
+            tft.fillScreen(COL_BG);
+            applyRotation();
+            tft.fillScreen(COL_BG);
 
-        // Rotation number dead center
-        tft.setTextFont(FONT_LG);
-        tft.setTextColor(g_themeColor, COL_BG);
-        char buf[4]; snprintf(buf, sizeof(buf), "%d", s_rotation);
-        int tw = tft.textWidth(buf);
-        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 - 35);
-        tft.print(buf);
+            // Rotation number dead center
+            tft.setTextFont(FONT_LG);
+            tft.setTextColor(g_themeColor, COL_BG);
+            char buf[4]; snprintf(buf, sizeof(buf), "%d", s_rotation);
+            int tw = tft.textWidth(buf);
+            tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 - 35);
+            tft.print(buf);
 
-        // Tap instruction
-        tft.setTextFont(FONT_MD);
-        tft.setTextColor(COL_WHITE, COL_BG);
-        const char *msg = "Tap to rotate";
-        tw = tft.textWidth(msg);
-        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 10);
-        tft.print(msg);
+            // Tap instruction
+            tft.setTextFont(FONT_MD);
+            tft.setTextColor(COL_WHITE, COL_BG);
+            const char *msg = "Tap to rotate";
+            tw = tft.textWidth(msg);
+            tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 10);
+            tft.print(msg);
 
-        // Hold instruction
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(COL_DIM, COL_BG);
-        msg = "Hold 2s to confirm";
-        tw = tft.textWidth(msg);
-        tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 40);
-        tft.print(msg);
-    };
+            // Hold instruction
+            tft.setTextFont(FONT_SM);
+            tft.setTextColor(COL_DIM, COL_BG);
+            msg = "Hold 2s to confirm";
+            tw = tft.textWidth(msg);
+            tft.setCursor((SCREEN_W - tw) / 2, SCREEN_H / 2 + 40);
+            tft.print(msg);
+        };
 
-    redraw();
+        redraw();
 
-    unsigned long holdStart = 0;
-    bool wasTouched = false;
+        unsigned long holdStart = 0;
+        bool wasTouched = false;
 
-    while (true) {
-        bool nowTouched = touchIsHeld();
+        while (true) {
+            bool nowTouched = touchIsHeld();
 
-        if (nowTouched && !wasTouched) {
-            holdStart = millis();          // touch began
-        } else if (!nowTouched && wasTouched && holdStart > 0) {
-            // Released — short tap or long hold?
-            if (millis() - holdStart < 1200) {
-                s_rotation = (s_rotation + 1) % 4;   // cycle 0→1→2→3→0
-                redraw();
+            if (nowTouched && !wasTouched) {
+                holdStart = millis();          // touch began
+            } else if (!nowTouched && wasTouched && holdStart > 0) {
+                // Released — short tap or long hold?
+                if (millis() - holdStart < 1200) {
+                    s_rotation = (s_rotation + 1) % 4;   // cycle 0→1→2→3→0
+                    redraw();
+                }
             }
+
+            if (nowTouched && wasTouched && holdStart > 0) {
+                if (millis() - holdStart >= 2000) {
+                    break;   // confirmed
+                }
+            }
+
+            wasTouched = nowTouched;
+            delay(30);
         }
 
-        if (nowTouched && wasTouched && holdStart > 0) {
-            if (millis() - holdStart >= 2000) {
-                break;   // confirmed
-            }
-        }
+        // Wait for finger to lift so the held touch doesn't bleed into
+        // the mirror calibration screen.
+        while (touchIsHeld()) { delay(30); }
+        delay(200);
 
-        wasTouched = nowTouched;
-        delay(30);
+        nvsPutInt("rot_cal", s_rotation);
     }
 
-    // Wait for finger to lift so the held touch doesn't bleed into
-    // the mirror calibration screen.
-    while (touchIsHeld()) { delay(30); }
-    delay(200);
-
-    nvsPutInt("rot_cal", s_rotation);
-
-    // Stage 2: Mirror calibration
-    mirrorCalibrate();
-    nvsPutInt("mirror_cal", s_mirrorY ? 1 : 0);
+    // ── Stage 2: Mirror calibration ────────────────────────────────────────
+    if (mirCal < 0) {
+        mirrorCalibrate();
+        nvsPutInt("mirror_cal", s_mirrorY ? 1 : 0);
+    }
 #endif
 }
 
