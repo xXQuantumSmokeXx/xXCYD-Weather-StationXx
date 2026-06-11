@@ -23,17 +23,18 @@
 #define SLP_COUNT      5
 #define SLP_GAP        2
 
-// Schedule row — 3 buttons under sleep timer (widths sum to 168px + 2 gaps = 172)
+// Schedule row — 3 buttons under sleep timer
 #define SCHED_BTN_Y    (SLP_BTN_Y0 + SLP_BTN_H + 1)   // 51
-#define SCHED_W        40
-#define SLEEP_W        64
-#define WAKE_W         64
+#define SCHED_PAD      3    // px padding each side of text inside button
+#define SLEEP_W        64   // unchanged per user request
 #define SCHED_GAP      2
-#define SCHED_X1       SEC2_X
-#define SCHED_X2       (SCHED_X1 + SCHED_W + SCHED_GAP)     // 50
-#define SCHED_X3       (SCHED_X2 + SLEEP_W + SCHED_GAP)     // 116
-#define SCHED_COUNT    5   // sleep hour options: 8PM-12AM
-#define WAKE_COUNT     5   // wake hour options: 5AM-9AM
+#define SCHED_COUNT    5    // sleep hour options: 8PM-12AM
+#define WAKE_COUNT     5    // wake hour options: 5AM-9AM
+
+// Dynamic button geometry (computed during draw, used by both draw & tap)
+static int s_schedX1 = 0, s_schedW = 0;
+static int s_schedX2 = 0, s_sleepW = 0;
+static int s_schedX3 = 0, s_wakeW  = 0;
 
 // Right column — 2×2 grid, same height as brightness buttons
 #define BTN_X1       180
@@ -212,56 +213,69 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     schedLoad();
     {
         int by = SCHED_BTN_Y;
-        // Button 1: Schedule toggle (narrow, left-aligned like OFF above)
+
+        // Measure text and compute tight-fit button widths
+        int schedTw = tft.textWidth("SCHED");
+
+        char sleepBuf[12];
+        snprintf(sleepBuf, sizeof(sleepBuf), "SLEEP %s", s_sleepHourLabels[s_sleepHourIdx]);
+        int sleepTw = tft.textWidth(sleepBuf);
+
+        char wakeBuf[12];
+        snprintf(wakeBuf, sizeof(wakeBuf), "WAKE %s", s_wakeHourLabels[s_wakeHourIdx]);
+        int wakeTw = tft.textWidth(wakeBuf);
+
+        int schedW = schedTw + SCHED_PAD * 2;
+        int sleepW = SLEEP_W;   // fixed width, leave as is
+        int wakeW  = wakeTw + SCHED_PAD * 2;
+
+        int x1 = SEC2_X;
+        int x2 = x1 + schedW + SCHED_GAP;
+        int x3 = x2 + sleepW + SCHED_GAP;
+
+        // Save for tap hit-testing
+        s_schedX1 = x1; s_schedW = schedW;
+        s_schedX2 = x2; s_sleepW = sleepW;
+        s_schedX3 = x3; s_wakeW  = wakeW;
+
+        // Button 1: Schedule toggle (tight-fit, themed like other buttons)
         {
-            int bx = SCHED_X1;
-            int bw = SCHED_W;
-            tft.fillRect(bx, by, bw, SLP_BTN_H, COL_INPUTBG);
+            tft.fillRect(x1, by, schedW, SLP_BTN_H, COL_INPUTBG);
             if (s_schedEnabled) {
-                tft.drawRect(bx - 1, by - 1, bw + 2, SLP_BTN_H + 2, COL_WHITE);
-                tft.setTextColor(COL_WHITE, COL_INPUTBG);
+                tft.drawRect(x1 - 1, by - 1, schedW + 2, SLP_BTN_H + 2, g_themeColor);
+                tft.setTextColor(g_themeColor, COL_INPUTBG);
             } else {
-                tft.drawRect(bx, by, bw, SLP_BTN_H, COL_DIM);
+                tft.drawRect(x1, by, schedW, SLP_BTN_H, COL_DIM);
                 tft.setTextColor(COL_DIM, COL_INPUTBG);
             }
-            tft.setCursor(bx + 3, by + (SLP_BTN_H - 8) / 2);  // left-aligned
+            tft.setCursor(x1 + (schedW - schedTw) / 2, by + (SLP_BTN_H - 8) / 2);
             tft.print("SCHED");
         }
-        // Button 2: Sleep time
+        // Button 2: Sleep time (unchanged)
         {
-            int bx = SCHED_X2;
-            int bw = SLEEP_W;
-            tft.fillRect(bx, by, bw, SLP_BTN_H, COL_INPUTBG);
+            tft.fillRect(x2, by, sleepW, SLP_BTN_H, COL_INPUTBG);
             if (s_schedEnabled) {
-                tft.drawRect(bx - 1, by - 1, bw + 2, SLP_BTN_H + 2, g_themeColor);
+                tft.drawRect(x2 - 1, by - 1, sleepW + 2, SLP_BTN_H + 2, g_themeColor);
                 tft.setTextColor(g_themeColor, COL_INPUTBG);
             } else {
-                tft.drawRect(bx, by, bw, SLP_BTN_H, COL_DIM);
+                tft.drawRect(x2, by, sleepW, SLP_BTN_H, COL_DIM);
                 tft.setTextColor(COL_DIM, COL_INPUTBG);
             }
-            char buf[12];
-            snprintf(buf, sizeof(buf), "SLEEP %s", s_sleepHourLabels[s_sleepHourIdx]);
-            int tw = tft.textWidth(buf);
-            tft.setCursor(bx + (bw - tw) / 2, by + (SLP_BTN_H - 8) / 2);
-            tft.print(buf);
+            tft.setCursor(x2 + (sleepW - sleepTw) / 2, by + (SLP_BTN_H - 8) / 2);
+            tft.print(sleepBuf);
         }
-        // Button 3: Wake time
+        // Button 3: Wake time (tight-fit)
         {
-            int bx = SCHED_X3;
-            int bw = WAKE_W;
-            tft.fillRect(bx, by, bw, SLP_BTN_H, COL_INPUTBG);
+            tft.fillRect(x3, by, wakeW, SLP_BTN_H, COL_INPUTBG);
             if (s_schedEnabled) {
-                tft.drawRect(bx - 1, by - 1, bw + 2, SLP_BTN_H + 2, g_themeColor);
+                tft.drawRect(x3 - 1, by - 1, wakeW + 2, SLP_BTN_H + 2, g_themeColor);
                 tft.setTextColor(g_themeColor, COL_INPUTBG);
             } else {
-                tft.drawRect(bx, by, bw, SLP_BTN_H, COL_DIM);
+                tft.drawRect(x3, by, wakeW, SLP_BTN_H, COL_DIM);
                 tft.setTextColor(COL_DIM, COL_INPUTBG);
             }
-            char buf[12];
-            snprintf(buf, sizeof(buf), "WAKE %s", s_wakeHourLabels[s_wakeHourIdx]);
-            int tw = tft.textWidth(buf);
-            tft.setCursor(bx + (bw - tw) / 2, by + (SLP_BTN_H - 8) / 2);
-            tft.print(buf);
+            tft.setCursor(x3 + (wakeW - wakeTw) / 2, by + (SLP_BTN_H - 8) / 2);
+            tft.print(wakeBuf);
         }
     }
 
@@ -480,21 +494,21 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
     {
         int by = SCHED_BTN_Y;
         // Button 1: SCHED toggle
-        if (tx >= SCHED_X1 && tx < SCHED_X1 + SCHED_W &&
+        if (tx >= s_schedX1 && tx < s_schedX1 + s_schedW &&
             ty >= by && ty < by + SLP_BTN_H) {
             s_schedEnabled = !s_schedEnabled;
             schedSave();
             return true;
         }
         // Button 2: Sleep time cycle
-        if (tx >= SCHED_X2 && tx < SCHED_X2 + SLEEP_W &&
+        if (tx >= s_schedX2 && tx < s_schedX2 + s_sleepW &&
             ty >= by && ty < by + SLP_BTN_H) {
             s_sleepHourIdx = (s_sleepHourIdx + 1) % SCHED_COUNT;
             schedSave();
             return true;
         }
         // Button 3: Wake time cycle
-        if (tx >= SCHED_X3 && tx < SCHED_X3 + WAKE_W &&
+        if (tx >= s_schedX3 && tx < s_schedX3 + s_wakeW &&
             ty >= by && ty < by + SLP_BTN_H) {
             s_wakeHourIdx = (s_wakeHourIdx + 1) % WAKE_COUNT;
             schedSave();
