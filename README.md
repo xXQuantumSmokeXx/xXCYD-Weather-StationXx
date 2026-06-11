@@ -8,7 +8,7 @@ ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — re
 
 | NOW | ALMANAC | SETTINGS |
 |-----|---------|----------|
-| ![NOW](ScreenShots/NOW.png) | ![ALMANAC](ScreenShots/ALMANAC.png) | ![SETTINGS](ScreenShots/SETTINGS.png) |
+| ![NOW](ScreenShots/NOW.png) | ![ALMANAC](ScreenShots/ALMANAC.png) | ![SETTINGS](https://raw.githubusercontent.com/xXQuantumSmokeXx/xXCYD-Weather-StationXx/v1.2.1/ScreenShots/SETTINGS.png) |
 
 | HOURLY | 5-DAY | SOLAR |
 |--------|-------|-------|
