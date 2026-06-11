@@ -1103,26 +1103,42 @@ void loop() {
         }
         if (cmd >= '0' && cmd <= '9') {
             int n = cmd - '0';
+            if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
             gotoScreen(n);
             redraw();
         } else if (cmd == 'A' || cmd == 'a') {
+            if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
             gotoScreen(10);
             redraw();
         }
         if (cmd == 'S' || cmd == 's') {
-            // 8-bit RGB332 capture via sprite. Uses 76KB heap — may fail on
-            // cluttered screens (Settings) due to fragmentation. Falls back to
-            // readPixel() when the sprite allocation fails.
+            // Force backlight on and redraw so GRAM is fresh for capture
+            bool blWasOff = s_backlightOff;
+            if (blWasOff) { s_backlightOff = false; brightnessRestore(); }
+
+            // Try full-screen sprite first (fastest — one render, one send)
             TFT_eSprite spr(&tft);
             spr.setColorDepth(8);
             uint8_t *fb = (uint8_t*)spr.createSprite(SCREEN_W, SCREEN_H);
-            if (!fb) {
-                // Fallback: read pixels one at a time from the display.
-                // Slower but works with any heap state.
+            if (fb) {
+                bool oldCapture = g_spriteCapture;
+                g_spriteCapture = false;
+                redrawTo(spr);
+                g_spriteCapture = oldCapture;
+                Serial.print("RGB332:");
+                Serial.write(fb, SCREEN_W * SCREEN_H);
+                Serial.flush();
+                spr.deleteSprite();
+            } else {
+                // Sprite failed — render to TFT, then read back line-by-line
+                // using readRect (one SPI transaction per line vs per pixel)
+                redraw();
+                uint16_t lineBuf[SCREEN_W];   // 640 bytes on stack
                 Serial.print("RGB332:");
                 for (int y = 0; y < SCREEN_H; y++) {
+                    tft.readRect(0, y, SCREEN_W, 1, lineBuf);
                     for (int x = 0; x < SCREEN_W; x++) {
-                        uint16_t c = tft.readPixel(x, y);
+                        uint16_t c = lineBuf[x];
                         uint8_t b = ((c >> 13) & 0x07) << 5
                                   | ((c >>  8) & 0x07) << 2
                                   | ((c >>  3) & 0x03);
@@ -1130,17 +1146,10 @@ void loop() {
                     }
                 }
                 Serial.flush();
-            } else {
-                bool oldCapture = g_spriteCapture;
-                g_spriteCapture = false;
-                redrawTo(spr);
-                g_spriteCapture = oldCapture;
-
-                Serial.print("RGB332:");
-                Serial.write(fb, SCREEN_W * SCREEN_H);
-                Serial.flush();
-                spr.deleteSprite();
             }
+
+            // Restore backlight if it was off before capture
+            if (blWasOff) { s_backlightOff = true; brightnessOff(); }
         }
     }
 
