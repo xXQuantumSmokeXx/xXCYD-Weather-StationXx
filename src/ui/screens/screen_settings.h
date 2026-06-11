@@ -10,3 +10,6 @@ uint32_t screenSettingsGetAutoRotateMs();
 bool     screenSettingsGetPageEnabled(int page);
 int      screenSettingsGetNextRotatePage(int current);
 int      screenSettingsGetSleepTimerSecs();  // 0=OFF, 15/30/60/300 seconds
+bool     screenSettingsGetScheduleEnabled();  // daily sleep/wake schedule active
+int      screenSettingsGetSleepHour();        // 0-23, hour to turn backlight off
+int      screenSettingsGetWakeHour();         // 0-23, hour to turn backlight on

@@ -82,14 +82,15 @@ ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — re
 - Node labels appear as the sweep line passes over each AP dot
 
 **SETTINGS screen:**
-- Sleep timer — backlight auto-off after inactivity (OFF / 15s / 30s / 1m / 5m). Tap or swipe to wake
+- **Sleep Timer** — backlight auto-off after inactivity (OFF / 15s / 30s / 1m / 5m). Tap or swipe to wake
+- **Scheduled Sleep & Wake Timer** — daily schedule to turn the backlight off during configured sleep hours (e.g. 10PM–7AM), every day. Toggle on with SCHED, then tap SLEEP and WAKE to cycle through preset hours. ESP32 stays running so NTP time and all data fetches continue normally. Backlight off saves display life without losing connectivity. Tap anywhere during the sleep window for a 30-second wake grace period before the schedule re-enforces. Independent of the inactivity timer — both can be active simultaneously, with the schedule acting as the daily default and the quick timers as one-off overrides
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
 - Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
 - 8 per-page rotation checkboxes — toggle which screens are included in auto-rotate
 - Refresh Weather and Location buttons in a 2x2 grid next to E-Ink and Power Off
 - 9 theme accent colors, saved across reboots
 - E-Ink mode — inverts display to white-background / black-foreground, toggled from the settings screen
-- Power Off — two-tap confirmation ("PWR OFF" → "SURE?") engages **Somnus Deep-Sleep Recovery**: ESP32 enters ultra-low-power deep sleep with EXT0 touch-IRQ wake on GPIO 36. A single screen tap reanimates the device instantly — no hardware reset required.
+- Power Off — two-tap confirmation ("PWR OFF" → "SURE?") engages **Somnus Deep-Sleep Recovery**: ESP32 enters ultra-low-power deep sleep with EXT0 touch-IRQ wake on GPIO 36. A single screen tap reanimates the device instantly — no hardware reset required
 
 **General:**
 - Auto-detects location via IP geolocation; no config needed beyond WiFi credentials
@@ -146,7 +147,7 @@ Flash the merged file at offset **0x00**. No extra dependencies needed — the p
 
 ## First-Boot Calibration (2-USB only)
 
-On first boot, the firmware walks through **two** calibration steps to match your board's specific LCD and digitizer orientation. All settings are saved to NVS and never repeat after calibration — use **Settings → RECAL** or flash a fresh device to re-trigger.
+On first boot, the firmware walks through **two** calibration steps to match your board's specific LCD and digitizer orientation. All settings are saved to NVS and never repeat after calibration — use **serial `T` command** or flash a fresh device to re-trigger.
 
 ### Step 1: Display Mode (LCD orientation)
 
@@ -169,7 +170,7 @@ A large asymmetric reference pattern (triangle, L-bracket, ring, crosshair, and 
 
 After display mode is confirmed, a touch calibration screen appears. A cursor follows your finger — tap to cycle through the four XPT2046 digitizer rotations until the cursor tracks your finger without offset. Four crosshair targets in the corners let you verify alignment. Hold 2 seconds to confirm.
 
-You can re-run touch calibration anytime from **Settings → RECAL**.
+You can re-run touch calibration anytime from **serial `T` command**.
 
 ### Serial Commands
 
@@ -207,7 +208,7 @@ The "2-USB" label covers several hardware revisions. Known differences:
 
 **Touch is offset or 180° off:**
 - Type `T` over serial to cycle through touch rotations.
-- Or re-run full calibration from **Settings → RECAL**.
+- Or re-run full calibration from **serial `T` command**.
 
 Built by xXQuantum-SmokeXx, with development assistance from Codex and Claude Code.
 

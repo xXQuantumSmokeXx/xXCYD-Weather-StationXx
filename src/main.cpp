@@ -56,6 +56,8 @@ static unsigned long s_lastMinute          = 0;
 static unsigned long s_lastAutoRotate      = 0;
 static unsigned long s_lastTouchMs         = 0;    // sleep timer
 static bool         s_backlightOff         = false; // sleep timer
+static bool         s_scheduleSleeping     = false; // schedule put backlight to sleep
+static unsigned long s_schedGraceUntil     = 0;     // grace period after touch during schedule sleep
 static char          s_updateStr[24]  = "Never";
 
 // ── RGB LED ───────────────────────────────────────────────────────────────
@@ -1006,6 +1008,9 @@ void loop() {
         if (s_backlightOff) {
             s_backlightOff = false;
             brightnessRestore();
+            if (s_scheduleSleeping) {
+                s_schedGraceUntil = millis() + 30000;  // 30s grace before re-sleep
+            }
         }
     }
 
@@ -1014,6 +1019,53 @@ void loop() {
         if (millis() - s_lastTouchMs >= (unsigned long)slpSecs * 1000UL) {
             s_backlightOff = true;
             brightnessOff();
+        }
+    }
+
+    // ── Schedule-based sleep ──────────────────────────────────────────────────
+    // Shuts off backlight during configured daily sleep window (e.g. 10PM–7AM).
+    // Independent of the inactivity timer above — touch grants a 30 s grace
+    // period before the schedule re-enforces.
+    {
+        bool schedEnabled = screenSettingsGetScheduleEnabled();
+
+        // Schedule was disabled while sleeping → wake up now
+        if (!schedEnabled && s_scheduleSleeping) {
+            s_scheduleSleeping = false;
+            if (s_backlightOff) {
+                s_backlightOff = false;
+                brightnessRestore();
+                s_needsRedraw = true;
+            }
+        }
+
+        if (schedEnabled && !g_invert && timeIsValid()) {
+            time_t now = time(nullptr);
+            int curHour = localtime(&now)->tm_hour;
+            int sleepHr  = screenSettingsGetSleepHour();
+            int wakeHr   = screenSettingsGetWakeHour();
+
+            bool inWindow;
+            if (sleepHr < wakeHr) {
+                // Same-day window, e.g. midnight–7AM
+                inWindow = (curHour >= sleepHr && curHour < wakeHr);
+            } else {
+                // Overnight window, e.g. 10PM–7AM
+                inWindow = (curHour >= sleepHr || curHour < wakeHr);
+            }
+
+            if (inWindow && !s_backlightOff && millis() > s_schedGraceUntil) {
+                s_scheduleSleeping = true;
+                s_backlightOff = true;
+                brightnessOff();
+            } else if (!inWindow && s_scheduleSleeping) {
+                s_scheduleSleeping = false;
+                if (s_backlightOff) {
+                    s_backlightOff = false;
+                    brightnessRestore();
+                    s_needsRedraw = true;
+                }
+            }
         }
     }
 

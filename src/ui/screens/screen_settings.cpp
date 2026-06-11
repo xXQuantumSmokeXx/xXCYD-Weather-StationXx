@@ -23,6 +23,18 @@
 #define SLP_COUNT      5
 #define SLP_GAP        2
 
+// Schedule row — 3 buttons under sleep timer (widths sum to 168px + 2 gaps = 172)
+#define SCHED_BTN_Y    (SLP_BTN_Y0 + SLP_BTN_H + 1)   // 51
+#define SCHED_W        40
+#define SLEEP_W        64
+#define WAKE_W         64
+#define SCHED_GAP      2
+#define SCHED_X1       SEC2_X
+#define SCHED_X2       (SCHED_X1 + SCHED_W + SCHED_GAP)     // 50
+#define SCHED_X3       (SCHED_X2 + SLEEP_W + SCHED_GAP)     // 116
+#define SCHED_COUNT    5   // sleep hour options: 8PM-12AM
+#define WAKE_COUNT     5   // wake hour options: 5AM-9AM
+
 // Right column — 2×2 grid, same height as brightness buttons
 #define BTN_X1       180
 #define BTN_X2       (BTN_X1 + BTN_SQ_W + 2)   // 247
@@ -63,15 +75,6 @@
 #define PAGE_COUNT   10
 #define PAGE_BTN_W   28   // fixed width, left-aligned with rotate row
 
-// Touch orientation — under sleep timer, right of page number row
-#define TOUCH_Y      58    // 4px below sleep timer buttons
-#define TOUCH_H      12
-#define RECAL_W      52
-#define RECAL_H      TOUCH_H
-// Right edge of 5th sleep timer button (index 4): 8 + 4*30 + 28 = 156
-#define RECAL_X      (SEC2_X + 4 * (SLP_BTN_W + SLP_GAP) + SLP_BTN_W - RECAL_W)  // 104
-#define RECAL_Y      TOUCH_Y
-
 // Section 3 — Theme Color (bottom)
 #define THEME_LABEL_Y 182   // moved up 3px from 185
 #define SWATCH_Y0     192   // moved up 3px from 195
@@ -95,6 +98,33 @@ static int slpCacheLoad() {
 
 static void slpCacheSave() {
     nvsPutInt("slp_timer", s_slpTimer);
+}
+
+// ── Schedule state ──────────────────────────────────────────────────────────
+static const int   s_sleepHours[SCHED_COUNT] = {20, 21, 22, 23, 0};
+static const char *s_sleepHourLabels[SCHED_COUNT] = {"8PM","9PM","10PM","11PM","12AM"};
+static const int   s_wakeHours[WAKE_COUNT]   = {5, 6, 7, 8, 9};
+static const char *s_wakeHourLabels[WAKE_COUNT]   = {"5AM","6AM","7AM","8AM","9AM"};
+
+static bool s_schedEnabled   = false;
+static int  s_sleepHourIdx   = 2;    // default: 10PM
+static int  s_wakeHourIdx    = 2;    // default: 7AM
+static bool s_schedLoaded    = false;
+
+static void schedLoad() {
+    if (s_schedLoaded) return;
+    s_schedEnabled = nvsGetInt("sched_en", 0) != 0;
+    s_sleepHourIdx = nvsGetInt("sched_slp", 2);
+    if (s_sleepHourIdx < 0 || s_sleepHourIdx >= SCHED_COUNT) s_sleepHourIdx = 2;
+    s_wakeHourIdx  = nvsGetInt("sched_wke", 2);
+    if (s_wakeHourIdx  < 0 || s_wakeHourIdx  >= WAKE_COUNT)  s_wakeHourIdx  = 2;
+    s_schedLoaded = true;
+}
+
+static void schedSave() {
+    nvsPutInt("sched_en", s_schedEnabled ? 1 : 0);
+    nvsPutInt("sched_slp", s_sleepHourIdx);
+    nvsPutInt("sched_wke", s_wakeHourIdx);
 }
 
 static const char *s_briLabels[BRI_LEVELS] = {"AUTO","DIM","LOW","MED","HIGH","MAX"};
@@ -178,6 +208,63 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.print(s_slpLabels[i]);
     }
 
+    // ── Schedule row ───────────────────────────────────────────────────────────
+    schedLoad();
+    {
+        int by = SCHED_BTN_Y;
+        // Button 1: Schedule toggle (narrow, left-aligned like OFF above)
+        {
+            int bx = SCHED_X1;
+            int bw = SCHED_W;
+            tft.fillRect(bx, by, bw, SLP_BTN_H, COL_INPUTBG);
+            if (s_schedEnabled) {
+                tft.drawRect(bx - 1, by - 1, bw + 2, SLP_BTN_H + 2, COL_WHITE);
+                tft.setTextColor(COL_WHITE, COL_INPUTBG);
+            } else {
+                tft.drawRect(bx, by, bw, SLP_BTN_H, COL_DIM);
+                tft.setTextColor(COL_DIM, COL_INPUTBG);
+            }
+            tft.setCursor(bx + 3, by + (SLP_BTN_H - 8) / 2);  // left-aligned
+            tft.print("SCHED");
+        }
+        // Button 2: Sleep time
+        {
+            int bx = SCHED_X2;
+            int bw = SLEEP_W;
+            tft.fillRect(bx, by, bw, SLP_BTN_H, COL_INPUTBG);
+            if (s_schedEnabled) {
+                tft.drawRect(bx - 1, by - 1, bw + 2, SLP_BTN_H + 2, g_themeColor);
+                tft.setTextColor(g_themeColor, COL_INPUTBG);
+            } else {
+                tft.drawRect(bx, by, bw, SLP_BTN_H, COL_DIM);
+                tft.setTextColor(COL_DIM, COL_INPUTBG);
+            }
+            char buf[12];
+            snprintf(buf, sizeof(buf), "SLEEP %s", s_sleepHourLabels[s_sleepHourIdx]);
+            int tw = tft.textWidth(buf);
+            tft.setCursor(bx + (bw - tw) / 2, by + (SLP_BTN_H - 8) / 2);
+            tft.print(buf);
+        }
+        // Button 3: Wake time
+        {
+            int bx = SCHED_X3;
+            int bw = WAKE_W;
+            tft.fillRect(bx, by, bw, SLP_BTN_H, COL_INPUTBG);
+            if (s_schedEnabled) {
+                tft.drawRect(bx - 1, by - 1, bw + 2, SLP_BTN_H + 2, g_themeColor);
+                tft.setTextColor(g_themeColor, COL_INPUTBG);
+            } else {
+                tft.drawRect(bx, by, bw, SLP_BTN_H, COL_DIM);
+                tft.setTextColor(COL_DIM, COL_INPUTBG);
+            }
+            char buf[12];
+            snprintf(buf, sizeof(buf), "WAKE %s", s_wakeHourLabels[s_wakeHourIdx]);
+            int tw = tft.textWidth(buf);
+            tft.setCursor(bx + (bw - tw) / 2, by + (SLP_BTN_H - 8) / 2);
+            tft.print(buf);
+        }
+    }
+
     // ── Right column: 2×2 grid (same style as brightness buttons) ─────────────
     // Top-left: E-Ink toggle
     {
@@ -231,21 +318,6 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.setCursor(LOC_X + (BTN_SQ_W - llw) / 2, LOC_Y + (BTN_SQ_H - 8) / 2);
         tft.print("LOCATION");
     }
-
-    // ── Touch Orientation ───────────────────────────────────────────────────────
-    tft.setTextFont(FONT_SM);
-    tft.setTextColor(g_themeColor, COL_BG);
-    tft.setCursor(SEC2_X, TOUCH_Y);
-    tft.print("TOUCH: ROT ");
-    tft.print(touchGetRotation());
-
-    // Recalibrate button (right-aligned with 5m sleep button)
-    tft.fillRect(RECAL_X, RECAL_Y, RECAL_W, RECAL_H, COL_INPUTBG);
-    tft.drawRect(RECAL_X, RECAL_Y, RECAL_W, RECAL_H, COL_AMBER);
-    tft.setTextColor(COL_AMBER, COL_INPUTBG);
-    int rlw = tft.textWidth("RECAL");
-    tft.setCursor(RECAL_X + (RECAL_W - rlw) / 2, RECAL_Y + (RECAL_H - 8) / 2);
-    tft.print("RECAL");
 
     // Divider 1
     tft.drawFastHLine(0, DIV1_Y, SCREEN_W, COL_DIM);
@@ -403,6 +475,33 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
         }
     }
 
+    // Schedule row buttons
+    schedLoad();
+    {
+        int by = SCHED_BTN_Y;
+        // Button 1: SCHED toggle
+        if (tx >= SCHED_X1 && tx < SCHED_X1 + SCHED_W &&
+            ty >= by && ty < by + SLP_BTN_H) {
+            s_schedEnabled = !s_schedEnabled;
+            schedSave();
+            return true;
+        }
+        // Button 2: Sleep time cycle
+        if (tx >= SCHED_X2 && tx < SCHED_X2 + SLEEP_W &&
+            ty >= by && ty < by + SLP_BTN_H) {
+            s_sleepHourIdx = (s_sleepHourIdx + 1) % SCHED_COUNT;
+            schedSave();
+            return true;
+        }
+        // Button 3: Wake time cycle
+        if (tx >= SCHED_X3 && tx < SCHED_X3 + WAKE_W &&
+            ty >= by && ty < by + SLP_BTN_H) {
+            s_wakeHourIdx = (s_wakeHourIdx + 1) % WAKE_COUNT;
+            schedSave();
+            return true;
+        }
+    }
+
     // Brightness
     for (int i = 0; i < BRI_LEVELS; i++) {
         int bx = SEC2_X + i * (BRI_BTN_W + 3);
@@ -439,23 +538,6 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
         }
     }
 
-    // Touch recalibrate button
-    if (tx >= RECAL_X && tx < RECAL_X + RECAL_W &&
-        ty >= RECAL_Y && ty < RECAL_Y + RECAL_H) {
-        nvsPutInt("cal_ver", -1);        // invalidate versioned key so all calibrations re-run
-        nvsPutInt("madctl", -1);         // invalidate display calibration
-        nvsPutInt("touch_cal", 0);       // invalidate touch calibration
-        tft.fillScreen(COL_BG);
-        tft.fillScreen(COL_BG);
-        tft.setTextFont(FONT_MD);
-        tft.setTextColor(COL_WHITE, COL_BG);
-        tft.setCursor(80, 110);
-        tft.print("Recalibrating...");
-        delay(500);
-        ESP.restart();
-        return true;
-    }
-
     // Theme swatches
     for (int i = 0; i < THEME_COUNT; i++) {
         int sx = SEC2_X + i * (SWATCH_W + SWATCH_PAD);
@@ -481,6 +563,21 @@ int screenSettingsGetSleepTimerSecs() {
     int idx = nvsGetInt("slp_timer", 0);
     if (idx < 0 || idx >= SLP_COUNT) return 0;
     return (int)s_slpSecs[idx];
+}
+
+bool screenSettingsGetScheduleEnabled() {
+    schedLoad();
+    return s_schedEnabled;
+}
+
+int screenSettingsGetSleepHour() {
+    schedLoad();
+    return s_sleepHours[s_sleepHourIdx];   // 0-23
+}
+
+int screenSettingsGetWakeHour() {
+    schedLoad();
+    return s_wakeHours[s_wakeHourIdx];     // 0-23
 }
 
 bool screenSettingsGetAutoRotate() {
