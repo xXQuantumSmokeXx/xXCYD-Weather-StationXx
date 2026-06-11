@@ -83,7 +83,7 @@ ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — re
 
 **SETTINGS screen:**
 - **Sleep Timer** — backlight auto-off after inactivity (OFF / 15s / 30s / 1m / 5m). Tap or swipe to wake
-- **Scheduled Sleep & Wake Timer** — daily schedule to turn the backlight off during configured sleep hours (e.g. 10PM–7AM), every day. Toggle on with SCHED, then tap SLEEP and WAKE to cycle through preset hours. ESP32 stays running so NTP time and all data fetches continue normally. Backlight off saves display life without losing connectivity. Tap anywhere during the sleep window for a 30-second wake grace period before the schedule re-enforces. Independent of the inactivity timer — both can be active simultaneously, with the schedule acting as the daily default and the quick timers as one-off overrides
+- **Scheduled Sleep & Wake Timer** — daily schedule to turn the backlight off during configured sleep hours (e.g. 10PM–7AM), every day. Toggle on with SCHED, then tap SLEEP and WAKE to cycle through preset hours. ESP32 stays running so NTP time and all data fetches continue normally. Backlight off saves display life without losing connectivity. Tap anywhere during the sleep window for a 30-second wake grace period before the schedule re-enforces. Independent of the inactivity timer — both can be active simultaneously, with the schedule acting as the daily default and the quick timers as one-off overrides.
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
 - Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
 - 8 per-page rotation checkboxes — toggle which screens are included in auto-rotate
