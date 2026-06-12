@@ -210,6 +210,10 @@ The "2-USB" label covers several hardware revisions. Known differences:
 - Type `T` over serial to cycle through touch rotations.
 - Or re-run full calibration from **serial `T` command**.
 
-Built by xXQuantum-SmokeXx, with development assistance from Codex and Claude Code.
-
 Check out my other project: [xXCYD-PokerXx](https://github.com/xXQuantumSmokeXx/xXCYD-PokerXx)
+
+Built by xXQuantum-SmokeXx, with development assistance from Codex & Claude Code.
+
+UI design ported from the "QuantumSix" "VR project", originally developed in collaboration with "Six" & "Nova"...
+
+
