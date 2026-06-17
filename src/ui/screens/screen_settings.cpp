@@ -162,19 +162,83 @@ static void pageMaskSave() {
     nvsPutInt("page_mask", s_pageMask);
 }
 
+// ── Favorite mask ────────────────────────────────────────────────────────────
+static uint16_t s_favMask  = 0x0000;
+static bool     s_favLoaded = false;
+
+static void favMaskLoad() {
+    if (s_favLoaded) return;
+    s_favMask = (uint16_t)nvsGetInt("fav_mask", 0x0000);
+    s_favLoaded = true;
+}
+
+static void favMaskSave() {
+    nvsPutInt("fav_mask", s_favMask);
+}
+
+// ── Double-tap state for favorite toggle ─────────────────────────────────────
+static int          s_lastTapPage = -1;
+static unsigned long s_lastTapMs   = 0;
+
+// ── Rotation alternation state ───────────────────────────────────────────────
+static int s_lastFavPage = -1;   // last favorite shown in rotation
+static int s_lastRegPage = -1;   // last regular shown in rotation
+
 bool screenSettingsGetPageEnabled(int page) {
     pageMaskLoad();
     if (page < 0 || page >= PAGE_COUNT) return false;
     return (s_pageMask >> page) & 1;
 }
 
+bool screenSettingsIsFavorite(int page) {
+    favMaskLoad();
+    if (page < 0 || page >= PAGE_COUNT) return false;
+    return (s_favMask >> page) & 1;
+}
+
 int screenSettingsGetNextRotatePage(int current) {
     pageMaskLoad();
-    if (s_pageMask == 0) return -1;
-    for (int i = 1; i <= PAGE_COUNT; i++) {
-        int p = (current + i) % PAGE_COUNT;
-        if ((s_pageMask >> p) & 1) return p;
+    favMaskLoad();
+
+    // ── No favorites: original round-robin behavior ──────────────────────
+    if (s_favMask == 0) {
+        if (s_pageMask == 0) return -1;
+        for (int i = 1; i <= PAGE_COUNT; i++) {
+            int p = (current + i) % PAGE_COUNT;
+            if ((s_pageMask >> p) & 1) return p;
+        }
+        return -1;
     }
+
+    // ── Favorites active: alternate fav / regular ────────────────────────
+    bool currentIsFav = (s_favMask >> current) & 1;
+
+    if (currentIsFav) {
+        // Just showed a favorite → find next regular
+        int start = (s_lastRegPage >= 0) ? s_lastRegPage : current;
+        for (int i = 1; i <= PAGE_COUNT; i++) {
+            int p = (start + i) % PAGE_COUNT;
+            if (((s_pageMask >> p) & 1) && !((s_favMask >> p) & 1)) {
+                s_lastRegPage = p;
+                return p;
+            }
+        }
+        // No regulars available — fall through to favorite round-robin
+    }
+
+    // Show a favorite next (either current was regular, or no regulars exist)
+    {
+        int start = (s_lastFavPage >= 0) ? s_lastFavPage : current;
+        for (int i = 1; i <= PAGE_COUNT; i++) {
+            int p = (start + i) % PAGE_COUNT;
+            if ((s_favMask >> p) & 1) {
+                s_lastFavPage = p;
+                return p;
+            }
+        }
+    }
+
+    // Fallback (shouldn't be reached if favMask != 0, but be safe)
     return -1;
 }
 
@@ -384,6 +448,7 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
 
     // ── Section 2: Page Rotation checkboxes (single row) ──────────────────────
     pageMaskLoad();
+    favMaskLoad();
     tft.setTextFont(FONT_SM);
     tft.setTextColor(g_themeColor, COL_BG);
     tft.setCursor(SEC2_X, PAGE_LABEL_Y);
@@ -394,6 +459,7 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         int by  = PAGE_BTN_Y0;
         int bw  = (i == PAGE_COUNT - 1) ? PAGE_BTN_W + 4 : PAGE_BTN_W;  // last box wider to align with rotate row
         bool enabled = (s_pageMask >> i) & 1;
+        bool favorite = enabled && ((s_favMask >> i) & 1);
 
         tft.fillRect(bx, by, bw, PAGE_BTN_H, COL_INPUTBG);
         tft.drawRect(bx, by, bw, PAGE_BTN_H, enabled ? g_themeColor : COL_DIM);
@@ -402,12 +468,14 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         int chkX = bx + 3;
         int chkY = by + (PAGE_BTN_H - chkSize) / 2;
         tft.drawRect(chkX, chkY, chkSize, chkSize, enabled ? g_themeColor : COL_DIM);
-        if (enabled)
-            tft.fillRect(chkX + 2, chkY + 2, chkSize - 4, chkSize - 4, g_themeColor);
+        if (enabled) {
+            uint16_t fill = favorite ? COL_AMBER : g_themeColor;
+            tft.fillRect(chkX + 2, chkY + 2, chkSize - 4, chkSize - 4, fill);
+        }
 
         char numBuf[3];
         snprintf(numBuf, sizeof(numBuf), "%d", i + 1);
-        tft.setTextColor(enabled ? COL_WHITE : COL_DIM, COL_INPUTBG);
+        tft.setTextColor(favorite ? COL_AMBER : (enabled ? COL_WHITE : COL_DIM), COL_INPUTBG);
         tft.setCursor(chkX + chkSize + 3, by + (PAGE_BTN_H - 8) / 2);
         tft.print(numBuf);
     }
@@ -540,14 +608,32 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
 
     // Page rotation checkboxes
     pageMaskLoad();
+    favMaskLoad();
     for (int i = 0; i < PAGE_COUNT; i++) {
         int bx = SEC2_X + i * (PAGE_BTN_W + PAGE_GAP);
         int bw = (i == PAGE_COUNT - 1) ? PAGE_BTN_W + 4 : PAGE_BTN_W;
         if (tx >= bx && tx < bx + bw &&
             ty >= PAGE_BTN_Y0 && ty < PAGE_BTN_Y0 + PAGE_BTN_H) {
+
+            // Double-tap: same box within 500ms → toggle favorite
+            if (s_lastTapPage == i && (millis() - s_lastTapMs) < 500) {
+                s_favMask ^= (1 << i);
+                favMaskSave();
+                s_lastTapPage = -1;   // reset — prevent triple-tap
+                return true;
+            }
+
+            // Single tap: toggle enable
             s_pageMask ^= (1 << i);
             if (s_pageMask == 0) s_pageMask = (1 << i);
+            // Disabling a page also clears its favorite flag
+            if (!((s_pageMask >> i) & 1)) {
+                s_favMask &= ~(1u << i);
+                favMaskSave();
+            }
             pageMaskSave();
+            s_lastTapPage = i;
+            s_lastTapMs   = millis();
             return true;
         }
     }

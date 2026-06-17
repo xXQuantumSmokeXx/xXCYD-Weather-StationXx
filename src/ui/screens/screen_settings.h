@@ -8,6 +8,7 @@ bool     screenSettingsRefreshTapped();
 bool     screenSettingsGetAutoRotate();
 uint32_t screenSettingsGetAutoRotateMs();
 bool     screenSettingsGetPageEnabled(int page);
+bool     screenSettingsIsFavorite(int page);
 int      screenSettingsGetNextRotatePage(int current);
 int      screenSettingsGetSleepTimerSecs();  // 0=OFF, 15/30/60/300 seconds
 bool     screenSettingsGetScheduleEnabled();  // daily sleep/wake schedule active
