@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <time.h>
 #include <cstring>
@@ -11,6 +12,9 @@ CurrentWeather  g_current;
 HourlyWeather   g_hourly[HOURLY_COUNT];
 DailyWeather    g_daily[DAILY_COUNT];
 int             g_utcOffsetSec = 0;
+WeatherAlert    g_weatherAlert;
+bool            g_alertsChecked = false;
+unsigned long   g_weatherUpdatedEpoch = 0;
 int             g_weatherError = 0;
 
 const char* wmoDescription(int c) {
@@ -78,6 +82,44 @@ static void parseDayName(const char *s, char *buf3) {
     buf3[3] = '\0';
 }
 
+
+static void fetchNwsAlert(float lat, float lon) {
+    g_weatherAlert = WeatherAlert{};
+    g_alertsChecked = false;
+
+    char url[160];
+    snprintf(url, sizeof(url),
+             "https://api.weather.gov/alerts/active?point=%.4f,%.4f", lat, lon);
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    if (!http.begin(client, url)) return;
+    http.setTimeout(12000);
+    http.addHeader("User-Agent", "xXCYD-Weather-StationXx github.com/xXQuantumSmokeXx");
+    http.addHeader("Accept", "application/geo+json");
+    http.addHeader("Accept-Encoding", "identity");
+    int code = http.GET();
+    if (code != 200) { http.end(); return; }
+
+    JsonDocument filter;
+    filter["features"][0]["properties"]["event"] = true;
+    filter["features"][0]["properties"]["severity"] = true;
+    JsonDocument alertDoc;
+    DeserializationError err = deserializeJson(
+        alertDoc, http.getStream(), DeserializationOption::Filter(filter));
+    http.end();
+    if (err) return;
+
+    g_alertsChecked = true;
+    JsonObjectConst props = alertDoc["features"][0]["properties"];
+    const char *event = props["event"] | "";
+    const char *severity = props["severity"] | "Unknown";
+    if (event[0]) {
+        g_weatherAlert.active = true;
+        snprintf(g_weatherAlert.event, sizeof(g_weatherAlert.event), "%s", event);
+        snprintf(g_weatherAlert.severity, sizeof(g_weatherAlert.severity), "%s", severity);
+    }
+}
 bool weatherFetch(float lat, float lon) {
     char url[640];
     snprintf(url, sizeof(url),
@@ -195,5 +237,7 @@ bool weatherFetch(float lat, float lon) {
         parseSunTime(dailySunset[i]  | "", g_daily[i].sunset,  sizeof(g_daily[i].sunset));
     }
 
+    fetchNwsAlert(lat, lon);
+    g_weatherUpdatedEpoch = (unsigned long)time(nullptr);
     return true;
 }

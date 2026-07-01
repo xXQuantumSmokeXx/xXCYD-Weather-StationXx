@@ -73,8 +73,8 @@ static int s_schedX3 = 0, s_wakeW  = 0;
 #define PAGE_BTN_Y0  (PAGE_LABEL_Y + 8)               // 158
 #define PAGE_BTN_H   18
 #define PAGE_GAP     2
-#define PAGE_COUNT   10
-#define PAGE_BTN_W   28   // fixed width, left-aligned with rotate row
+#define PAGE_COUNT   11
+#define PAGE_BTN_W   25   // fixed width, left-aligned with rotate row
 
 // Section 3 — Theme Color (bottom)
 #define THEME_LABEL_Y 182   // moved up 3px from 185
@@ -147,19 +147,26 @@ static void autoRotLoad() {
 }
 
 // ── Page rotation mask ────────────────────────────────────────────────────────
-// Bit 0 = page 0 (NOW), bit 1 = page 1 (HOURLY), ..., bit 9 = page 9 (SCANNER)
-static uint16_t s_pageMask  = 0x3FF;  // 10 pages (0-9)
+// Bit 0 = NOW, ..., bit 4 = FIRETEAM, ..., bit 10 = SCANNER
+static uint16_t s_pageMask  = 0x7FF;  // 11 pages (0-10)
 static bool     s_pageLoaded = false;
 
 static void pageMaskLoad() {
     if (s_pageLoaded) return;
-    s_pageMask = (uint16_t)nvsGetInt("page_mask", 0x3FF);
-    if (s_pageMask == 0) s_pageMask = 0x3FF;
+    int v2 = nvsGetInt("page_mask_v2", -1);
+    if (v2 < 0) {
+        uint16_t old = (uint16_t)nvsGetInt("page_mask", 0x3FF);
+        s_pageMask = (old & 0x000F) | 0x0010 | ((old & 0x03F0) << 1);
+        nvsPutInt("page_mask_v2", s_pageMask);
+    } else {
+        s_pageMask = (uint16_t)v2;
+    }
+    if (s_pageMask == 0) s_pageMask = 0x7FF;
     s_pageLoaded = true;
 }
 
 static void pageMaskSave() {
-    nvsPutInt("page_mask", s_pageMask);
+    nvsPutInt("page_mask_v2", s_pageMask);
 }
 
 // ── Favorite mask ────────────────────────────────────────────────────────────
@@ -246,7 +253,7 @@ int screenSettingsGetNextRotatePage(int current) {
 void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SETTINGS", timeStr, wifiOk);
-    drawBottombar(tft, "", 10, 11);
+    drawBottombar(tft, "", 11, 12);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     slpCacheLoad();

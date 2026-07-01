@@ -41,6 +41,16 @@ extern CurrentWeather   g_current;
 extern HourlyWeather    g_hourly[HOURLY_COUNT];
 extern DailyWeather     g_daily[DAILY_COUNT];
 extern int              g_utcOffsetSec;
+
+struct WeatherAlert {
+    bool active = false;
+    char event[48] = {};
+    char severity[16] = {};
+};
+
+extern WeatherAlert g_weatherAlert;
+extern bool         g_alertsChecked;
+extern unsigned long g_weatherUpdatedEpoch;
 extern int              g_weatherError;   // last HTTP error code, 0 = ok
 
 bool        weatherFetch(float lat, float lon);

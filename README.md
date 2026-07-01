@@ -42,6 +42,13 @@ ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — re
 - 24-hour Kp history bar chart
 - Auto-refreshes at the top of each hour; tap title bar for manual refresh
 
+
+**FIRETEAM screen:**
+- 12-hour operational risk assessment for fire, storms, and heat
+- LOW / ELEVATED / HIGH / CRITICAL readiness level with explainable conditions
+- Actionable safety guidance for the highest forecast threat
+- Official NWS alert status and severity override for the current location
+- Forecast update time and highest-risk time window
 **FIRES screen:**
 - NIFC WFIGS active wildfire events — fire name, state, acreage, cause, and containment %
 - Sorted newest-first, scrollable via swipe up/down
@@ -86,7 +93,7 @@ ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — re
 - **Scheduled Sleep & Wake Timer** — daily schedule to turn the backlight off during configured sleep hours (e.g. 10PM–7AM), every day. Toggle on with SCHED, then tap SLEEP and WAKE to cycle through preset hours. ESP32 stays running so NTP time and all data fetches continue normally. Backlight off saves display life without losing connectivity. Tap anywhere during the sleep window for a 30-second wake grace period before the schedule re-enforces. Independent of the inactivity timer — both can be active simultaneously, with the schedule acting as the daily default and the quick timers as one-off overrides.
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
 - Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
-- 10 per-page rotation checkboxes — toggle which screens are included in auto-rotate
+- 11 per-page rotation checkboxes — toggle which screens are included in auto-rotate
 - **Favorite screens** — double-tap any page checkbox to mark it as a favorite (amber highlight). Favorites are interspersed between regular screens during rotation (e.g. Fav, 2, Fav, 3, Fav, 4…), so your most-used screens appear twice as often. Multiple favorites cycle round-robin. Double-tap again to un-favorite; disabling a page auto-clears its favorite
 - Refresh Weather and Location buttons in a 2x2 grid next to E-Ink and Power Off
 - 9 theme accent colors, saved across reboots
@@ -99,7 +106,7 @@ ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — re
 - Refreshes at the top of each hour
 - Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, NEWS)
 - FIRES and USGS headline text uses the active theme color
-- 11 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRES, USGS, VOLCANOES, NEWS, ALMANAC, SCANNER, SETTINGS
+- 12 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, FIRES, USGS, VOLCANOES, NEWS, ALMANAC, SCANNER, SETTINGS
 
 ### Setup
 
