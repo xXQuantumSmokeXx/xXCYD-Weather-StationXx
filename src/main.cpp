@@ -60,6 +60,16 @@ static bool         s_backlightOff         = false; // sleep timer
 static bool         s_scheduleSleeping     = false; // schedule put backlight to sleep
 static unsigned long s_schedGraceUntil     = 0;     // grace period after touch during schedule sleep
 static char          s_updateStr[24]  = "Never";
+enum RefreshBit : uint8_t {
+    REFRESH_FIRES     = 1 << 0,
+    REFRESH_USGS      = 1 << 1,
+    REFRESH_NEWS      = 1 << 2,
+    REFRESH_VOLCANOES = 1 << 3,
+    REFRESH_SOLAR     = 1 << 4,
+    REFRESH_ALL_DATA  = 0x1F
+};
+static uint8_t s_refreshQueue = 0;
+static bool    s_refreshAllWeather = false;
 
 // ── RGB LED ───────────────────────────────────────────────────────────────
 static void ledSet(bool r, bool g, bool b) {
@@ -788,50 +798,46 @@ void loop() {
         lastLdr = millis();
     }
 
-    // Weather refresh — top of each new hour (async, Core 0)
-    if (s_wifiOk && !workerBusy()) {
-        bool shouldFetch = false;
-        if (timeIsValid()) {
-            time_t now = time(nullptr);
-            int curHour = localtime(&now)->tm_hour;
-            if (curHour != s_lastWeatherHour) shouldFetch = true;
-        }
-        if (shouldFetch && millis() - s_lastWeatherAttempt > 60000) {
+    // Weather and data refresh scheduler. Every due source is queued, then a
+    // single job is dispatched when the Core 0 worker is free.
+    if (s_wifiOk && timeIsValid()) {
+        time_t now = time(nullptr);
+        int curHour = localtime(&now)->tm_hour;
+
+        bool weatherDue = curHour != s_lastWeatherHour;
+        if (!workerBusy() && (s_refreshAllWeather ||
+            (weatherDue && millis() - s_lastWeatherAttempt > 60000))) {
+            bool includeLocation = s_refreshAllWeather;
+            s_refreshAllWeather = false;
             s_lastWeatherAttempt = millis();
-            triggerFetch(false);
+            triggerFetch(includeLocation);
         }
+
+        if (!g_firesPending && !(s_refreshQueue & REFRESH_FIRES) && curHour != s_lastFiresHour && millis() - s_lastFiresAttempt > 60000) s_refreshQueue |= REFRESH_FIRES;
+        if (!g_usgsPending && !(s_refreshQueue & REFRESH_USGS) && curHour != s_lastUsgsHour && millis() - s_lastUsgsAttempt > 60000) s_refreshQueue |= REFRESH_USGS;
+        if (!g_newsPending && !(s_refreshQueue & REFRESH_NEWS) && curHour != s_lastNewsHour && millis() - s_lastNewsAttempt > 60000) s_refreshQueue |= REFRESH_NEWS;
+        if (!g_volcanoesPending && !(s_refreshQueue & REFRESH_VOLCANOES) && curHour != s_lastVolcanoesHour && millis() - s_lastVolcanoesAttempt > 60000) s_refreshQueue |= REFRESH_VOLCANOES;
+        if (!g_solarPending && !(s_refreshQueue & REFRESH_SOLAR) && curHour != s_lastSolarHour && millis() - s_lastSolarAttempt > 60000) s_refreshQueue |= REFRESH_SOLAR;
     }
 
-    // Hourly auto-refresh for all data screens (async, Core 0)
-    // Each triggers once per hour, independent of screen navigation
-    if (s_wifiOk && !workerBusy()) {
-        if (timeIsValid()) {
-            time_t now = time(nullptr);
-            int curHour = localtime(&now)->tm_hour;
-
-            if (!g_solarPending && curHour != s_lastSolarHour && millis() - s_lastSolarAttempt > 60000) {
-                s_lastSolarAttempt = millis(); s_lastSolarHour = -1;
-                g_solarPending = true; triggerSolarFetch();
-            }
-            if (!g_firesPending && curHour != s_lastFiresHour && millis() - s_lastFiresAttempt > 60000) {
-                s_lastFiresAttempt = millis(); s_lastFiresHour = -1;
-                g_firesPending = true; triggerFiresFetch();
-            }
-            if (!g_usgsPending && curHour != s_lastUsgsHour && millis() - s_lastUsgsAttempt > 60000) {
-                s_lastUsgsAttempt = millis(); s_lastUsgsHour = -1;
-                g_usgsPending = true; triggerUsgsFetch();
-            }
-            if (!g_newsPending && curHour != s_lastNewsHour && millis() - s_lastNewsAttempt > 60000) {
-                s_lastNewsAttempt = millis(); s_lastNewsHour = -1;
-                g_newsPending = true; triggerNewsFetch();
-            }
-            if (!g_volcanoesPending && curHour != s_lastVolcanoesHour && millis() - s_lastVolcanoesAttempt > 60000) {
-                s_lastVolcanoesAttempt = millis(); s_lastVolcanoesHour = -1;
-                g_volcanoesPending = true; triggerVolcanoesFetch();
-            }
+    if (s_wifiOk && !workerBusy() && s_refreshQueue) {
+        if (s_refreshQueue & REFRESH_FIRES) {
+            s_refreshQueue &= ~REFRESH_FIRES;
+            g_firesPending = true; s_lastFiresAttempt = millis(); triggerFiresFetch();
+        } else if (s_refreshQueue & REFRESH_USGS) {
+            s_refreshQueue &= ~REFRESH_USGS;
+            g_usgsPending = true; s_lastUsgsAttempt = millis(); triggerUsgsFetch();
+        } else if (s_refreshQueue & REFRESH_NEWS) {
+            s_refreshQueue &= ~REFRESH_NEWS;
+            g_newsPending = true; s_lastNewsAttempt = millis(); triggerNewsFetch();
+        } else if (s_refreshQueue & REFRESH_VOLCANOES) {
+            s_refreshQueue &= ~REFRESH_VOLCANOES;
+            g_volcanoesPending = true; s_lastVolcanoesAttempt = millis(); triggerVolcanoesFetch();
+        } else if (s_refreshQueue & REFRESH_SOLAR) {
+            s_refreshQueue &= ~REFRESH_SOLAR;
+            g_solarPending = true; s_lastSolarAttempt = millis(); triggerSolarFetch();
         }
     }
-
     // Weather fetch completion
     if (s_fetchDone) {
         xSemaphoreTake(s_dataMutex, portMAX_DELAY);
@@ -845,30 +851,36 @@ void loop() {
     // Fires fetch completion
     if (s_firesDone) {
         xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        bool ok = s_firesOk;
         s_firesDone = false;
         g_firesPending = false;
         xSemaphoreGive(s_dataMutex);
-        if (timeIsValid()) { time_t now = time(nullptr); s_lastFiresHour = localtime(&now)->tm_hour; }
+        if (ok && timeIsValid()) { time_t now = time(nullptr); s_lastFiresHour = localtime(&now)->tm_hour; }
+        else s_lastFiresHour = -1;
         if (s_screen == 5) s_needsRedraw = true;
     }
 
     // USGS fetch completion
     if (s_usgsDone) {
         xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        bool ok = s_usgsOk;
         s_usgsDone = false;
         g_usgsPending = false;
         xSemaphoreGive(s_dataMutex);
-        if (timeIsValid()) { time_t now = time(nullptr); s_lastUsgsHour = localtime(&now)->tm_hour; }
+        if (ok && timeIsValid()) { time_t now = time(nullptr); s_lastUsgsHour = localtime(&now)->tm_hour; }
+        else s_lastUsgsHour = -1;
         if (s_screen == 6) s_needsRedraw = true;
     }
 
     // Volcanoes fetch completion
     if (s_volcanoesDone) {
         xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        bool ok = s_volcanoesOk;
         s_volcanoesDone = false;
         g_volcanoesPending = false;
         xSemaphoreGive(s_dataMutex);
-        if (timeIsValid()) { time_t now = time(nullptr); s_lastVolcanoesHour = localtime(&now)->tm_hour; }
+        if (ok && timeIsValid()) { time_t now = time(nullptr); s_lastVolcanoesHour = localtime(&now)->tm_hour; }
+        else s_lastVolcanoesHour = -1;
         if (s_screen == 7) s_needsRedraw = true;
     }
 
@@ -888,11 +900,13 @@ void loop() {
     // News fetch completion
     if (s_newsDone) {
         xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        bool ok = s_newsOk;
         s_newsDone = false;
         g_newsPending = false;
         xSemaphoreGive(s_dataMutex);
-        if (timeIsValid()) { time_t now = time(nullptr); s_lastNewsHour = localtime(&now)->tm_hour; }
-        if (s_screen == 8) s_needsRedraw = true;  // News
+        if (ok && timeIsValid()) { time_t now = time(nullptr); s_lastNewsHour = localtime(&now)->tm_hour; }
+        else s_lastNewsHour = -1;
+        if (s_screen == 8) s_needsRedraw = true;
     }
 
     // Clock tick — only update the time text, not a full redraw
@@ -999,7 +1013,8 @@ void loop() {
             if (changed) s_needsRedraw = true;
             if (screenSettingsRefreshTapped()) {
                 showSplash("Refreshing...");
-                triggerFetch(true);
+                s_refreshAllWeather = true;
+                s_refreshQueue |= REFRESH_ALL_DATA;
             }
         }
     }
