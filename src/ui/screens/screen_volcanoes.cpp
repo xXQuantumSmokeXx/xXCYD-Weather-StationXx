@@ -14,7 +14,7 @@
 
 #define VOLCANO_CACHE_MS (15UL * 60UL * 1000UL)
 #define VOLCANO_MAX 24
-#define VOLCANO_ROW_H 36   // two lines per volcano
+#define VOLCANO_ROW_H 34   // two lines per volcano
 
 struct VolcanoItem {
     char name[40];
@@ -279,7 +279,7 @@ void screenVolcanoesDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "VOLCANOES", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 6, 11);
+    drawBottombar(tft, dateStr, 7, 12);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     bool doFetch = (!s_fetchedOnce || s_forceRefresh) && wifiOk && !g_volcanoesPending;
@@ -314,7 +314,7 @@ void screenVolcanoesTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {
 }
 
 void screenVolcanoesSwipe(int dir) {
-    int headerH = 22;
+    int headerH = 24;
     int perPage = (CONTENT_H - headerH) / VOLCANO_ROW_H;
     int maxOff = s_volcanoCount - perPage;
     if (maxOff < 0) maxOff = 0;
