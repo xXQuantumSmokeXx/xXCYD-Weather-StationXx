@@ -798,15 +798,44 @@ void loop() {
         lastLdr = millis();
     }
 
+    // WiFi health check — update status and attempt reconnect if link is down.
+    // s_wifiOk was previously set once at boot and never updated, so a mid-run
+    // disconnection would cause silent fetch failures forever.
+    {
+        static unsigned long s_lastWifiCheck = 0;
+        if (millis() - s_lastWifiCheck > 30000) {
+            wl_status_t st = WiFi.status();
+            if (st != WL_CONNECTED && s_wifiOk) {
+                // Connection dropped — try to bring it back
+                WiFi.reconnect();
+            }
+            s_wifiOk = (st == WL_CONNECTED);
+            s_lastWifiCheck = millis();
+        }
+    }
+
     // Weather and data refresh scheduler. Every due source is queued, then a
     // single job is dispatched when the Core 0 worker is free.
     if (s_wifiOk && timeIsValid()) {
         time_t now = time(nullptr);
         int curHour = localtime(&now)->tm_hour;
 
-        bool weatherDue = curHour != s_lastWeatherHour;
+        // Periodic NTP re-sync — ESP32 clocks drift over hours/days.
+        // A quiet re-sync every 6 h keeps localtime() accurate so the
+        // hour-change trigger fires at the right wall-clock hour.
+        {
+            static unsigned long s_lastNtpSync = 0;
+            if (millis() - s_lastNtpSync > 21600000UL) {  // 6 h
+                configTime(g_utcOffsetSec, 0, "pool.ntp.org", "time.cloudflare.com");
+                s_lastNtpSync = millis();
+            }
+        }
+
+        bool weatherDue   = curHour != s_lastWeatherHour;
+        bool weatherStale = (g_weatherUpdatedEpoch > 0) &&
+                            (now - (time_t)g_weatherUpdatedEpoch > 7200); // 2 h
         if (!workerBusy() && (s_refreshAllWeather ||
-            (weatherDue && millis() - s_lastWeatherAttempt > 60000))) {
+            ((weatherDue || weatherStale) && millis() - s_lastWeatherAttempt > 60000))) {
             bool includeLocation = s_refreshAllWeather;
             s_refreshAllWeather = false;
             s_lastWeatherAttempt = millis();
