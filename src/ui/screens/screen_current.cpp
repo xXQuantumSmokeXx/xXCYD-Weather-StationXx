@@ -104,8 +104,12 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
     if (!g_current.valid) {
         tft.setTextFont(FONT_MD);
         tft.setTextColor(g_themeColor, COL_BG);
-        tft.setCursor(60, 110);
+        tft.setCursor(20, 100);
         tft.print("No weather data");
+        tft.setCursor(20, 120);
+        char ebuf[48];
+        snprintf(ebuf, sizeof(ebuf), "Err:%d Loc:%d Wifi:%d", g_weatherError, (int)g_location.valid, (int)wifiOk);
+        tft.print(ebuf);
         return;
     }
 

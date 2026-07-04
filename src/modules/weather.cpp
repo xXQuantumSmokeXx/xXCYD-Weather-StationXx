@@ -1,4 +1,5 @@
 #include "weather.h"
+#include "time_sync.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClient.h>
@@ -7,6 +8,7 @@
 #include <time.h>
 #include <cstring>
 #include <cstdio>
+#include <cstdlib>
 
 CurrentWeather  g_current;
 HourlyWeather   g_hourly[HOURLY_COUNT];
@@ -120,6 +122,9 @@ static void fetchNwsAlert(float lat, float lon) {
         snprintf(g_weatherAlert.severity, sizeof(g_weatherAlert.severity), "%s", severity);
     }
 }
+static bool weatherFetchNWS(float lat, float lon);
+static bool weatherFetchNWSPublic(float lat, float lon);
+
 bool weatherFetch(float lat, float lon) {
     char url[640];
     snprintf(url, sizeof(url),
@@ -143,12 +148,13 @@ bool weatherFetch(float lat, float lon) {
     HTTPClient http;
     http.begin(client, url);
     http.setTimeout(15000);
+    http.addHeader("User-Agent", "CYD-Weather/1.0");
     http.addHeader("Accept-Encoding", "identity");  // prevent gzip — ArduinoJson can't decompress
     int code = http.GET();
     if (code != 200) {
         g_weatherError = code;
         http.end();
-        return false;
+        return weatherFetchNWS(lat, lon);
     }
     g_weatherError = 0;
 
@@ -159,7 +165,7 @@ bool weatherFetch(float lat, float lon) {
     auto err = deserializeJson(doc, body);
     if (err) {
         g_weatherError = -(int)err.code();  // negative = JSON error
-        return false;
+        return weatherFetchNWS(lat, lon);
     }
 
     // UTC offset (used by time sync)
@@ -235,6 +241,293 @@ bool weatherFetch(float lat, float lon) {
         g_daily[i].humidity_max  = dailyHumi[i] | 0;
         parseSunTime(dailySunrise[i] | "", g_daily[i].sunrise, sizeof(g_daily[i].sunrise));
         parseSunTime(dailySunset[i]  | "", g_daily[i].sunset,  sizeof(g_daily[i].sunset));
+    }
+
+    fetchNwsAlert(lat, lon);
+    g_weatherUpdatedEpoch = (unsigned long)time(nullptr);
+    return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NWS API fallback — api.weather.gov, free, no key, HTTPS (.gov = ESP32 compat)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Map "10 mph" → float
+static float nwsWindSpeed(const char *s) {
+    if (!s) return 0;
+    return strtof(s, nullptr);
+}
+
+// Map "NW" → degrees
+static int nwsWindDir(const char *s) {
+    if (!s || !s[0]) return 0;
+    char buf[4]; strncpy(buf, s, 3); buf[3] = 0;
+    for (char *p = buf; *p; p++) *p = tolower(*p);
+    if (strcmp(buf, "n") == 0)  return 0;
+    if (strcmp(buf, "ne") == 0) return 45;
+    if (strcmp(buf, "e") == 0)  return 90;
+    if (strcmp(buf, "se") == 0) return 135;
+    if (strcmp(buf, "s") == 0)  return 180;
+    if (strcmp(buf, "sw") == 0) return 225;
+    if (strcmp(buf, "w") == 0)  return 270;
+    if (strcmp(buf, "nw") == 0) return 315;
+    if (strcmp(buf, "nnw")==0)  return 338;
+    if (strcmp(buf, "wsw")==0)  return 248;
+    if (strcmp(buf, "ene")==0)  return 68;
+    if (strcmp(buf, "nne")==0)  return 23;
+    if (strcmp(buf, "wnw")==0)  return 293;
+    if (strcmp(buf, "ese")==0)  return 113;
+    if (strcmp(buf, "sse")==0)  return 158;
+    if (strcmp(buf, "ssw")==0)  return 203;
+    return 0;
+}
+
+// Map NWS shortForecast to WMO code
+static int nwsToWmo(const char *fc) {
+    if (!fc || !fc[0]) return 0;
+    char buf[64]; strncpy(buf, fc, 63); buf[63] = 0;
+    for (char *p = buf; *p; p++) *p = tolower(*p);
+    if (strstr(buf, "thunderstorm") || strstr(buf, "t-storm")) return 95;
+    if (strstr(buf, "heavy snow") || strstr(buf, "blizzard")) return 75;
+    if (strstr(buf, "snow")) return 71;
+    if (strstr(buf, "freezing rain") || strstr(buf, "sleet")) return 56;
+    if (strstr(buf, "heavy rain")) return 65;
+    if (strstr(buf, "rain") && strstr(buf, "shower")) return 80;
+    if (strstr(buf, "rain")) return 61;
+    if (strstr(buf, "drizzle")) return 51;
+    if (strstr(buf, "fog") || strstr(buf, "haze")) return 45;
+    if (strstr(buf, "overcast")) return 3;
+    if (strstr(buf, "mostly cloudy")) return 3;
+    if (strstr(buf, "partly cloudy")) return 2;
+    if (strstr(buf, "mostly sunny") || strstr(buf, "mostly clear")) return 2;
+    if (strstr(buf, "partly sunny")) return 2;
+    if (strstr(buf, "sunny") || strstr(buf, "clear") || strstr(buf, "fair")) return 0;
+    if (strstr(buf, "cloudy")) return 3;
+    return 3;
+}
+
+// NWS GET helper — explicit host/path avoids HTTPClient URL parsing bugs
+static bool nwsGet(const char *host, const char *path, JsonDocument &doc) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    client.setTimeout(10);
+    HTTPClient http;
+    if (!http.begin(client, host, 443, path, true)) { http.end(); return false; }
+    http.setTimeout(12000);
+    http.addHeader("User-Agent", "xXCYD-Weather-StationXx github.com/xXQuantumSmokeXx");
+    http.addHeader("Accept", "application/geo+json");
+    http.addHeader("Accept-Encoding", "identity");
+    int code = http.GET();
+    if (code != 200) {
+        g_weatherError = code;
+        http.end();
+        return false;
+    }
+    g_weatherError = 0;
+    DeserializationError err = deserializeJson(doc, http.getStream());
+    http.end();
+    if (err) { g_weatherError = -(int)err.code(); return false; }
+    return true;
+}
+
+// Strip "https://" prefix, return pointer to host, and set *path to the path part
+static const char* splitUrl(const char *url, const char **path) {
+    if (!url) return nullptr;
+    const char *p = strstr(url, "://");
+    if (!p) return nullptr;
+    p += 3;
+    const char *slash = strchr(p, '/');
+    if (slash) {
+        *path = slash;
+        // We need a mutable copy for the host. Caller must provide a buffer.
+        return p;  // caller must strndup this
+    }
+    *path = "/";
+    return p;
+}
+
+static bool weatherFetchNWS(float lat, float lon) {
+    // Step 1: Get grid endpoint URLs
+    char path[96];
+    snprintf(path, sizeof(path), "/points/%.4f,%.4f", lat, lon);
+    JsonDocument ptsDoc;
+    if (!nwsGet("api.weather.gov", path, ptsDoc)) return weatherFetchNWSPublic(lat, lon);
+
+    const char *forecastUrl = ptsDoc["properties"]["forecast"] | "";
+    const char *hourlyUrl   = ptsDoc["properties"]["forecastHourly"] | "";
+    if (!forecastUrl[0] || !hourlyUrl[0]) { g_weatherError = -100; return weatherFetchNWSPublic(lat, lon); }
+
+    // Parse NWS return URLs to get host + path for subsequent calls
+    const char *fcPath, *hrPath, *nwsHost;
+    char hostBuf[64];
+    nwsHost = splitUrl(forecastUrl, &fcPath);
+    if (!nwsHost) return weatherFetchNWSPublic(lat, lon);
+    size_t hlen = strlen(nwsHost);
+    if (hlen > 63) hlen = 63;
+    memcpy(hostBuf, nwsHost, hlen); hostBuf[hlen] = 0;
+    splitUrl(hourlyUrl, &hrPath);  // same host, just get path
+
+    // Step 2: Hourly forecast → current + hourly
+    JsonDocument hDoc;
+    if (!nwsGet(hostBuf, hrPath, hDoc)) return weatherFetchNWSPublic(lat, lon);
+
+    JsonArrayConst periods = hDoc["properties"]["periods"].as<JsonArrayConst>();
+    int pc = (int)periods.size();
+    if (pc == 0) { g_weatherError = -101; return weatherFetchNWSPublic(lat, lon); }
+
+    JsonObjectConst p0 = periods[0].as<JsonObjectConst>();
+    g_current.temp         = p0["temperature"].as<float>();
+    g_current.wind_speed   = nwsWindSpeed(p0["windSpeed"] | "0");
+    g_current.wind_dir     = nwsWindDir(p0["windDirection"] | "N");
+    g_current.weather_code = nwsToWmo(p0["shortForecast"] | "");
+    g_current.humidity     = (int)(p0["relativeHumidity"]["value"].as<float>() + 0.5f);
+    g_current.feels_like   = g_current.temp;
+    g_current.pressure     = 0;
+    g_current.visibility   = 0;
+    g_current.uv_index     = 0;
+    g_current.today_max    = g_current.temp;
+    g_current.today_min    = g_current.temp;
+    g_current.valid        = true;
+
+    for (int i = 0; i < HOURLY_COUNT && i < pc; i++) {
+        JsonObjectConst p = periods[i].as<JsonObjectConst>();
+        g_hourly[i].hour         = parseHour(p["startTime"] | "");
+        g_hourly[i].temp         = p["temperature"].as<float>();
+        g_hourly[i].weather_code = nwsToWmo(p["shortForecast"] | "");
+        g_hourly[i].precip_prob  = (int)(p["probabilityOfPrecipitation"]["value"].as<float>() + 0.5f);
+        g_hourly[i].wind_speed   = nwsWindSpeed(p["windSpeed"] | "0");
+        g_hourly[i].humidity     = (int)(p["relativeHumidity"]["value"].as<float>() + 0.5f);
+    }
+
+    // Step 3: Daily forecast
+    JsonDocument dDoc;
+    if (!nwsGet(hostBuf, fcPath, dDoc)) return weatherFetchNWSPublic(lat, lon);
+
+    JsonArrayConst days = dDoc["properties"]["periods"].as<JsonArrayConst>();
+    int dc = (int)days.size(), di = 0;
+    for (int i = 0; i < dc && di < DAILY_COUNT; i++) {
+        JsonObjectConst dp = days[i].as<JsonObjectConst>();
+        if (!(dp["isDaytime"] | false)) continue;
+
+        g_daily[di].weather_code = nwsToWmo(dp["shortForecast"] | "");
+        g_daily[di].temp_max     = dp["temperature"].as<float>();
+        g_daily[di].wind_speed   = nwsWindSpeed(dp["windSpeed"] | "0");
+        g_daily[di].precip_prob  = (int)(dp["probabilityOfPrecipitation"]["value"].as<float>() + 0.5f);
+        g_daily[di].humidity_max = (int)(dp["relativeHumidity"]["value"].as<float>() + 0.5f);
+
+        if (i + 1 < dc) {
+            JsonObjectConst np = days[i + 1].as<JsonObjectConst>();
+            if (!(np["isDaytime"] | true))
+                g_daily[di].temp_min = np["temperature"].as<float>();
+            else g_daily[di].temp_min = g_daily[di].temp_max;
+        } else g_daily[di].temp_min = g_daily[di].temp_max;
+
+        parseDayName(dp["startTime"] | "", g_daily[di].day);
+        parseSunTime(dp["startTime"] | "", g_daily[di].sunrise, sizeof(g_daily[di].sunrise));
+        parseSunTime(dp["endTime"]   | "", g_daily[di].sunset,  sizeof(g_daily[di].sunset));
+
+        if (di == 0) {
+            if (g_daily[0].temp_max > g_current.today_max) g_current.today_max = g_daily[0].temp_max;
+            if (g_daily[0].temp_min < g_current.today_min)  g_current.today_min  = g_daily[0].temp_min;
+        }
+        di++;
+    }
+
+    fetchNwsAlert(lat, lon);
+    g_weatherUpdatedEpoch = (unsigned long)time(nullptr);
+    return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NWS Public forecast.weather.gov — third fallback (different CDN than api.weather.gov)
+// Single HTTPS call: current observations + 14-period (7-day) forecast
+// ═══════════════════════════════════════════════════════════════════════════
+static bool weatherFetchNWSPublic(float lat, float lon) {
+    char url[256];
+    snprintf(url, sizeof(url),
+        "https://forecast.weather.gov/MapClick.php?lat=%.4f&lon=%.4f&unit=0&lg=english&FcstType=json",
+        lat, lon);
+
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    if (!http.begin(client, url)) { http.end(); return false; }
+    http.setTimeout(15000);
+    http.addHeader("User-Agent", "xXCYD-Weather-StationXx github.com/xXQuantumSmokeXx");
+    http.addHeader("Accept-Encoding", "identity");
+    int code = http.GET();
+    if (code != 200) { g_weatherError = code; http.end(); return false; }
+    g_weatherError = 0;
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, http.getStream());
+    http.end();
+    if (err) { g_weatherError = -(int)err.code(); return false; }
+
+    JsonObjectConst obs = doc["currentobservation"].as<JsonObjectConst>();
+    if (obs.isNull()) { g_weatherError = -110; return false; }
+
+    g_current.temp         = atof(obs["Temp"] | "0");
+    g_current.humidity     = atoi(obs["Relh"] | "0");
+    g_current.wind_speed   = atof(obs["Winds"] | "0");
+    g_current.wind_dir     = atoi(obs["Windd"] | "0");
+    g_current.weather_code = nwsToWmo(obs["Weather"] | "");
+    g_current.visibility   = atof(obs["Visibility"] | "0");
+    g_current.pressure     = atof(obs["SLP"] | "0") * 33.8639f;
+    g_current.feels_like   = g_current.temp;
+    const char *windChill = obs["WindChill"] | "";
+    if (windChill[0] && strcmp(windChill, "NA") != 0)
+        g_current.feels_like = atof(windChill);
+
+    g_current.uv_index  = 0;
+    g_current.today_max = g_current.temp;
+    g_current.today_min = g_current.temp;
+    g_current.valid     = true;
+
+    JsonArrayConst temps = doc["data"]["temperature"].as<JsonArrayConst>();
+    JsonArrayConst pops  = doc["data"]["pop"].as<JsonArrayConst>();
+    JsonArrayConst wx    = doc["data"]["weather"].as<JsonArrayConst>();
+    JsonArrayConst times = doc["time"]["startValidTime"].as<JsonArrayConst>();
+
+    int tc = (int)temps.size();
+
+    // NWS periods alternate: 0=Tonight, 1=Tomorrow, 2=Tomorrow night, 3=Day2...
+    // NOW screen "today": tonight's low + tomorrow's high (next 24h)
+    g_current.today_max = atof(temps[1] | "0");
+    g_current.today_min = atof(temps[0] | "0");
+
+    // 5-Day: period 1+2 = day0, 3+4 = day1, 5+6 = day2, etc.
+    // Each entry = daytime high + following night low
+    for (int d = 0; d < DAILY_COUNT && (d * 2 + 1) < tc; d++) {
+        int dayIdx   = d * 2 + 1;
+        int nightIdx = d * 2 + 2;
+
+        g_daily[d].temp_max     = atof(temps[dayIdx] | "0");
+        g_daily[d].temp_min     = (nightIdx < tc) ? atof(temps[nightIdx] | "0") : g_daily[d].temp_max;
+        g_daily[d].weather_code = nwsToWmo(wx[dayIdx] | "");
+        parseDayName(times[dayIdx] | "", g_daily[d].day);
+        const char *ps = pops[dayIdx] | "";
+        g_daily[d].precip_prob  = ps[0] ? atoi(ps) : 0;
+        g_daily[d].wind_speed   = 0;
+        g_daily[d].humidity_max = 0;
+        parseSunTime(times[dayIdx]   | "", g_daily[d].sunrise, sizeof(g_daily[d].sunrise));
+        parseSunTime(times[nightIdx] | "", g_daily[d].sunset,  sizeof(g_daily[d].sunset));
+    }
+
+    // Hourly: this endpoint has no real hourly data. Backfill with current
+    // conditions spread across the next 12h rather than fake per-hour numbers.
+    int curHour = 0;
+    if (timeIsValid()) {
+        time_t now = time(nullptr);
+        curHour = localtime(&now)->tm_hour;
+    }
+    for (int i = 0; i < HOURLY_COUNT; i++) {
+        g_hourly[i].hour         = (curHour + i) % 24;
+        g_hourly[i].temp         = g_current.temp;
+        g_hourly[i].weather_code = g_current.weather_code;
+        g_hourly[i].precip_prob  = g_daily[0].precip_prob;
+        g_hourly[i].wind_speed   = g_current.wind_speed;
+        g_hourly[i].humidity     = g_current.humidity;
     }
 
     fetchNwsAlert(lat, lon);

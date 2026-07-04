@@ -145,6 +145,23 @@ static void fetchWorker(void *param) {
                 }
                 break;
             case FETCH_BOOT_BG:
+                // Weather first (worker task = WiFiClientSecure works)
+                {
+                    bool ok = weatherFetch(g_location.lat, g_location.lon);
+                    xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                    if (ok) {
+                        char t[10]; timeGetShort(t);
+                        snprintf(s_updateStr, sizeof(s_updateStr), "Updated %s", t);
+                        if (timeIsValid()) {
+                            time_t now = time(nullptr);
+                            s_lastWeatherHour = localtime(&now)->tm_hour;
+                        }
+                    }
+                    s_fetchOk = ok;
+                    s_fetchDone = true;
+                    xSemaphoreGive(s_dataMutex);
+                }
+
                 g_firesPending  = true;
                 g_usgsPending   = true;
                 g_solarPending     = true;
@@ -349,7 +366,7 @@ static void showSplash(const char *msg) {
 
     tft.setTextColor(g_themeColor, COL_BG);
     tw = tft.textWidth("xXQuantum-SmokeXx");
-    tft.setCursor((SCREEN_W - tw) / 2, 172);
+    tft.setCursor((SCREEN_W - tw) / 2, 177);
     tft.print("xXQuantum-SmokeXx");
 
     if (msg && msg[0]) {
@@ -376,21 +393,17 @@ static void connectWifi() {
 }
 
 // ── Weather fetch (sync — used only during boot before worker task starts) ──
-static void fetchWeatherSync() {
+static void ensureLocation() {
     if (!s_wifiOk) return;
-    if (!g_location.valid) { showSplash("Location failed.\nCheck serial monitor."); delay(3000); return; }
-    ledSet(false, false, true);
-    bool ok = weatherFetch(g_location.lat, g_location.lon);
-    if (ok) {
-        char t[10]; timeGetShort(t);
-        snprintf(s_updateStr, sizeof(s_updateStr), "Updated %s", t);
-        if (timeIsValid()) {
-            time_t now = time(nullptr);
-            s_lastWeatherHour = localtime(&now)->tm_hour;
-        }
+    if (!g_location.valid) {
+        g_location.lat       = 39.8283f;
+        g_location.lon       = -98.5795f;
+        g_location.utcOffset = -18000;
+        g_location.valid     = true;
+        strncpy(g_location.city,   "Kansas City", sizeof(g_location.city) - 1);
+        strncpy(g_location.region, "Missouri",    sizeof(g_location.region) - 1);
+        strncpy(g_location.tz,     "America/Chicago", sizeof(g_location.tz) - 1);
     }
-    ledSet(false, false, false);
-    s_needsRedraw = true;
 }
 
 // Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fireteam, 5=Fires, 6=USGS, 7=Volcanoes, 8=News, 9=Planner, 10=Scanner, 11=Settings
@@ -745,29 +758,28 @@ void setup() {
     if (s_wifiOk) {
         showSplash("Getting location...");
         locationLoad();
-        // Always fetch fresh — NVS cache may have stale/missing offset
-        locationFetch();
+        if (!g_location.valid) locationFetch();
 
         showSplash("Syncing time...");
-        // Use UTC offset from ip-api immediately — correct time before weather loads
         timeSyncInit(g_location.valid ? g_location.utcOffset : 0);
         for (int i = 0; i < 30 && !timeIsValid(); i++) delay(100);   // 3 s max
 
-        showSplash("Fetching weather...");
-        fetchWeatherSync();
-
+        ensureLocation();
         screenshotInit(tft, redrawTo);
     }
 
     // Launch async fetch worker on Core 0
     xTaskCreatePinnedToCore(fetchWorker, "fetch", 16384, nullptr, 1, &s_fetchTask, 0);
 
-    // Kick off background fetches — each message waits for that stage to complete
+    // Kick off background fetches — data screens + weather (worker task = TLS works)
     if (s_wifiOk) {
         s_fetchCmd = FETCH_BOOT_BG;
         xTaskNotifyGive(s_fetchTask);
 
-        showSplash("Fetching fires...");
+        showSplash("Fetching weather...");
+        for (int i = 0; i < 160 && !s_fetchDone && s_wifiOk; i++) delay(50);  // 8 s
+
+        if (s_wifiOk) showSplash("Fetching fires...");
         for (int i = 0; i < 60 && !s_firesDone && s_wifiOk; i++) delay(50);
 
         if (s_wifiOk) showSplash("Fetching USGS...");
