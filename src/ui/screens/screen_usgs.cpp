@@ -13,13 +13,13 @@
 #include <time.h>
 
 #define USGS_CACHE_MS (15UL * 60UL * 1000UL)
-#define QUAKE_MAX 24
+#define QUAKE_MAX 36
 #define QUAKE_ROW_H 14
 
 struct QuakeItem {
     float mag;
     char place[70];
-    char when[12];
+    char when[13];
 };
 
 static QuakeItem s_quakes[QUAKE_MAX];
@@ -70,7 +70,14 @@ static void stampSync() {
 static void msToWhen(long long ms, char *out, size_t outLen) {
     time_t tt = (time_t)(ms / 1000LL);
     struct tm *ti = gmtime(&tt);
-    if (ti) snprintf(out, outLen, "%02d-%02d %02d:%02d", ti->tm_mon + 1, ti->tm_mday, ti->tm_hour, ti->tm_min);
+    if (ti) {
+        int h = ti->tm_hour;
+        int h12 = h % 12;
+        if (h12 == 0) h12 = 12;
+        snprintf(out, outLen, "%02d-%02d %d:%02d%s",
+                 ti->tm_mon + 1, ti->tm_mday, h12, ti->tm_min,
+                 h >= 12 ? "P" : "A");
+    }
     else copyFit("--", out, outLen);
 }
 
@@ -82,7 +89,7 @@ bool usgsFetch(bool wifiOk) {
     WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
-    http.begin(client, "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=3.5&limit=20&orderby=time");
+    http.begin(client, "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=3.5&limit=40&orderby=time");
     http.setTimeout(15000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
     int code = http.GET();
@@ -101,7 +108,7 @@ bool usgsFetch(bool wifiOk) {
     }
 
     // Collect all into temp, sort by date (newest first), store up to QUAKE_MAX
-    const int TEMP_MAX = 32;
+    const int TEMP_MAX = 44;
     QuakeItem temp[TEMP_MAX];
     int tempCount = 0;
     for (JsonObject feature : doc["features"].as<JsonArray>()) {
@@ -116,16 +123,7 @@ bool usgsFetch(bool wifiOk) {
         tempCount++;
     }
 
-    // Sort by date (newest first) — when is "MM-DD HH:MM"
-    for (int i = 0; i < tempCount - 1; i++) {
-        for (int j = i + 1; j < tempCount; j++) {
-            if (strcmp(temp[i].when, temp[j].when) < 0) {
-                QuakeItem t = temp[i];
-                temp[i] = temp[j];
-                temp[j] = t;
-            }
-        }
-    }
+    // API returns newest-first — no client sort needed
     int count = tempCount < QUAKE_MAX ? tempCount : QUAKE_MAX;
     for (int i = 0; i < count; i++) s_quakes[i] = temp[i];
     s_quakeCount = count;

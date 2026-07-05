@@ -50,15 +50,18 @@ ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — re
 - Official NWS alert status and severity override for the current location
 - Forecast update time and highest-risk time window
 **FIRES screen:**
-- NIFC WFIGS active wildfire events — fire name, state, acreage, cause, and containment %
-- Sorted newest-first, scrollable via swipe up/down
-- Tap title bar to force a refresh
-- Prescribed burns automatically filtered out
+- Dual-query WFIGS active wildfire events — fire name, state, acreage, cause, and containment %
+- Primary query: active uncontained fires (newest 40). Secondary query: all fires ≥10k acres regardless of containment status (largest 30)
+- Merged & deduplicated by IRWIN ID — catches large contained fires the active-only query would miss
+- 30 entries, scrollable via swipe up/down (12 per page, 2.5 pages)
+- Sorted newest-first; tap title bar to force a refresh
+- Prescribed burns automatically filtered out; auto-refreshes hourly
 
 **USGS screen:**
-- USGS earthquake feed — M3.5+ events with magnitude, location, and time
-- Sorted newest-first, scrollable via swipe up/down
-- Tap title bar to force a refresh; auto-refreshes every 15 minutes
+- USGS earthquake feed — M3.5+ events with magnitude, location, and time (UTC, 12-hour format)
+- 36 entries, scrollable via swipe up/down (12 per page, exactly 3 pages)
+- Sorted newest-first (API-native ordering); tap title bar to force a refresh
+- Auto-refreshes every 15 minutes
 
 **VOLCANOES screen:**
 - USGS volcano activity — Yellowstone volcano tracking plus currently elevated volcanoes
