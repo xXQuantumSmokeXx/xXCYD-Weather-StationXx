@@ -49,6 +49,7 @@ ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — re
 - Actionable safety guidance for the highest forecast threat
 - Official NWS alert status and severity override for the current location
 - Forecast update time and highest-risk time window
+
 **FIRES screen:**
 - Dual-query WFIGS active wildfire events — fire name, state, acreage, cause, and containment %
 - Primary query: active uncontained fires (newest 40). Secondary query: all fires ≥10k acres regardless of containment status (largest 30)
