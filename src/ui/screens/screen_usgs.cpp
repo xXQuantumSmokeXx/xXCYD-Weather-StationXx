@@ -69,7 +69,7 @@ static void stampSync() {
 
 static void msToWhen(long long ms, char *out, size_t outLen) {
     time_t tt = (time_t)(ms / 1000LL);
-    struct tm *ti = gmtime(&tt);
+    struct tm *ti = localtime(&tt);
     if (ti) {
         int h = ti->tm_hour;
         int h12 = h % 12;
