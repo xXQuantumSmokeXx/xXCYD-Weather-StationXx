@@ -1,0 +1,22 @@
+CYD-Weather TODO
+================
+Session: 2026-07-06 (v1.2.9 dev)
+
+[x] Remove WiFi Scanner screen
+    - Deleted src/ui/screens/screen_scanner.cpp and .h
+    - Unregistered from screen rotation in main.cpp
+    - Removed from settings auto-rotate (PAGE_COUNT 11→10, mask 0x7FF→0x3FF)
+    - Removed from README features list and screen count (12→11)
+    - 12 screens → 11
+    - Why: decorative only. WiFi.scanNetworks() every 5s forces radio
+      off-channel for ~300ms, colliding with data fetches. User notices lag.
+
+[x] Improve battery percentage accuracy
+    - File: src/modules/brightness.cpp → batteryPct()
+    - Added EMA filter (alpha=0.12) to smooth display jitter across redraws
+    - Bumped ADC samples from 10 to 50 for noise reduction
+    - Added configurable BATT_SAG_OFFSET_MV (30mV) to compensate WiFi TX load sag
+    - Made divider ratio configurable via BATT_DIVIDER_RATIO (default 2.0)
+      override with -D build flags in platformio.ini
+    - Why: ESP32 ADC noise + WiFi TX load sag = % bouncing 15-20 points
+

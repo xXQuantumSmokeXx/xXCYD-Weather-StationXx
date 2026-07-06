@@ -1,6 +1,6 @@
 # xXCYD-Weather-StationXx
 
-ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — real-time weather, space weather, solar day almanac, volcano activity tracking, wildfire & earthquake tracking, breaking news, WiFi scanner, customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
+ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — real-time weather, space weather, solar day almanac, volcano activity tracking, wildfire & earthquake tracking, breaking news, customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
 
 [![Support on Patreon](https://img.shields.io/badge/Support-Patreon-orange)](https://www.patreon.com/c/xXQuantumSmokeXx)
 
@@ -86,18 +86,12 @@ ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — re
 - Daylight duration hero line at top (e.g. "10h 23m of daylight")
 - Falls back to OpenWeatherMap sunrise/sunset times when available
 
-**SCANNER screen:**
-- WiFi AP radar — sweeping visualization of nearby access points with themed color
-- Inner ring (strong signal) and outer ring (weak signal) with left/right labeled lists
-- Auto-scans every 5 seconds; shows AP count and scanning status
-- Node labels appear as the sweep line passes over each AP dot
-
 **SETTINGS screen:**
 - **Sleep Timer** — backlight auto-off after inactivity (OFF / 15s / 30s / 1m / 5m). Tap or swipe to wake
 - **Scheduled Sleep & Wake Timer** — daily schedule to turn the backlight off during configured sleep hours (e.g. 10PM–7AM), every day. Toggle on with SCHED, then tap SLEEP and WAKE to cycle through preset hours. ESP32 stays running so NTP time and all data fetches continue normally. Backlight off saves display life without losing connectivity. Tap anywhere during the sleep window for a 30-second wake grace period before the schedule re-enforces. Independent of the inactivity timer — both can be active simultaneously, with the schedule acting as the daily default and the quick timers as one-off overrides.
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
 - Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
-- 11 per-page rotation checkboxes — toggle which screens are included in auto-rotate
+- 10 per-page rotation checkboxes — toggle which screens are included in auto-rotate
 - **Favorite screens** — double-tap any page checkbox to mark it as a favorite (amber highlight). Favorites are interspersed between regular screens during rotation (e.g. Fav, 2, Fav, 3, Fav, 4…), so your most-used screens appear twice as often. Multiple favorites cycle round-robin. Double-tap again to un-favorite; disabling a page auto-clears its favorite
 - Refresh Weather and Location buttons in a 2x2 grid next to E-Ink and Power Off
 - 9 theme accent colors, saved across reboots
@@ -110,7 +104,7 @@ ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — re
 - Refreshes at the top of each hour
 - Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, NEWS)
 - FIRES and USGS headline text uses the active theme color
-- 12 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, FIRES, USGS, VOLCANOES, NEWS, ALMANAC, SCANNER, SETTINGS
+- 11 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, FIRES, USGS, VOLCANOES, NEWS, ALMANAC, SETTINGS
 
 ### Setup
 

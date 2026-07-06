@@ -15,7 +15,12 @@ def merge_bin_callback(source, target, env):
     bootloader = os.path.join(build_dir, "bootloader.bin")
     partitions = os.path.join(build_dir, "partitions.bin")
     firmware   = os.path.join(build_dir, "firmware.bin")
-    merged     = os.path.join(project_dir, f"merged-firmware-{env_name}.bin")
+    name_map = {
+        "cyd_weather":       "CYD-Weather-1usb.bin",
+        "cyd_weather_2usb":  "CYD-Weather-2usb.bin",
+    }
+    out_name = name_map.get(env_name, f"merged-firmware-{env_name}.bin")
+    merged   = os.path.join(project_dir, out_name)
 
     if not os.path.isfile(bootloader):
         print(f"merge_bin: SKIP — {bootloader} not found")

@@ -73,8 +73,9 @@ static int s_schedX3 = 0, s_wakeW  = 0;
 #define PAGE_BTN_Y0  (PAGE_LABEL_Y + 8)               // 158
 #define PAGE_BTN_H   18
 #define PAGE_GAP     2
-#define PAGE_COUNT   11
-#define PAGE_BTN_W   25   // fixed width, left-aligned with rotate row
+#define PAGE_COUNT   10
+#define PAGE_BTN_W   ((SEC2_W - (PAGE_COUNT - 1) * PAGE_GAP) / PAGE_COUNT)  // 28
+#define PAGE_EXTRA   (SEC2_W - (PAGE_COUNT * PAGE_BTN_W + (PAGE_COUNT - 1) * PAGE_GAP))  // remainder → last box
 
 // Section 3 — Theme Color (bottom)
 #define THEME_LABEL_Y 182   // moved up 3px from 185
@@ -147,8 +148,8 @@ static void autoRotLoad() {
 }
 
 // ── Page rotation mask ────────────────────────────────────────────────────────
-// Bit 0 = NOW, ..., bit 4 = FIRETEAM, ..., bit 10 = SCANNER
-static uint16_t s_pageMask  = 0x7FF;  // 11 pages (0-10)
+// Bit 0 = NOW, ..., bit 9 = PLANNER
+static uint16_t s_pageMask  = 0x3FF;  // 10 pages (0-9)
 static bool     s_pageLoaded = false;
 
 static void pageMaskLoad() {
@@ -161,7 +162,7 @@ static void pageMaskLoad() {
     } else {
         s_pageMask = (uint16_t)v2;
     }
-    if (s_pageMask == 0) s_pageMask = 0x7FF;
+    if (s_pageMask == 0) s_pageMask = 0x3FF;
     s_pageLoaded = true;
 }
 
@@ -253,7 +254,7 @@ int screenSettingsGetNextRotatePage(int current) {
 void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SETTINGS", timeStr, wifiOk);
-    drawBottombar(tft, "", 11, 12);
+    drawBottombar(tft, "", 10, 11);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     slpCacheLoad();
@@ -464,7 +465,7 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     for (int i = 0; i < PAGE_COUNT; i++) {
         int bx  = SEC2_X + i * (PAGE_BTN_W + PAGE_GAP);
         int by  = PAGE_BTN_Y0;
-        int bw  = (i == PAGE_COUNT - 1) ? PAGE_BTN_W + 4 : PAGE_BTN_W;  // last box wider to align with rotate row
+        int bw  = (i == PAGE_COUNT - 1) ? PAGE_BTN_W + PAGE_EXTRA : PAGE_BTN_W;
         bool enabled = (s_pageMask >> i) & 1;
         bool favorite = enabled && ((s_favMask >> i) & 1);
 
@@ -618,7 +619,7 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
     favMaskLoad();
     for (int i = 0; i < PAGE_COUNT; i++) {
         int bx = SEC2_X + i * (PAGE_BTN_W + PAGE_GAP);
-        int bw = (i == PAGE_COUNT - 1) ? PAGE_BTN_W + 4 : PAGE_BTN_W;
+        int bw = (i == PAGE_COUNT - 1) ? PAGE_BTN_W + PAGE_EXTRA : PAGE_BTN_W;
         if (tx >= bx && tx < bx + bw &&
             ty >= PAGE_BTN_Y0 && ty < PAGE_BTN_Y0 + PAGE_BTN_H) {
 

@@ -29,7 +29,6 @@
 #include "ui/screens/screen_volcanoes.h"
 #include "ui/screens/screen_news.h"
 #include "ui/screens/screen_planner.h"
-#include "ui/screens/screen_scanner.h"
 #include "modules/screenshot.h"
 
 static TFT_eSPI tft;
@@ -406,9 +405,9 @@ static void ensureLocation() {
     }
 }
 
-// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fireteam, 5=Fires, 6=USGS, 7=Volcanoes, 8=News, 9=Planner, 10=Scanner, 11=Settings
+// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fireteam, 5=Fires, 6=USGS, 7=Volcanoes, 8=News, 9=Planner, 10=Settings
 static void gotoScreen(int n) {
-    s_screen         = constrain(n, 0, 11);
+    s_screen         = constrain(n, 0, 10);
     s_lastAutoRotate = millis();
     s_needsRedraw    = true;
 }
@@ -425,8 +424,7 @@ static void redrawTo(TFT_eSPI &target) {
         case 7: screenVolcanoesDraw(target, s_wifiOk); break;
         case 8: screenNewsDraw(target, s_wifiOk);     break;
         case 9: screenPlannerDraw(target, s_wifiOk);  break;
-        case 10: screenScannerDraw(target, s_wifiOk); break;
-        case 11: screenSettingsDraw(target, s_wifiOk); break;
+        case 10: screenSettingsDraw(target, s_wifiOk); break;
     }
 }
 
@@ -954,7 +952,7 @@ void loop() {
     if (millis() - s_lastMinute > 60000) {
         if (s_screen <= 2 || s_screen == 4 || s_screen >= 8) {
             char timeStr[10]; timeGetShort(timeStr);
-            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","FIRES","USGS","VOLCANOES","NEWS","ALMANAC","SCANNER","SETTINGS"};
+            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","FIRES","USGS","VOLCANOES","NEWS","ALMANAC","SETTINGS"};
             drawTopbarTime(tft, timeStr, labels[s_screen]);
         }
         s_lastMinute = millis();
@@ -963,18 +961,9 @@ void loop() {
     // Auto-rotate through enabled pages
     if (screenSettingsGetAutoRotate() &&
         millis() - s_lastAutoRotate > screenSettingsGetAutoRotateMs()) {
-        int start = (s_screen == 11) ? 10 : s_screen;
+        int start = (s_screen == 10) ? 9 : s_screen;
         int next = screenSettingsGetNextRotatePage(start);
         if (next >= 0) gotoScreen(next);
-    }
-
-    // Scanner animation — light sweep-line update, no full redraw
-    if (s_screen == 10 && !workerBusy()) {
-        static unsigned long lastScannerFrame = 0;
-        if (millis() - lastScannerFrame > 80) {
-            screenScannerAnimate(tft);
-            lastScannerFrame = millis();
-        }
     }
 
     // Touch
@@ -1049,7 +1038,7 @@ void loop() {
         } else if (s_screen == 9) {
             screenPlannerTap(tft, tx, ty, s_wifiOk);
             s_needsRedraw = true;
-        } else if (s_screen == 11) {
+        } else if (s_screen == 10) {
             bool changed = screenSettingsTap(tft, tx, ty);
             if (changed) s_needsRedraw = true;
             if (screenSettingsRefreshTapped()) {
@@ -1130,7 +1119,7 @@ void loop() {
     screenshotLoop();
     if (screenshotNeedsRedraw()) s_needsRedraw = true;
 
-    // Serial commands: '0'-'9' = screens 0-9, 'A' = Settings, 'B' = Scanner, 'R' = ready, 'S' = capture
+    // Serial commands: '0'-'9' = screens 0-9, 'A' = Settings, 'R' = ready, 'S' = capture
     if (Serial.available()) {
         int cmd = Serial.read();
         if (cmd == 'R' || cmd == 'r') {
@@ -1166,7 +1155,7 @@ void loop() {
             redraw();
         } else if (cmd == 'A' || cmd == 'a') {
             if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
-            gotoScreen(11);
+            gotoScreen(10);
             redraw();
         }
         if (cmd == 'S' || cmd == 's') {
