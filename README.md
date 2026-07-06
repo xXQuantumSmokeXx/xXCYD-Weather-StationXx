@@ -1,6 +1,6 @@
 # xXCYD-Weather-StationXx
 
-ESP32-32E and 2USB CYD (Cheap Yellow Display) tactical monitoring station — real-time weather, space weather, solar day almanac, volcano activity tracking, wildfire & earthquake tracking, breaking news, customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
+CYD tactical monitoring station — real-time weather, space weather, solar day almanac, volcano activity tracking, wildfire & earthquake tracking, breaking news, customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
 
 [![Support on Patreon](https://img.shields.io/badge/Support-Patreon-orange)](https://www.patreon.com/c/xXQuantumSmokeXx)
 
