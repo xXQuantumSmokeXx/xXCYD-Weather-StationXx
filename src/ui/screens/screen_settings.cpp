@@ -73,9 +73,10 @@ static int s_schedX3 = 0, s_wakeW  = 0;
 #define PAGE_BTN_Y0  (PAGE_LABEL_Y + 8)               // 158
 #define PAGE_BTN_H   18
 #define PAGE_GAP     2
-#define PAGE_COUNT   10
+#define PAGE_COUNT   11
 #define PAGE_BTN_W   ((SEC2_W - (PAGE_COUNT - 1) * PAGE_GAP) / PAGE_COUNT)  // 28
-#define PAGE_EXTRA   (SEC2_W - (PAGE_COUNT * PAGE_BTN_W + (PAGE_COUNT - 1) * PAGE_GAP))  // remainder → last box
+#define PAGE_EXTRA   (SEC2_W - (PAGE_COUNT * PAGE_BTN_W + (PAGE_COUNT - 1) * PAGE_GAP))  // px remainder
+#define PAGE_SPLIT   (PAGE_EXTRA / 2)      // split extra between last 2 boxes (both 2-digit)
 
 // Section 3 — Theme Color (bottom)
 #define THEME_LABEL_Y 182   // moved up 3px from 185
@@ -254,7 +255,7 @@ int screenSettingsGetNextRotatePage(int current) {
 void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SETTINGS", timeStr, wifiOk);
-    drawBottombar(tft, "", 10, 11);
+    drawBottombar(tft, "", 11, 12);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     slpCacheLoad();
@@ -465,7 +466,9 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     for (int i = 0; i < PAGE_COUNT; i++) {
         int bx  = SEC2_X + i * (PAGE_BTN_W + PAGE_GAP);
         int by  = PAGE_BTN_Y0;
-        int bw  = (i == PAGE_COUNT - 1) ? PAGE_BTN_W + PAGE_EXTRA : PAGE_BTN_W;
+        int bw  = PAGE_BTN_W;
+        if (i == PAGE_COUNT - 1)      bw += PAGE_EXTRA - PAGE_SPLIT;  // last
+        else if (i == PAGE_COUNT - 2) bw += PAGE_SPLIT;               // 2nd-to-last
         bool enabled = (s_pageMask >> i) & 1;
         bool favorite = enabled && ((s_favMask >> i) & 1);
 
@@ -484,7 +487,9 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         char numBuf[3];
         snprintf(numBuf, sizeof(numBuf), "%d", i + 1);
         tft.setTextColor(favorite ? COL_AMBER : (enabled ? COL_WHITE : COL_DIM), COL_INPUTBG);
-        tft.setCursor(chkX + chkSize + 3, by + (PAGE_BTN_H - 8) / 2);
+        // Right-align the number in the box
+        int numW = tft.textWidth(numBuf);
+        tft.setCursor(bx + bw - numW - 4, by + (PAGE_BTN_H - 8) / 2);
         tft.print(numBuf);
     }
 
@@ -619,7 +624,9 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
     favMaskLoad();
     for (int i = 0; i < PAGE_COUNT; i++) {
         int bx = SEC2_X + i * (PAGE_BTN_W + PAGE_GAP);
-        int bw = (i == PAGE_COUNT - 1) ? PAGE_BTN_W + PAGE_EXTRA : PAGE_BTN_W;
+        int bw = PAGE_BTN_W;
+        if (i == PAGE_COUNT - 1)      bw += PAGE_EXTRA - PAGE_SPLIT;
+        else if (i == PAGE_COUNT - 2) bw += PAGE_SPLIT;
         if (tx >= bx && tx < bx + bw &&
             ty >= PAGE_BTN_Y0 && ty < PAGE_BTN_Y0 + PAGE_BTN_H) {
 

@@ -26,6 +26,7 @@
 #include "ui/screens/screen_fireteam.h"
 #include "ui/screens/screen_fires.h"
 #include "ui/screens/screen_usgs.h"
+#include "ui/screens/screen_meteors.h"
 #include "ui/screens/screen_volcanoes.h"
 #include "ui/screens/screen_news.h"
 #include "ui/screens/screen_planner.h"
@@ -48,6 +49,8 @@ static int           s_lastFiresHour       = -1;
 static unsigned long s_lastFiresAttempt    = 0;
 static int           s_lastUsgsHour        = -1;
 static unsigned long s_lastUsgsAttempt     = 0;
+static int           s_lastMeteorsHour     = -1;
+static unsigned long s_lastMeteorsAttempt  = 0;
 static int           s_lastNewsHour        = -1;
 static unsigned long s_lastNewsAttempt     = 0;
 static int           s_lastVolcanoesHour     = -1;
@@ -65,7 +68,8 @@ enum RefreshBit : uint8_t {
     REFRESH_NEWS      = 1 << 2,
     REFRESH_VOLCANOES = 1 << 3,
     REFRESH_SOLAR     = 1 << 4,
-    REFRESH_ALL_DATA  = 0x1F
+    REFRESH_METEORS   = 1 << 5,
+    REFRESH_ALL_DATA  = 0x3F
 };
 static uint8_t s_refreshQueue = 0;
 static bool    s_refreshAllWeather = false;
@@ -85,6 +89,7 @@ enum FetchCmd : uint8_t {
     FETCH_BOOT_BG,    // pre-fetch all data screens at boot
     FETCH_FIRES,
     FETCH_USGS,
+    FETCH_METEORS,
     FETCH_VOLCANOES,
     FETCH_SOLAR,
     FETCH_NEWS
@@ -101,6 +106,7 @@ static volatile bool s_firesDone = false, s_firesOk = false;
 static volatile bool s_usgsDone  = false, s_usgsOk  = false;
 static volatile bool s_solarDone = false;
 static volatile bool s_volcanoesDone = false, s_volcanoesOk = false;
+static volatile bool s_meteorsDone = false, s_meteorsOk = false;
 static volatile bool s_newsDone = false, s_newsOk = false;
 
 static void fetchWorker(void *param) {
@@ -161,8 +167,9 @@ static void fetchWorker(void *param) {
                     xSemaphoreGive(s_dataMutex);
                 }
 
-                g_firesPending  = true;
-                g_usgsPending   = true;
+                g_firesPending     = true;
+                g_usgsPending      = true;
+                g_meteorsPending   = true;
                 g_solarPending     = true;
                 g_newsPending      = true;
                 g_volcanoesPending = true;
@@ -175,6 +182,11 @@ static void fetchWorker(void *param) {
                 usgsFetch(s_wifiOk);
                 xSemaphoreTake(s_dataMutex, portMAX_DELAY);
                 s_usgsDone = true;
+                xSemaphoreGive(s_dataMutex);
+
+                meteorsFetch(s_wifiOk);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                s_meteorsDone = true;
                 xSemaphoreGive(s_dataMutex);
 
                 solarFetch(s_wifiOk);
@@ -206,6 +218,14 @@ static void fetchWorker(void *param) {
                 xSemaphoreTake(s_dataMutex, portMAX_DELAY);
                 s_usgsOk = ok;
                 s_usgsDone = true;
+                xSemaphoreGive(s_dataMutex);
+                break;
+            }
+            case FETCH_METEORS: {
+                bool ok = meteorsFetch(s_wifiOk);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                s_meteorsOk = ok;
+                s_meteorsDone = true;
                 xSemaphoreGive(s_dataMutex);
                 break;
             }
@@ -264,6 +284,14 @@ void triggerUsgsFetch() {
     if (!s_fetchTask || workerBusy()) return;
     s_usgsDone = false;
     s_fetchCmd  = FETCH_USGS;
+    ledSet(false, false, true);
+    xTaskNotifyGive(s_fetchTask);
+}
+
+void triggerMeteorsFetch() {
+    if (!s_fetchTask || workerBusy()) return;
+    s_meteorsDone = false;
+    s_fetchCmd  = FETCH_METEORS;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
 }
@@ -405,9 +433,9 @@ static void ensureLocation() {
     }
 }
 
-// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fireteam, 5=Fires, 6=USGS, 7=Volcanoes, 8=News, 9=Planner, 10=Settings
+// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fireteam, 5=Fires, 6=USGS, 7=Meteors, 8=Volcanoes, 9=News, 10=Planner, 11=Settings
 static void gotoScreen(int n) {
-    s_screen         = constrain(n, 0, 10);
+    s_screen         = constrain(n, 0, 11);
     s_lastAutoRotate = millis();
     s_needsRedraw    = true;
 }
@@ -421,10 +449,11 @@ static void redrawTo(TFT_eSPI &target) {
         case 4: screenFireteamDraw(target, s_wifiOk); break;
         case 5: screenFiresDraw(target, s_wifiOk);    break;
         case 6: screenUsgsDraw(target, s_wifiOk);     break;
-        case 7: screenVolcanoesDraw(target, s_wifiOk); break;
-        case 8: screenNewsDraw(target, s_wifiOk);     break;
-        case 9: screenPlannerDraw(target, s_wifiOk);  break;
-        case 10: screenSettingsDraw(target, s_wifiOk); break;
+        case 7: screenMeteorsDraw(target, s_wifiOk);  break;
+        case 8: screenVolcanoesDraw(target, s_wifiOk); break;
+        case 9: screenNewsDraw(target, s_wifiOk);     break;
+        case 10: screenPlannerDraw(target, s_wifiOk);  break;
+        case 11: screenSettingsDraw(target, s_wifiOk); break;
     }
 }
 
@@ -767,7 +796,7 @@ void setup() {
     }
 
     // Launch async fetch worker on Core 0
-    xTaskCreatePinnedToCore(fetchWorker, "fetch", 16384, nullptr, 1, &s_fetchTask, 0);
+    xTaskCreatePinnedToCore(fetchWorker, "fetch", 24576, nullptr, 1, &s_fetchTask, 0);
 
     // Kick off background fetches — data screens + weather (worker task = TLS works)
     if (s_wifiOk) {
@@ -782,6 +811,9 @@ void setup() {
 
         if (s_wifiOk) showSplash("Fetching USGS...");
         for (int i = 0; i < 60 && !s_usgsDone && s_wifiOk; i++) delay(50);
+
+        if (s_wifiOk) showSplash("Fetching meteors...");
+        for (int i = 0; i < 60 && !s_meteorsDone && s_wifiOk; i++) delay(50);
 
         if (s_wifiOk) showSplash("Fetching solar...");
         for (int i = 0; i < 60 && !s_solarDone && s_wifiOk; i++) delay(50);
@@ -854,6 +886,7 @@ void loop() {
 
         if (!g_firesPending && !(s_refreshQueue & REFRESH_FIRES) && curHour != s_lastFiresHour && millis() - s_lastFiresAttempt > 60000) s_refreshQueue |= REFRESH_FIRES;
         if (!g_usgsPending && !(s_refreshQueue & REFRESH_USGS) && curHour != s_lastUsgsHour && millis() - s_lastUsgsAttempt > 60000) s_refreshQueue |= REFRESH_USGS;
+        if (!g_meteorsPending && !(s_refreshQueue & REFRESH_METEORS) && curHour != s_lastMeteorsHour && millis() - s_lastMeteorsAttempt > 60000) s_refreshQueue |= REFRESH_METEORS;
         if (!g_newsPending && !(s_refreshQueue & REFRESH_NEWS) && curHour != s_lastNewsHour && millis() - s_lastNewsAttempt > 60000) s_refreshQueue |= REFRESH_NEWS;
         if (!g_volcanoesPending && !(s_refreshQueue & REFRESH_VOLCANOES) && curHour != s_lastVolcanoesHour && millis() - s_lastVolcanoesAttempt > 60000) s_refreshQueue |= REFRESH_VOLCANOES;
         if (!g_solarPending && !(s_refreshQueue & REFRESH_SOLAR) && curHour != s_lastSolarHour && millis() - s_lastSolarAttempt > 60000) s_refreshQueue |= REFRESH_SOLAR;
@@ -866,6 +899,9 @@ void loop() {
         } else if (s_refreshQueue & REFRESH_USGS) {
             s_refreshQueue &= ~REFRESH_USGS;
             g_usgsPending = true; s_lastUsgsAttempt = millis(); triggerUsgsFetch();
+        } else if (s_refreshQueue & REFRESH_METEORS) {
+            s_refreshQueue &= ~REFRESH_METEORS;
+            g_meteorsPending = true; s_lastMeteorsAttempt = millis(); triggerMeteorsFetch();
         } else if (s_refreshQueue & REFRESH_NEWS) {
             s_refreshQueue &= ~REFRESH_NEWS;
             g_newsPending = true; s_lastNewsAttempt = millis(); triggerNewsFetch();
@@ -911,6 +947,18 @@ void loop() {
         if (s_screen == 6) s_needsRedraw = true;
     }
 
+    // Meteors fetch completion
+    if (s_meteorsDone) {
+        xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        bool ok = s_meteorsOk;
+        s_meteorsDone = false;
+        g_meteorsPending = false;
+        xSemaphoreGive(s_dataMutex);
+        if (ok && timeIsValid()) { time_t now = time(nullptr); s_lastMeteorsHour = localtime(&now)->tm_hour; }
+        else s_lastMeteorsHour = -1;
+        if (s_screen == 7) s_needsRedraw = true;
+    }
+
     // Volcanoes fetch completion
     if (s_volcanoesDone) {
         xSemaphoreTake(s_dataMutex, portMAX_DELAY);
@@ -920,7 +968,7 @@ void loop() {
         xSemaphoreGive(s_dataMutex);
         if (ok && timeIsValid()) { time_t now = time(nullptr); s_lastVolcanoesHour = localtime(&now)->tm_hour; }
         else s_lastVolcanoesHour = -1;
-        if (s_screen == 7) s_needsRedraw = true;
+        if (s_screen == 8) s_needsRedraw = true;
     }
 
     // Solar fetch completion
@@ -945,14 +993,14 @@ void loop() {
         xSemaphoreGive(s_dataMutex);
         if (ok && timeIsValid()) { time_t now = time(nullptr); s_lastNewsHour = localtime(&now)->tm_hour; }
         else s_lastNewsHour = -1;
-        if (s_screen == 8) s_needsRedraw = true;
+        if (s_screen == 9) s_needsRedraw = true;
     }
 
     // Clock tick — only update the time text, not a full redraw
     if (millis() - s_lastMinute > 60000) {
         if (s_screen <= 2 || s_screen == 4 || s_screen >= 8) {
             char timeStr[10]; timeGetShort(timeStr);
-            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","FIRES","USGS","VOLCANOES","NEWS","ALMANAC","SETTINGS"};
+            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","FIRES","USGS","METEORS","VOLCANOES","NEWS","ALMANAC","SETTINGS"};
             drawTopbarTime(tft, timeStr, labels[s_screen]);
         }
         s_lastMinute = millis();
@@ -961,7 +1009,7 @@ void loop() {
     // Auto-rotate through enabled pages
     if (screenSettingsGetAutoRotate() &&
         millis() - s_lastAutoRotate > screenSettingsGetAutoRotateMs()) {
-        int start = (s_screen == 10) ? 9 : s_screen;
+        int start = (s_screen == 11) ? 10 : s_screen;
         int next = screenSettingsGetNextRotatePage(start);
         if (next >= 0) gotoScreen(next);
     }
@@ -987,15 +1035,21 @@ void loop() {
         screenUsgsSwipe(-1);
         s_needsRedraw = true;
     } else if (evt.swipe == SwipeDir::Up && s_screen == 7) {
-        screenVolcanoesSwipe(1);
+        screenMeteorsSwipe(1);
         s_needsRedraw = true;
     } else if (evt.swipe == SwipeDir::Down && s_screen == 7) {
-        screenVolcanoesSwipe(-1);
+        screenMeteorsSwipe(-1);
         s_needsRedraw = true;
     } else if (evt.swipe == SwipeDir::Up && s_screen == 8) {
-        screenNewsSwipe(1);
+        screenVolcanoesSwipe(1);
         s_needsRedraw = true;
     } else if (evt.swipe == SwipeDir::Down && s_screen == 8) {
+        screenVolcanoesSwipe(-1);
+        s_needsRedraw = true;
+    } else if (evt.swipe == SwipeDir::Up && s_screen == 9) {
+        screenNewsSwipe(1);
+        s_needsRedraw = true;
+    } else if (evt.swipe == SwipeDir::Down && s_screen == 9) {
         screenNewsSwipe(-1);
         s_needsRedraw = true;
     } else if (evt.tap == TapEvent::Tap) {
@@ -1006,7 +1060,7 @@ void loop() {
             else if (tx > SCREEN_W - 50) gotoScreen(s_screen + 1);
         }
         // Top bar tap → refresh (weather screens 0-2,6; data screens handle their own)
-        if (ty < TOPBAR_H && s_wifiOk && !workerBusy() && (s_screen <= 2 || s_screen == 4 || s_screen == 9)) {
+        if (ty < TOPBAR_H && s_wifiOk && !workerBusy() && (s_screen <= 2 || s_screen == 4 || s_screen == 10)) {
             showSplash("Refreshing...");
             triggerFetch(true);
         }
@@ -1027,18 +1081,23 @@ void loop() {
             }
         } else if (s_screen == 7) {
             if (ty < TOPBAR_H && s_wifiOk) {
-                screenVolcanoesTap(tft, tx, ty, s_wifiOk);
+                screenMeteorsTap(tft, tx, ty, s_wifiOk);
                 s_needsRedraw = true;
             }
         } else if (s_screen == 8) {
             if (ty < TOPBAR_H && s_wifiOk) {
-                screenNewsTap(tft, tx, ty, s_wifiOk);
+                screenVolcanoesTap(tft, tx, ty, s_wifiOk);
                 s_needsRedraw = true;
             }
         } else if (s_screen == 9) {
+            if (ty < TOPBAR_H && s_wifiOk) {
+                screenNewsTap(tft, tx, ty, s_wifiOk);
+                s_needsRedraw = true;
+            }
+        } else if (s_screen == 10) {
             screenPlannerTap(tft, tx, ty, s_wifiOk);
             s_needsRedraw = true;
-        } else if (s_screen == 10) {
+        } else if (s_screen == 11) {
             bool changed = screenSettingsTap(tft, tx, ty);
             if (changed) s_needsRedraw = true;
             if (screenSettingsRefreshTapped()) {
@@ -1119,7 +1178,7 @@ void loop() {
     screenshotLoop();
     if (screenshotNeedsRedraw()) s_needsRedraw = true;
 
-    // Serial commands: '0'-'9' = screens 0-9, 'A' = Settings, 'R' = ready, 'S' = capture
+    // Serial commands: '0'-'9' = screens 0-9, 'A' = Settings (screen 11), 'R' = ready, 'S' = capture
     if (Serial.available()) {
         int cmd = Serial.read();
         if (cmd == 'R' || cmd == 'r') {
@@ -1155,7 +1214,7 @@ void loop() {
             redraw();
         } else if (cmd == 'A' || cmd == 'a') {
             if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
-            gotoScreen(10);
+            gotoScreen(11);
             redraw();
         }
         if (cmd == 'S' || cmd == 's') {

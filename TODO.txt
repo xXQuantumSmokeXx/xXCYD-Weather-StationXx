@@ -2,6 +2,14 @@ CYD-Weather TODO
 ================
 Session: 2026-07-06 (v1.2.9 dev)
 
+NEXT_RELEASE (v1.3.0)
+---------------------
+[ ] Battery % — Layer 1 fix (alpha 0.12→0.25, sag 30→100mV, ±2% hysteresis)
+[ ] TBD
+[ ] TBD
+
+Completed (v1.2.9)
+
 [x] Remove WiFi Scanner screen
     - Deleted src/ui/screens/screen_scanner.cpp and .h
     - Unregistered from screen rotation in main.cpp
@@ -11,7 +19,7 @@ Session: 2026-07-06 (v1.2.9 dev)
     - Why: decorative only. WiFi.scanNetworks() every 5s forces radio
       off-channel for ~300ms, colliding with data fetches. User notices lag.
 
-[x] Improve battery percentage accuracy
+[x] Improve battery percentage accuracy  (v1.2.9 — partial fix, see below)
     - File: src/modules/brightness.cpp → batteryPct()
     - Added EMA filter (alpha=0.12) to smooth display jitter across redraws
     - Bumped ADC samples from 10 to 50 for noise reduction
@@ -19,4 +27,15 @@ Session: 2026-07-06 (v1.2.9 dev)
     - Made divider ratio configurable via BATT_DIVIDER_RATIO (default 2.0)
       override with -D build flags in platformio.ini
     - Why: ESP32 ADC noise + WiFi TX load sag = % bouncing 15-20 points
+
+[ ] Battery % — remaining issues (diagnosed 2026-07-06, ported to CYD-Crypto-Tracker)
+    - EMA alpha 0.12 too low → filter slowly chases load sag, % ticks down every refresh
+    - BATT_SAG_OFFSET_MV 30mV too small → real WiFi+display sag is 100-300mV at battery
+    - No display hysteresis → every tiny EMA change redraws %, looks jittery
+    - Sharp piecewise curve boundaries → ADC noise crossing 0.1V segment = % jumps
+    - Samples collide with WiFi TX bursts → sporadic low readings
+    Proposed Layer 1: alpha→0.25, sag→100mV at pin, ±2% display hysteresis
+    Proposed Layer 2: smooth polynomial LiPo curve instead of piecewise
+    Proposed Layer 3: median filter or WiFi-idle-gated sampling
+    See CYD-Crypto-Tracker/TODO.md for full diagnosis.
 
