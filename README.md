@@ -14,9 +14,9 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 |--------|-------|-------|
 | ![HOURLY](ScreenShots/HOURLY.png) | ![5-DAY](ScreenShots/5-DAY.png) | ![SOLAR](ScreenShots/SOLAR.png) |
 
-| FIRES | USGS | METEORS |
-|-------|------|---------|
-| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | |
+| FIRES | USGS | NEWS |
+|-------|------|------|
+| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | ![NEWS](ScreenShots/NEWS.png) |
 
 ### Features
 
