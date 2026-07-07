@@ -1,6 +1,6 @@
 # xXCYD-Weather-StationXx
 
-CYD tactical monitoring station — real-time weather, space weather, solar day almanac, volcano activity tracking, wildfire & earthquake tracking, breaking news, customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
+CYD tactical monitoring station — real-time weather, space weather, solar day almanac, fireball & meteor tracking, volcano activity tracking, wildfire & earthquake tracking, breaking news, customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
 
 [![Support on Patreon](https://img.shields.io/badge/Support-Patreon-orange)](https://www.patreon.com/c/xXQuantumSmokeXx)
 
@@ -14,9 +14,9 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 |--------|-------|-------|
 | ![HOURLY](ScreenShots/HOURLY.png) | ![5-DAY](ScreenShots/5-DAY.png) | ![SOLAR](ScreenShots/SOLAR.png) |
 
-| FIRES | USGS | NEWS |
-|-------|------|------|
-| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | ![NEWS](ScreenShots/NEWS.png) |
+| FIRES | USGS | METEORS |
+|-------|------|---------|
+| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | ![METEORS](ScreenShots/METEORS.png) |
 
 ### Features
 
@@ -64,6 +64,14 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Sorted newest-first (API-native ordering); tap title bar to force a refresh
 - Auto-refreshes every 15 minutes
 
+**METEORS screen:**
+- IMO (International Meteor Organization) crowd-sourced fireball events — real witness reports from today
+- Clear columns: date, witness count, country:state location, and event tags (B = sonic boom, F = fragmentation/meteorites, C = concurrent/electrophonic sound)
+- Themed throughout with alternating row backgrounds for readability
+- Data via Quantum-Meteor API (lightweight proxy, no key required)
+- Scrollable via swipe up/down; tap title bar to force refresh; auto-refreshes hourly
+- 30 most recent events displayed per page
+
 **VOLCANOES screen:**
 - USGS volcano activity — Yellowstone volcano tracking plus currently elevated volcanoes
 - Color-coded status dot: GREEN (normal), YELLOW (advisory), ORANGE (watch), RED (warning)
@@ -91,7 +99,7 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - **Scheduled Sleep & Wake Timer** — daily schedule to turn the backlight off during configured sleep hours (e.g. 10PM–7AM), every day. Toggle on with SCHED, then tap SLEEP and WAKE to cycle through preset hours. ESP32 stays running so NTP time and all data fetches continue normally. Backlight off saves display life without losing connectivity. Tap anywhere during the sleep window for a 30-second wake grace period before the schedule re-enforces. Independent of the inactivity timer — both can be active simultaneously, with the schedule acting as the daily default and the quick timers as one-off overrides.
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
 - Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
-- 10 per-page rotation checkboxes — toggle which screens are included in auto-rotate
+- 11 per-page rotation checkboxes — toggle which screens are included in auto-rotate
 - **Favorite screens** — double-tap any page checkbox to mark it as a favorite (amber highlight). Favorites are interspersed between regular screens during rotation (e.g. Fav, 2, Fav, 3, Fav, 4…), so your most-used screens appear twice as often. Multiple favorites cycle round-robin. Double-tap again to un-favorite; disabling a page auto-clears its favorite
 - Refresh Weather and Location buttons in a 2x2 grid next to E-Ink and Power Off
 - 9 theme accent colors, saved across reboots
@@ -104,7 +112,7 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Refreshes at the top of each hour
 - Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, NEWS)
 - FIRES and USGS headline text uses the active theme color
-- 11 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, FIRES, USGS, VOLCANOES, NEWS, ALMANAC, SETTINGS
+- 12 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, FIRES, USGS, METEORS, VOLCANOES, NEWS, ALMANAC, SETTINGS
 
 ### Setup
 
