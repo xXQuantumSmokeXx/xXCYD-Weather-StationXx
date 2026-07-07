@@ -12,9 +12,10 @@
 #define BATT_DIVIDER_RATIO  2.0f    // 100k/100k = 2.0 nominal; measure yours
 #endif
 #ifndef BATT_SAG_OFFSET_MV
-#define BATT_SAG_OFFSET_MV  30      // mV to offset WiFi TX load sag
+#define BATT_SAG_OFFSET_MV  100     // mV to offset WiFi+display load sag
 #endif
-#define BATT_EMA_ALPHA       0.12f  // EMA smoothing (lower = less jitter)
+#define BATT_EMA_ALPHA       0.25f  // EMA smoothing (higher = faster response)
+#define BATT_HYST            2      // ±2% display hysteresis
 #define BATT_SAMPLES         50     // ADC averaging samples
 
 static const uint8_t s_vals[BRI_LEVELS] = { 0, 60, 100, 150, 200, 255 };
@@ -119,5 +120,11 @@ int batteryPct() {
 
     if (pct < 0)   pct = 0;
     if (pct > 100) pct = 100;
-    return pct;
+
+    // Hysteresis — only update displayed % if change > ±2%
+    static int s_lastPct = -1;
+    if (s_lastPct < 0 || abs(pct - s_lastPct) > BATT_HYST) {
+        s_lastPct = pct;
+    }
+    return s_lastPct;
 }

@@ -1,12 +1,28 @@
 CYD-Weather TODO
 ================
-Session: 2026-07-06 (v1.2.9 dev)
+Session: 2026-07-07 (v1.3.0 dev)
 
 NEXT_RELEASE (v1.3.0)
 ---------------------
-[ ] Battery % — Layer 1 fix (alpha 0.12→0.25, sag 30→100mV, ±2% hysteresis)
 [ ] TBD
 [ ] TBD
+[ ] TBD
+
+Completed (v1.3.0)
+
+[x] METEORS screen — IMO fireball tracker
+    - New screen 7: crowd-sourced fireball events via IMO
+    - Quantum-Meteor Cloudflare Worker: scrapes IMO HTML → clean JSON API
+    - Displays date, witness reports, country:state, sound/frag tags (B/F/C)
+    - Themed throughout. Alternating row backgrounds, swipe scroll.
+    - Switched to no_ota partition scheme (compatible with Bruce-Launcher)
+    - PAGE_COUNT 11, screen indices shifted: 7=Meteors, 8=Volcanoes, 9=News, 10=Planner, 11=Settings
+    - Settings page boxes: extra width for double-digit boxes, right-aligned
+
+[x] Battery % — Layer 1 fix
+    - EMA alpha 0.12→0.25 (faster response, less sag chasing)
+    - BATT_SAG_OFFSET_MV 30→100mV (compensates WiFi+display sag)
+    - ±2% display hysteresis (eliminates jitter from minor EMA changes)
 
 Completed (v1.2.9)
 
