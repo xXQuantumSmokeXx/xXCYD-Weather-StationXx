@@ -13,6 +13,7 @@ struct CurrentWeather {
     float pressure      = 0;   // hPa (surface pressure)
     float visibility    = 0;   // miles (converted from meters)
     float uv_index      = 0;
+    int   aqi           = -1;  // US AQI; -1 = not fetched
     bool  valid         = false;
 };
 

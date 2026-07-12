@@ -256,9 +256,11 @@ static int fetchImoFireballs() {
         MeteorItem &mi = s_meteors[count];
 
         const char *d = evt["date_utc"] | "";
-        if (strlen(d) >= 10 && d[4] == '-') {
-            mi.date[0] = d[5]; mi.date[1] = d[6];
-            mi.date[2] = '-'; mi.date[3] = d[8]; mi.date[4] = d[9];
+        // API now returns DD/MM/YYYY; extract MM-DD
+        if (strlen(d) >= 10 && d[2] == '/' && d[5] == '/') {
+            mi.date[0] = d[3]; mi.date[1] = d[4];  // MM
+            mi.date[2] = '-';
+            mi.date[3] = d[0]; mi.date[4] = d[1];  // DD
             mi.date[5] = '\0';
         } else copyFit("--", mi.date, sizeof(mi.date));
 
@@ -477,11 +479,10 @@ void screenMeteorsDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 7, 12);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    bool doFetch = (!s_fetchedOnce || s_forceRefresh) && wifiOk && !g_meteorsPending;
+    bool doFetch = (!s_fetchedOnce || s_forceRefresh || stale()) && wifiOk && !g_meteorsPending;
     s_forceRefresh = false;
 
     if (doFetch) {
-        g_meteorsPending = true;
         triggerMeteorsFetch();
     }
 

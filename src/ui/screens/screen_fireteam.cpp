@@ -13,6 +13,24 @@ enum Risk : uint8_t { RISK_LOW, RISK_ELEVATED, RISK_HIGH, RISK_CRITICAL };
 struct Assessment { Risk overall, fire, storm, heat; int peakHour, startHour, endHour; float peakTemp, peakWind; int peakRh, peakRain, peakCode; bool official; char reason[88]; };
 const char *name(Risk r) { static const char *n[]={"LOW","ELEVATED","HIGH","CRITICAL"}; return n[r]; }
 uint16_t color(Risk r) { return r==RISK_LOW ? 0x07E0u : r==RISK_ELEVATED ? COL_AMBER : r==RISK_HIGH ? 0xFBE0u : COL_RED; }
+uint16_t aqiColor(int aqi) {
+    if (aqi < 0)   return COL_DIM;
+    if (aqi <= 50) return 0x07E0u;      // Green — Good
+    if (aqi <= 100) return COL_AMBER;    // Amber — Moderate
+    if (aqi <= 150) return 0xFBE0u;     // Orange — USG
+    if (aqi <= 200) return COL_RED;      // Red — Unhealthy
+    if (aqi <= 300) return 0x9810u;     // Purple — Very Unhealthy
+    return 0x8000u;                      // Maroon — Hazardous
+}
+const char *aqiLabel(int aqi) {
+    if (aqi < 0)   return "--";
+    if (aqi <= 50)  return "Good";
+    if (aqi <= 100) return "Moderate";
+    if (aqi <= 150) return "Unhealthy";
+    if (aqi <= 200) return "Very Unhlthy";
+    if (aqi <= 300) return "Hazardous";
+    return "Severe";
+}
 Risk fireRisk(int rh, float wind, int rain) {
     int s=(rh<20?3:rh<30?2:rh<40?1:0)+(wind>=30?3:wind>=20?2:wind>=12?1:0)+(rain<15?1:0);
     return s>=6?RISK_CRITICAL:s>=4?RISK_HIGH:s>=2?RISK_ELEVATED:RISK_LOW;
@@ -126,7 +144,10 @@ void card(TFT_eSPI&t,int x,const char*label,Risk r){uint16_t c=color(r);t.fillRo
 void screenFireteamDraw(TFT_eSPI &tft, bool wifiOk) {
     char ts[10];timeGetShort(ts);drawTopbar(tft,g_location.valid?g_location.city:"","FIRETEAM",ts,wifiOk);drawBottombar(tft,"TACTICAL CONDITIONS",4,12);tft.fillRect(0,CONTENT_Y,SCREEN_W,CONTENT_H,COL_BG);
     if(!g_current.valid){tft.setTextFont(FONT_MD);tft.setTextColor(g_themeColor,COL_BG);tft.setCursor(74,102);tft.print(wifiOk?"Awaiting weather data":"Fireteam offline");return;}
-    Assessment a=assess();uint16_t c=color(a.overall);tft.setTextFont(FONT_SM);tft.setTextColor(g_themeColor,COL_BG);tft.setCursor(10,31);tft.print("READINESS LEVEL");tft.setTextFont(FONT_LG);tft.setTextColor(c,COL_BG);tft.setCursor(10,46);tft.print(name(a.overall));tft.drawFastHLine(10,78,300,g_themeColor);tft.setTextFont(FONT_SM);tft.setTextColor(COL_WHITE,COL_BG);tft.setCursor(10,86);tft.print(a.reason);
+    Assessment a=assess();uint16_t c=color(a.overall);tft.setTextFont(FONT_SM);tft.setTextColor(g_themeColor,COL_BG);tft.setCursor(10,31);tft.print("READINESS LEVEL");tft.setTextFont(FONT_LG);tft.setTextColor(c,COL_BG);tft.setCursor(10,46);tft.print(name(a.overall));
+    // Air Quality — right-aligned, same y as readiness
+    {tft.setTextFont(FONT_SM);tft.setTextColor(g_themeColor,COL_BG);int w=tft.textWidth("AIR QUALITY");tft.setCursor(SCREEN_W-w-10,31);tft.print("AIR QUALITY");tft.setTextFont(FONT_LG);uint16_t aq=aqiColor(g_current.aqi);tft.setTextColor(aq,COL_BG);char aqs[8];snprintf(aqs,sizeof(aqs),g_current.aqi>=0?"%d":"--",g_current.aqi);int aw=tft.textWidth(aqs);tft.setCursor(SCREEN_W-aw-10,46);tft.print(aqs);}
+    tft.drawFastHLine(10,78,300,g_themeColor);tft.setTextFont(FONT_SM);tft.setTextColor(COL_WHITE,COL_BG);tft.setCursor(10,86);tft.print(a.reason);
     card(tft,8,"FIRE",a.fire);card(tft,112,"STORM",a.storm);card(tft,216,"HEAT",a.heat);
     char updated[24], start[10], end[10];
     formatUpdated(updated, sizeof(updated));

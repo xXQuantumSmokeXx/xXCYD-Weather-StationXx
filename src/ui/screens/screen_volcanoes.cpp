@@ -286,7 +286,6 @@ void screenVolcanoesDraw(TFT_eSPI &tft, bool wifiOk) {
     s_forceRefresh = false;
 
     if (doFetch) {
-        g_volcanoesPending = true;
         triggerVolcanoesFetch();
     }
 

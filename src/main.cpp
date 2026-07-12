@@ -174,35 +174,47 @@ static void fetchWorker(void *param) {
                 g_newsPending      = true;
                 g_volcanoesPending = true;
 
-                firesFetch(s_wifiOk);
-                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
-                s_firesDone = true;
-                xSemaphoreGive(s_dataMutex);
-
-                usgsFetch(s_wifiOk);
-                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
-                s_usgsDone = true;
-                xSemaphoreGive(s_dataMutex);
-
-                meteorsFetch(s_wifiOk);
-                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
-                s_meteorsDone = true;
-                xSemaphoreGive(s_dataMutex);
-
-                solarFetch(s_wifiOk);
-                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
-                s_solarDone = true;
-                xSemaphoreGive(s_dataMutex);
-
-                newsFetch(s_wifiOk, g_location.city);
-                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
-                s_newsDone = true;
-                xSemaphoreGive(s_dataMutex);
-
-                volcanoesFetch(s_wifiOk);
-                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
-                s_volcanoesDone = true;
-                xSemaphoreGive(s_dataMutex);
+                {
+                    bool ok = firesFetch(s_wifiOk);
+                    xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                    s_firesOk = ok;
+                    s_firesDone = true;
+                    xSemaphoreGive(s_dataMutex);
+                }
+                {
+                    bool ok = usgsFetch(s_wifiOk);
+                    xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                    s_usgsOk = ok;
+                    s_usgsDone = true;
+                    xSemaphoreGive(s_dataMutex);
+                }
+                {
+                    bool ok = meteorsFetch(s_wifiOk);
+                    xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                    s_meteorsOk = ok;
+                    s_meteorsDone = true;
+                    xSemaphoreGive(s_dataMutex);
+                }
+                {
+                    solarFetch(s_wifiOk);
+                    xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                    s_solarDone = true;
+                    xSemaphoreGive(s_dataMutex);
+                }
+                {
+                    bool ok = newsFetch(s_wifiOk, g_location.city);
+                    xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                    s_newsOk = ok;
+                    s_newsDone = true;
+                    xSemaphoreGive(s_dataMutex);
+                }
+                {
+                    bool ok = volcanoesFetch(s_wifiOk);
+                    xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                    s_volcanoesOk = ok;
+                    s_volcanoesDone = true;
+                    xSemaphoreGive(s_dataMutex);
+                }
                 break;
 
             case FETCH_FIRES: {
@@ -274,6 +286,7 @@ static void triggerFetch(bool includeLocation) {
 // Screen triggers (called from screen draw functions — must be non-static)
 void triggerFiresFetch() {
     if (!s_fetchTask || workerBusy()) return;
+    g_firesPending = true;
     s_firesDone = false;
     s_fetchCmd  = FETCH_FIRES;
     ledSet(false, false, true);
@@ -282,6 +295,7 @@ void triggerFiresFetch() {
 
 void triggerUsgsFetch() {
     if (!s_fetchTask || workerBusy()) return;
+    g_usgsPending = true;
     s_usgsDone = false;
     s_fetchCmd  = FETCH_USGS;
     ledSet(false, false, true);
@@ -290,6 +304,7 @@ void triggerUsgsFetch() {
 
 void triggerMeteorsFetch() {
     if (!s_fetchTask || workerBusy()) return;
+    g_meteorsPending = true;
     s_meteorsDone = false;
     s_fetchCmd  = FETCH_METEORS;
     ledSet(false, false, true);
@@ -298,6 +313,7 @@ void triggerMeteorsFetch() {
 
 void triggerSolarFetch() {
     if (!s_fetchTask || workerBusy()) return;
+    g_solarPending = true;
     s_solarDone = false;
     s_fetchCmd  = FETCH_SOLAR;
     ledSet(false, false, true);
@@ -306,6 +322,7 @@ void triggerSolarFetch() {
 
 void triggerNewsFetch() {
     if (!s_fetchTask || workerBusy()) return;
+    g_newsPending = true;
     s_newsDone = false;
     s_fetchCmd  = FETCH_NEWS;
     ledSet(false, false, true);
@@ -314,6 +331,7 @@ void triggerNewsFetch() {
 
 void triggerVolcanoesFetch() {
     if (!s_fetchTask || workerBusy()) return;
+    g_volcanoesPending = true;
     s_volcanoesDone = false;
     s_fetchCmd  = FETCH_VOLCANOES;
     ledSet(false, false, true);
@@ -895,22 +913,22 @@ void loop() {
     if (s_wifiOk && !workerBusy() && s_refreshQueue) {
         if (s_refreshQueue & REFRESH_FIRES) {
             s_refreshQueue &= ~REFRESH_FIRES;
-            g_firesPending = true; s_lastFiresAttempt = millis(); triggerFiresFetch();
+            s_lastFiresAttempt = millis(); triggerFiresFetch();
         } else if (s_refreshQueue & REFRESH_USGS) {
             s_refreshQueue &= ~REFRESH_USGS;
-            g_usgsPending = true; s_lastUsgsAttempt = millis(); triggerUsgsFetch();
+            s_lastUsgsAttempt = millis(); triggerUsgsFetch();
         } else if (s_refreshQueue & REFRESH_METEORS) {
             s_refreshQueue &= ~REFRESH_METEORS;
-            g_meteorsPending = true; s_lastMeteorsAttempt = millis(); triggerMeteorsFetch();
+            s_lastMeteorsAttempt = millis(); triggerMeteorsFetch();
         } else if (s_refreshQueue & REFRESH_NEWS) {
             s_refreshQueue &= ~REFRESH_NEWS;
-            g_newsPending = true; s_lastNewsAttempt = millis(); triggerNewsFetch();
+            s_lastNewsAttempt = millis(); triggerNewsFetch();
         } else if (s_refreshQueue & REFRESH_VOLCANOES) {
             s_refreshQueue &= ~REFRESH_VOLCANOES;
-            g_volcanoesPending = true; s_lastVolcanoesAttempt = millis(); triggerVolcanoesFetch();
+            s_lastVolcanoesAttempt = millis(); triggerVolcanoesFetch();
         } else if (s_refreshQueue & REFRESH_SOLAR) {
             s_refreshQueue &= ~REFRESH_SOLAR;
-            g_solarPending = true; s_lastSolarAttempt = millis(); triggerSolarFetch();
+            s_lastSolarAttempt = millis(); triggerSolarFetch();
         }
     }
     // Weather fetch completion

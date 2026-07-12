@@ -469,7 +469,6 @@ void screenSolarDraw(TFT_eSPI &tft, bool wifiOk) {
     s_forceRefresh = false;
 
     if (doFetch) {
-        g_solarPending = true;
         triggerSolarFetch();
     }
 

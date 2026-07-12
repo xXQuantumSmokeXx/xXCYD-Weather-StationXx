@@ -85,6 +85,52 @@ static void parseDayName(const char *s, char *buf3) {
 }
 
 
+static void fetchAirQuality(float lat, float lon) {
+    // Open-Meteo Air Quality API — free, no key, returns US AQI
+    // Use HTTP (not HTTPS) — same as the main forecast API, avoids TLS overhead
+    char url[256];
+    snprintf(url, sizeof(url),
+        "http://air-quality-api.open-meteo.com/v1/air-quality"
+        "?latitude=%.4f&longitude=%.4f"
+        "&current=us_aqi",
+        lat, lon);
+
+    WiFiClient client;
+    HTTPClient http;
+    if (!http.begin(client, url)) {
+        Serial.println("[AQI] begin fail");
+        return;
+    }
+    http.setTimeout(10000);
+    http.addHeader("User-Agent", "CYD-Weather/1.0");
+    http.addHeader("Accept-Encoding", "identity");
+    int code = http.GET();
+    if (code != 200) {
+        Serial.printf("[AQI] HTTP %d\n", code);
+        http.end();
+        return;
+    }
+
+    // Must call getString() first — the API uses chunked transfer encoding
+    // and the HTTPClient library only de-chunks via getString(), not getStream().
+    String body = http.getString();
+    http.end();
+
+    JsonDocument filter;
+    filter["current"]["us_aqi"] = true;
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(
+        doc, body, DeserializationOption::Filter(filter));
+    if (err) {
+        Serial.printf("[AQI] JSON: %s\n", err.c_str());
+        return;
+    }
+
+    int aqi = doc["current"]["us_aqi"] | -1;
+    Serial.printf("[AQI] %d\n", aqi);
+    if (aqi >= 0) g_current.aqi = aqi;
+}
+
 static void fetchNwsAlert(float lat, float lon) {
     g_weatherAlert = WeatherAlert{};
     g_alertsChecked = false;
@@ -244,6 +290,7 @@ bool weatherFetch(float lat, float lon) {
     }
 
     fetchNwsAlert(lat, lon);
+    fetchAirQuality(lat, lon);
     g_weatherUpdatedEpoch = (unsigned long)time(nullptr);
     return true;
 }
@@ -434,6 +481,7 @@ static bool weatherFetchNWS(float lat, float lon) {
     }
 
     fetchNwsAlert(lat, lon);
+    fetchAirQuality(lat, lon);
     g_weatherUpdatedEpoch = (unsigned long)time(nullptr);
     return true;
 }
@@ -531,6 +579,7 @@ static bool weatherFetchNWSPublic(float lat, float lon) {
     }
 
     fetchNwsAlert(lat, lon);
+    fetchAirQuality(lat, lon);
     g_weatherUpdatedEpoch = (unsigned long)time(nullptr);
     return true;
 }

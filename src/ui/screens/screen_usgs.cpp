@@ -183,7 +183,6 @@ void screenUsgsDraw(TFT_eSPI &tft, bool wifiOk) {
     s_forceRefresh = false;
 
     if (doFetch) {
-        g_usgsPending = true;
         triggerUsgsFetch();
     }
 

@@ -311,7 +311,6 @@ void screenNewsDraw(TFT_eSPI &tft, bool wifiOk) {
     s_forceRefresh = false;
 
     if (doFetch) {
-        g_newsPending = true;
         triggerNewsFetch();
     }
 

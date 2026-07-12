@@ -368,7 +368,6 @@ void screenFiresDraw(TFT_eSPI &tft, bool wifiOk) {
     s_forceRefresh = false;
 
     if (doFetch) {
-        g_firesPending = true;
         triggerFiresFetch();
     }
 
