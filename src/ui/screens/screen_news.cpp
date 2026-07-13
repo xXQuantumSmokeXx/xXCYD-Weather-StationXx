@@ -150,7 +150,7 @@ static bool isMetaTitle(const char *title) {
 }
 
 static int fetchRSS(const char *url, NewsItem *items, int maxItems) {
-    WiFiClientSecure client;
+    static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);

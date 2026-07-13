@@ -136,7 +136,7 @@ static uint16_t colorDot(const char *code) {
 bool volcanoesFetch(bool wifiOk) {
     if (!wifiOk || !WiFi.isConnected()) return false;
 
-    WiFiClientSecure client;
+    static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes");

@@ -109,7 +109,7 @@ static void getUtcDate(int dayOffset, char *out, size_t len) {
 }
 
 static bool fetchKp() {
-    WiFiClientSecure client;
+    static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json");
@@ -138,7 +138,7 @@ static bool fetchKp() {
 }
 
 static void fetchPlasma() {
-    WiFiClientSecure client;
+    static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services.swpc.noaa.gov/products/solar-wind/plasma-2-hour.json");
@@ -160,7 +160,7 @@ static void fetchPlasma() {
 }
 
 static void fetchMag() {
-    WiFiClientSecure client;
+    static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services.swpc.noaa.gov/products/solar-wind/mag-2-hour.json");
@@ -181,7 +181,7 @@ static void fetchMag() {
 }
 
 static void fetchXray() {
-    WiFiClientSecure client;
+    static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json");
@@ -236,7 +236,7 @@ static void fetchXray() {
 }
 
 static void fetchFlare() {
-    WiFiClientSecure client;
+    static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services.swpc.noaa.gov/json/goes/primary/xray-flares-latest.json");
@@ -263,7 +263,7 @@ static void fetchCme() {
     getUtcDate(0, endDate, sizeof(endDate));
     snprintf(url, sizeof(url), "https://api.nasa.gov/DONKI/CME?startDate=%s&endDate=%s&api_key=DEMO_KEY", startDate, endDate);
 
-    WiFiClientSecure client;
+    static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.begin(client, url);

@@ -53,161 +53,6 @@ static void stampSync() {
     snprintf(s_sync, sizeof(s_sync), "%s", t);
 }
 
-// ── Simple HTML text extractor — copy text between > and < into buf ────────
-static int extractText(const char *html, int start, int end, char *buf, int bufLen) {
-    int bi = 0;
-    bool inTag = false;
-    for (int i = start; i < end && bi < bufLen - 1; i++) {
-        char c = html[i];
-        if (c == '<') { inTag = true; continue; }
-        if (c == '>') { inTag = false; continue; }
-        if (inTag) continue;
-        if (c == '\n' || c == '\r' || c == '\t') c = ' ';
-        if (c == ' ' && bi > 0 && buf[bi - 1] == ' ') continue;
-        buf[bi++] = c;
-    }
-    buf[bi] = '\0';
-    // Trim trailing spaces
-    while (bi > 0 && buf[bi - 1] == ' ') { bi--; buf[bi] = '\0'; }
-    // Trim leading spaces
-    char *s = buf;
-    while (*s == ' ') s++;
-    if (s != buf) memmove(buf, s, strlen(s) + 1);
-    return bi;
-}
-
-// ── Decode common HTML entities in-place ───────────────────────────────────
-static void decodeEntities(char *buf) {
-    // Simple replacement for &nbsp; — the only entity we really care about
-    char *p;
-    while ((p = strstr(buf, "&nbsp;")) != nullptr) {
-        *p = ' ';
-        int rest = strlen(p + 6) + 1;
-        memmove(p + 1, p + 6, rest);
-    }
-    while ((p = strstr(buf, "&amp;")) != nullptr) {
-        int rest = strlen(p + 5) + 1;
-        memmove(p + 1, p + 5, rest);
-        *p = '&';
-    }
-}
-
-// ── Find next <td>...</td>; return start of content, set *end to > of </td>
-static const char *findTd(const char *html, const char *htmlEnd, const char **contentEnd) {
-    // Find <td
-    while (html < htmlEnd - 3) {
-        if (html[0] == '<' && html[1] == 't' && html[2] == 'd') break;
-        html++;
-    }
-    if (html >= htmlEnd - 3) return nullptr;
-    // Skip to >
-    while (html < htmlEnd && *html != '>') html++;
-    if (html >= htmlEnd) return nullptr;
-    const char *contentStart = html + 1;  // first char after >
-    // Find </td>
-    const char *p = contentStart;
-    while (p < htmlEnd - 4) {
-        if (p[0] == '<' && p[1] == '/' && p[2] == 't' && p[3] == 'd' && p[4] == '>') {
-            *contentEnd = p;  // points to < of </td>
-            return contentStart;
-        }
-        p++;
-    }
-    return nullptr;
-}
-
-// ── Parse one <tr>...</tr> from raw HTML ───────────────────────────────────
-static bool parseRow(const char *trStart, const char *trEnd, MeteorItem &mi) {
-    char buf[256];
-    const char *contentEnd;
-    const char *td = trStart;
-
-    // TD 0: Event ID — e.g. "&nbsp; Event 5140-2026"
-    td = findTd(td, trEnd, &contentEnd);
-    if (!td) return false;
-    extractText(td, contentEnd - td + (contentEnd - td), (int)(contentEnd - td), buf, sizeof(buf));
-    decodeEntities(buf);
-    const char *evt = strstr(buf, "Event ");
-    if (!evt) return false;  // month header row — skip
-    evt += 6;
-    const char *dash = strchr(evt, '-');
-    if (dash && dash > evt && (dash - evt) < 6) {
-        int n = dash - evt;
-        mi.eventId[0] = '#';
-        memcpy(mi.eventId + 1, evt, n);
-        mi.eventId[n + 1] = '\0';
-    } else {
-        copyFit("--", mi.eventId, sizeof(mi.eventId));
-    }
-    td = contentEnd + 5;  // after </td>
-
-    // TD 1: Report count
-    td = findTd(td, trEnd, &contentEnd);
-    if (!td) return false;
-    extractText(td, contentEnd - td + (int)(contentEnd - td), (int)(contentEnd - td), buf, sizeof(buf));
-    int reps = atoi(buf);
-    if (reps > 0) snprintf(mi.reports, sizeof(mi.reports), "%d reps", reps);
-    else copyFit("--", mi.reports, sizeof(mi.reports));
-    td = contentEnd + 5;
-
-    // TD 2: UT date "2026-07-07 02:54"
-    td = findTd(td, trEnd, &contentEnd);
-    if (!td) return false;
-    extractText(td, contentEnd - td + (int)(contentEnd - td), (int)(contentEnd - td), buf, sizeof(buf));
-    if (strlen(buf) >= 10 && buf[4] == '-' && buf[7] == '-') {
-        mi.date[0] = buf[5]; mi.date[1] = buf[6];
-        mi.date[2] = '-';
-        mi.date[3] = buf[8]; mi.date[4] = buf[9];
-        mi.date[5] = '\0';
-    } else {
-        copyFit("--", mi.date, sizeof(mi.date));
-    }
-    td = contentEnd + 5;
-
-    // TD 3: Local date/time — skip
-    td = findTd(td, trEnd, &contentEnd);
-    if (!td) return false;
-    td = contentEnd + 5;
-
-    // TD 4: Countries — "US", "BE FR DE LU NL CH"
-    td = findTd(td, trEnd, &contentEnd);
-    if (!td) return false;
-    extractText(td, contentEnd - td + (int)(contentEnd - td), (int)(contentEnd - td), buf, sizeof(buf));
-    char countryBuf[64];
-    copyFit(buf, countryBuf, sizeof(countryBuf));
-    td = contentEnd + 5;
-
-    // TD 5: States — "ID, UT"
-    td = findTd(td, trEnd, &contentEnd);
-    if (!td) return false;
-    extractText(td, contentEnd - td + (int)(contentEnd - td), (int)(contentEnd - td), buf, sizeof(buf));
-
-    // Combine: country + first state
-    char locBuf[26];
-    int off = 0;
-    if (countryBuf[0]) {
-        int cl = strlen(countryBuf);
-        if (cl > 10) cl = 10;
-        memcpy(locBuf, countryBuf, cl);
-        off = cl;
-    }
-    if (buf[0] && off < (int)sizeof(locBuf) - 3) {
-        if (off > 0) { locBuf[off++] = ':'; locBuf[off++] = ' '; }
-        const char *comma = strchr(buf, ',');
-        int take = comma ? (int)(comma - buf) : (int)strlen(buf);
-        if (take > 18) take = 18;
-        if (off + take >= (int)sizeof(locBuf) - 1) take = (int)sizeof(locBuf) - off - 2;
-        memcpy(locBuf + off, buf, take);
-        off += take;
-        if (comma && off < (int)sizeof(locBuf) - 2) locBuf[off++] = '+';
-    }
-    locBuf[off] = '\0';
-    if (off == 0) copyFit("--", locBuf, sizeof(locBuf));
-    copyFit(locBuf, mi.location, sizeof(mi.location));
-
-    return true;
-}
-
 // ── Fetch from Quantum-Meteor API (Cloudflare Worker) ─────────────────────
 #define QM_URL "http://quantum-meteor.assorted-cardboard.workers.dev/fireballs?limit=30"
 
@@ -227,11 +72,8 @@ static int fetchImoFireballs() {
         return 0;
     }
 
-    String body = http.getString();
-    http.end();
-    Serial.printf("[MET] %d bytes\n", body.length());
-
-    // Filter — only parse fields we need, saves RAM
+    // Stream directly — avoids a 5 KB String allocation that can fail on a
+    // fragmented heap after the preceding HTTPS fetches.
     JsonDocument filter;
     filter["events"][0]["id"]       = true;
     filter["events"][0]["date_utc"] = true;
@@ -243,7 +85,8 @@ static int fetchImoFireballs() {
     filter["events"][0]["frag"]     = true;
 
     JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, body, DeserializationOption::Filter(filter));
+    DeserializationError err = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
+    http.end();
     if (err) {
         Serial.printf("[MET] JSON: %s\n", err.c_str());
         return 0;
@@ -256,8 +99,15 @@ static int fetchImoFireballs() {
         MeteorItem &mi = s_meteors[count];
 
         const char *d = evt["date_utc"] | "";
-        // API now returns DD/MM/YYYY; extract MM-DD
-        if (strlen(d) >= 10 && d[2] == '/' && d[5] == '/') {
+        // API returns YYYY-MM-DD; also handle DD/MM/YYYY for resilience
+        if (strlen(d) >= 10 && d[4] == '-' && d[7] == '-') {
+            // YYYY-MM-DD
+            mi.date[0] = d[5]; mi.date[1] = d[6];  // MM
+            mi.date[2] = '-';
+            mi.date[3] = d[8]; mi.date[4] = d[9];  // DD
+            mi.date[5] = '\0';
+        } else if (strlen(d) >= 10 && d[2] == '/' && d[5] == '/') {
+            // DD/MM/YYYY
             mi.date[0] = d[3]; mi.date[1] = d[4];  // MM
             mi.date[2] = '-';
             mi.date[3] = d[0]; mi.date[4] = d[1];  // DD
@@ -298,100 +148,11 @@ static int fetchImoFireballs() {
     return count;
 }
 
-// ── Fetch from JPL (fallback — scientific sensor data) ────────────────────
-static int fetchJplFireballs() {
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    http.begin(client, "https://ssd-api.jpl.nasa.gov/fireball.api?date-min=2024-01-01&sort=-date&limit=50");
-    http.setTimeout(15000);
-    http.addHeader("User-Agent", "CYD-Weather/1.0");
-    int code = http.GET();
-    if (code != 200) { http.end(); return 0; }
-
-    String body = http.getString();
-    http.end();
-
-    JsonDocument doc;
-    if (deserializeJson(doc, body)) return 0;
-
-    JsonArray fields = doc["fields"].as<JsonArray>();
-    JsonArray dataArr = doc["data"].as<JsonArray>();
-    if (fields.isNull() || dataArr.isNull()) return 0;
-
-    int idxDate = -1, idxEnergy = -1, idxLat = -1, idxLatDir = -1;
-    int idxLon = -1, idxLonDir = -1, idxAlt = -1, idxVel = -1;
-
-    for (int i = 0; i < (int)fields.size(); i++) {
-        const char *f = fields[i].as<const char *>();
-        if (!f) continue;
-        if      (strcmp(f, "date") == 0)     idxDate = i;
-        else if (strcmp(f, "energy") == 0)   idxEnergy = i;
-        else if (strcmp(f, "lat") == 0)      idxLat = i;
-        else if (strcmp(f, "lat-dir") == 0)  idxLatDir = i;
-        else if (strcmp(f, "lon") == 0)      idxLon = i;
-        else if (strcmp(f, "lon-dir") == 0)  idxLonDir = i;
-        else if (strcmp(f, "alt") == 0)      idxAlt = i;
-        else if (strcmp(f, "vel") == 0)      idxVel = i;
-    }
-
-    int count = 0;
-    for (JsonArray row : dataArr) {
-        if (count >= METEOR_MAX) break;
-        MeteorItem &mi = s_meteors[count];
-
-        const char *d = (idxDate >= 0) ? row[idxDate].as<const char *>() : nullptr;
-        if (d && strlen(d) >= 10) {
-            mi.date[0] = d[5]; mi.date[1] = d[6];
-            mi.date[2] = '-'; mi.date[3] = d[8]; mi.date[4] = d[9];
-            mi.date[5] = '\0';
-        } else copyFit("--", mi.date, sizeof(mi.date));
-
-        if (idxEnergy >= 0) {
-            const char *ej = row[idxEnergy].as<const char *>();
-            if (ej && ej[0]) {
-                float gj = atof(ej) * 10.0f;
-                if (gj >= 1000.0f) snprintf(mi.reports, sizeof(mi.reports), "%.0fGJ", gj);
-                else if (gj >= 1.0f) snprintf(mi.reports, sizeof(mi.reports), "%.1fGJ", gj);
-                else snprintf(mi.reports, sizeof(mi.reports), "%.2fGJ", gj);
-            } else copyFit("--", mi.reports, sizeof(mi.reports));
-        } else copyFit("--", mi.reports, sizeof(mi.reports));
-
-        const char *la = (idxLat >= 0) ? row[idxLat].as<const char *>() : nullptr;
-        const char *ld = (idxLatDir >= 0) ? row[idxLatDir].as<const char *>() : nullptr;
-        const char *lo = (idxLon >= 0) ? row[idxLon].as<const char *>() : nullptr;
-        const char *lod = (idxLonDir >= 0) ? row[idxLonDir].as<const char *>() : nullptr;
-
-        if (la && lo) {
-            float lat = atof(la), lon = atof(lo);
-            if (ld && *ld == 'S') lat = -lat;
-            if (lod && *lod == 'W') lon = -lon;
-            snprintf(mi.location, sizeof(mi.location), "%.1f%s %.1f%s",
-                     fabsf(lat), lat >= 0 ? "N" : "S",
-                     fabsf(lon), lon >= 0 ? "E" : "W");
-        } else copyFit("--", mi.location, sizeof(mi.location));
-
-        const char *al = (idxAlt >= 0) ? row[idxAlt].as<const char *>() : nullptr;
-        const char *ve = (idxVel >= 0) ? row[idxVel].as<const char *>() : nullptr;
-        char jplId[10]; int jo = 0;
-        if (al && al[0] && jo < 8) jo += snprintf(jplId + jo, sizeof(jplId) - jo, "%.0fkm", atof(al));
-        if (ve && ve[0] && jo < 8) {
-            if (jo > 0) jplId[jo++] = '/';
-            jo += snprintf(jplId + jo, sizeof(jplId) - jo, "%.0fs", atof(ve));
-        }
-        if (jo > 0) { jplId[jo] = '\0'; copyFit(jplId, mi.eventId, sizeof(mi.eventId)); }
-        else copyFit("--", mi.eventId, sizeof(mi.eventId));
-
-        count++;
-    }
-    return count;
-}
-
-// ── Main fetch — IMO first, fall back to JPL ───────────────────────────────
+// ── Main fetch — Quantum-Meteor Cloudflare Worker ──────────────────────────
 bool meteorsFetch(bool wifiOk) {
     if (!wifiOk || !WiFi.isConnected()) return false;
 
-    Serial.println("[MET] trying IMO...");
+    Serial.println("[MET] fetching...");
     int count = fetchImoFireballs();
     if (count > 0) {
         s_meteorCount = count;
@@ -402,7 +163,7 @@ bool meteorsFetch(bool wifiOk) {
         Serial.printf("[MET] done: %d events\n", count);
         return true;
     }
-    Serial.println("[MET] both sources failed");
+    Serial.println("[MET] fetch failed");
     return false;
 }
 

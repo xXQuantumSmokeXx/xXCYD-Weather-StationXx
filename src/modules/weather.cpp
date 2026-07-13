@@ -138,7 +138,7 @@ static void fetchNwsAlert(float lat, float lon) {
     char url[160];
     snprintf(url, sizeof(url),
              "https://api.weather.gov/alerts/active?point=%.4f,%.4f", lat, lon);
-    WiFiClientSecure client;
+    static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     if (!http.begin(client, url)) return;
@@ -355,7 +355,7 @@ static int nwsToWmo(const char *fc) {
 
 // NWS GET helper — explicit host/path avoids HTTPClient URL parsing bugs
 static bool nwsGet(const char *host, const char *path, JsonDocument &doc) {
-    WiFiClientSecure client;
+    static WiFiClientSecure client;
     client.setInsecure();
     client.setTimeout(10);
     HTTPClient http;
@@ -496,7 +496,7 @@ static bool weatherFetchNWSPublic(float lat, float lon) {
         "https://forecast.weather.gov/MapClick.php?lat=%.4f&lon=%.4f&unit=0&lg=english&FcstType=json",
         lat, lon);
 
-    WiFiClientSecure client;
+    static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     if (!http.begin(client, url)) { http.end(); return false; }

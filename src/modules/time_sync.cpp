@@ -45,7 +45,7 @@ void timeGetDayName(int daysAhead, char *buf3) {
 
 void timeGetDateLong(char *buf, size_t len) {
     static const char *wdays[] = {
-        "Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"
+        "Sun","Mon","Tue","Wed","Thu","Fri","Sat"
     };
     static const char *months[] = {
         "Jan","Feb","Mar","Apr","May","Jun",

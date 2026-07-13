@@ -86,7 +86,7 @@ bool usgsFetch(bool wifiOk) {
         return false;
     }
 
-    WiFiClientSecure client;
+    static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=3.5&limit=40&orderby=time");
