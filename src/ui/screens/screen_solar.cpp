@@ -13,6 +13,8 @@
 #include <cstring>
 #include <ctime>
 
+#define SOLAR_CACHE_MS (15UL * 60UL * 1000UL)
+
 struct SolarState {
     bool valid = false;
     bool fetchedOnce = false;
@@ -84,6 +86,12 @@ static void stampSync() {
     char t[10];
     timeGetShort(t);
     snprintf(s_solar.sync, sizeof(s_solar.sync), "%s", t);
+}
+
+static bool stale() {
+    if (!s_solar.fetchedOnce) return true;
+    if (s_forceRefresh) return true;
+    return millis() - s_solar.fetchedMs > SOLAR_CACHE_MS;
 }
 
 static void fluxToClass(float flux, char *out, size_t len) {
@@ -463,9 +471,7 @@ void screenSolarDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 3, 12);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    // Only fetch on first-ever visit or explicit top-bar tap refresh.
-    // Time-based staleness is handled by the hourly auto-refresh in the main loop.
-    bool doFetch = (!s_solar.fetchedOnce || s_forceRefresh) && wifiOk && !g_solarPending;
+    bool doFetch = (!s_solar.fetchedOnce || s_forceRefresh || stale()) && wifiOk && !g_solarPending;
     s_forceRefresh = false;
 
     if (doFetch) {

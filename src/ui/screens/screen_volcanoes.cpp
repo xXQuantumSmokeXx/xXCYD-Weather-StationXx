@@ -282,7 +282,7 @@ void screenVolcanoesDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 8, 12);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    bool doFetch = (!s_fetchedOnce || s_forceRefresh) && wifiOk && !g_volcanoesPending;
+    bool doFetch = (!s_fetchedOnce || s_forceRefresh || stale()) && wifiOk && !g_volcanoesPending;
     s_forceRefresh = false;
 
     if (doFetch) {
