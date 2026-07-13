@@ -53,6 +53,111 @@ static void stampSync() {
     snprintf(s_sync, sizeof(s_sync), "%s", t);
 }
 
+// ── Country & state name lookup ────────────────────────────────────────────
+struct CodeName { const char *code; const char *name; };
+
+static const char* lookupCountry(const char *code) {
+    // Common IMO fireball-reporting countries. US stays short ("US") since
+    // state names carry the location detail. Everything else gets expanded.
+    static const CodeName table[] = {
+        {"US","US"}, {"CA","Canada"}, {"GB","UK"}, {"DE","Germany"},
+        {"FR","France"}, {"BE","Belgium"}, {"NL","Netherlands"},
+        {"LU","Luxembourg"}, {"CH","Switzerland"}, {"AT","Austria"},
+        {"IT","Italy"}, {"ES","Spain"}, {"PT","Portugal"},
+        {"DK","Denmark"}, {"NO","Norway"}, {"SE","Sweden"},
+        {"FI","Finland"}, {"PL","Poland"}, {"CZ","Czechia"},
+        {"SK","Slovakia"}, {"HU","Hungary"}, {"RO","Romania"},
+        {"HR","Croatia"}, {"SI","Slovenia"}, {"IE","Ireland"},
+        {"AU","Australia"}, {"NZ","New Zealand"}, {"JP","Japan"},
+        {"BR","Brazil"}, {"AR","Argentina"}, {"CL","Chile"},
+        {"MX","Mexico"}, {"ZA","S. Africa"}, {"IN","India"},
+    };
+    for (auto &e : table) if (strcmp(code, e.code) == 0) return e.name;
+    return code;  // unknown — keep raw code
+}
+
+static const char* lookupState(const char *code) {
+    static const CodeName table[] = {
+        {"AL","Alabama"},{"AK","Alaska"},{"AZ","Arizona"},{"AR","Arkansas"},
+        {"CA","California"},{"CO","Colorado"},{"CT","Connecticut"},
+        {"DE","Delaware"},{"FL","Florida"},{"GA","Georgia"},
+        {"HI","Hawaii"},{"ID","Idaho"},{"IL","Illinois"},{"IN","Indiana"},
+        {"IA","Iowa"},{"KS","Kansas"},{"KY","Kentucky"},{"LA","Louisiana"},
+        {"ME","Maine"},{"MD","Maryland"},{"MA","Massachusetts"},
+        {"MI","Michigan"},{"MN","Minnesota"},{"MS","Mississippi"},
+        {"MO","Missouri"},{"MT","Montana"},{"NE","Nebraska"},
+        {"NV","Nevada"},{"NH","New Hamp."},{"NJ","New Jersey"},
+        {"NM","New Mexico"},{"NY","New York"},{"NC","N. Carolina"},
+        {"ND","N. Dakota"},{"OH","Ohio"},{"OK","Oklahoma"},
+        {"OR","Oregon"},{"PA","Pennsylvania"},{"RI","Rhode Island"},
+        {"SC","S. Carolina"},{"SD","S. Dakota"},{"TN","Tennessee"},
+        {"TX","Texas"},{"UT","Utah"},{"VT","Vermont"},{"VA","Virginia"},
+        {"WA","Washington"},{"WV","W. Virginia"},{"WI","Wisconsin"},
+        {"WY","Wyoming"},{"DC","DC"},
+    };
+    for (auto &e : table) if (strcmp(code, e.code) == 0) return e.name;
+    return code;
+}
+
+// ── Format location string: "US: Idaho, Utah" or "Germany +France" ──────────
+static void fmtLocation(const char *country, const char *state, char *out, size_t len) {
+    if (!country || !country[0]) { copyFit("--", out, len); return; }
+
+    // Split on comma or space (IMO uses space-separated codes: "AT FR DE IT CH")
+    char ccBuf[64]; snprintf(ccBuf, sizeof(ccBuf), "%s", country);
+    char *ccTok = strtok(ccBuf, ", ");
+
+    // Build country portion
+    char coStr[32] = "";
+    int coCount = 0;
+    while (ccTok && coCount < 4) {
+        // Trim leading space
+        while (*ccTok == ' ') ccTok++;
+        const char *name = lookupCountry(ccTok);
+        if (coCount == 0) {
+            snprintf(coStr, sizeof(coStr), "%s", name);
+        } else if (coCount == 1) {
+            size_t cur = strlen(coStr);
+            snprintf(coStr + cur, sizeof(coStr) - cur, " +%s", name);
+        }
+        // After 2 countries, stop naming them (e.g. "France +Germany")
+        coCount++;
+        ccTok = strtok(nullptr, ", ");
+    }
+    if (coCount > 2) {
+        size_t cur = strlen(coStr);
+        snprintf(coStr + cur, sizeof(coStr) - cur, " +%d", coCount - 2);
+    }
+
+    // Build state portion (only meaningful for US; expand codes to names)
+    char stStr[32] = "";
+    if (state && state[0]) {
+        char stBuf[64]; snprintf(stBuf, sizeof(stBuf), "%s", state);
+        char *stTok = strtok(stBuf, ", ");
+        int stCount = 0;
+        while (stTok && stCount < 3) {
+            while (*stTok == ' ') stTok++;
+            const char *sname = (strcmp(country, "US") == 0 || strstr(country, "US"))
+                ? lookupState(stTok) : stTok;
+            if (stCount == 0) {
+                snprintf(stStr, sizeof(stStr), "%s", sname);
+            } else {
+                size_t cur = strlen(stStr);
+                snprintf(stStr + cur, sizeof(stStr) - cur, ", %s", sname);
+            }
+            stCount++;
+            stTok = strtok(nullptr, ", ");
+        }
+    }
+
+    // Combine
+    if (stStr[0]) {
+        snprintf(out, len, "%s: %s", coStr, stStr);
+    } else {
+        snprintf(out, len, "%s", coStr);
+    }
+}
+
 // ── Fetch from Quantum-Meteor API (Cloudflare Worker) ─────────────────────
 #define QM_URL "http://quantum-meteor.assorted-cardboard.workers.dev/fireballs?limit=30"
 
@@ -119,15 +224,8 @@ static int fetchImoFireballs() {
         else copyFit("--", mi.reports, sizeof(mi.reports));
 
         const char *cc = evt["country"] | "";
-        const char *st = evt["state"] | "";
-        char loc[26]; int off = 0;
-        if (cc[0]) { int cl = strlen(cc); if (cl > 10) cl = 10; memcpy(loc, cc, cl); off = cl; }
-        if (st[0] && off < 23) { if (off) { loc[off++] = ':'; loc[off++] = ' '; }
-            int sl = strlen(st); if (sl > 18) sl = 18;
-            memcpy(loc + off, st, sl); off += sl; }
-        loc[off] = '\0';
-        if (!off) copyFit("--", loc, sizeof(loc));
-        copyFit(loc, mi.location, sizeof(mi.location));
+        const char *st = evt["state"]   | "";
+        fmtLocation(cc, st, mi.location, sizeof(mi.location));
 
         // Sound/frag tags — compact codes
         bool boom = evt["d_sound"] | false;
