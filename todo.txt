@@ -1,0 +1,130 @@
+CYD-Weather TODO
+================
+Session: 2026-07-13 (v1.3.4 release)
+
+NEXT_RELEASE (v1.3.5)
+---------------------
+[ ] AQI category label on FireTeam page
+    - Show category word ("Moderate") under or next to the AQI number
+    - FONT_SM, same color as the AQI number, right-aligned
+    - Already have aqiLabel() helper — just not used in draw yet
+
+[ ] NWS Alerts screen — active watches/warnings for current location
+    - NWS API already in weather fallback chain — just needs display
+    - Severity-coded (advisory=yellow, watch=amber, warning=red)
+    - Title + headline + expiration time per alert
+
+[ ] Weather screen staleness — pull stale() into Weather/NOW screen
+    - Data screens (v1.3.3) and Meteors (v1.3.2) have 15-min auto-refresh
+    - NOW screen still relies on hourly-only refresh — should match pattern
+
+───── Future Ideas ─────────────────────────────────────────────────────────────
+
+[ ] Alert aggregation — unified threat indicator
+    - Single icon or topbar glyph that glows when any source has urgent data
+    - Sources: Kp≥5, nearby wildfire, M3.5+ quake, volcano watch/orange/red, NWS warning
+    - Color-coded: amber=advisory, red=warning
+
+[ ] Sparklines on NOW screen — temp/pressure trend mini-charts
+    - 24h rolling history stored in RAM (circular buffer)
+    - Small line graphs (2-3px tall) in themed color
+    - Temp, pressure, humidity each get a sparkline
+
+[ ] ISS Pass Predictor — api.open-notify.org (free, no key)
+    - Shows upcoming visible ISS passes for current location
+    - Time, duration, elevation, direction for next 3-5 passes
+
+[ ] Satellite visibility tracker — Starlink trains / bright sats
+    - When visible satellite trains are overhead
+    - Fits the "looking up" theme with meteors and solar
+
+[ ] Battery % — Layer 2/3 improvements
+    - Layer 2: smooth polynomial LiPo curve instead of piecewise
+    - Layer 3: median filter or WiFi-idle-gated ADC sampling
+    - See CYD-Crypto-Tracker/TODO.md for full diagnosis
+
+[ ] Data screen refactor — shared template for all 6 data screens
+    - Every screen duplicates: pending flag, trigger fetch, stale check, completion handler
+    - Extract into a base pattern or macro to make adding screen N+1 trivial
+    - Reduces per-screen boilerplate from ~40 lines to ~10
+
+───── Completed ────────────────────────────────────────────────────────────────
+
+v1.3.4 — Lost in Translation
+[x] Meteors — country & state name expansion
+    - Country codes → full names (DE→Germany, FR→France, etc.). US stays "US".
+    - US state abbreviations → full names (ID→Idaho, AZ→Arizona). All 50 states + DC.
+    - Multi-country events: first two named, remainder counted ("Austria +France +3")
+    - 34 common IMO-reporting countries + 51 US states/territories in lookup tables
+
+v1.3.3 — Never Stale
+[x] Data screen staleness — stale() auto-refresh on all 6 data screens
+    - Fires, USGS, volcanoes, news, solar: all now check 15-min cache via stale()
+    - Meteors already had it (v1.3.2). Every data screen refreshes on revisit.
+    - Solar needed a new stale() function + SOLAR_CACHE_MS constant
+
+[x] Bootloop fix — meteors fetch during boot (v1.3.2 regression)
+    - fetchImoFireballs() buffered full 5 KB API response in a heap String
+    - After 4 preceding HTTPS fetches fragmented the heap, allocation crashed WiFi
+    - Fixed: stream JSON directly via http.getStream() — same pattern as fetchNwsAlert
+    - WiFi stack "wifi stop: out of memory!" errors resolved
+
+[x] TLS heap churn — all WiFiClientSecure instances made static
+    - One TLS context per fetch function, allocated once, reused
+    - Eliminates TLS alloc/free heap fragmentation across boot fetch sequence
+    - Affected: weather (3), fires (2), USGS (1), news (1), solar (6), volcanoes (1)
+
+[x] Meteors code cleanup
+    - Removed dead JPL fallback (~88 lines — defined but never called)
+    - Removed dead IMO HTML scraping code (~155 lines — replaced by Quantum-Meteor API)
+    - Fixed date parsing for YYYY-MM-DD API format (was checking DD/MM/YYYY only)
+    - Shortened day names in time_sync bottombar (Monday→Mon) for space
+
+v1.3.2 — Clearing the Air
+[x] Air Quality Index on FireTeam screen
+    - US AQI displayed right-aligned alongside Readiness Level
+    - EPA color scale (green→maroon) for severity at a glance
+    - Fetched from Open-Meteo Air Quality API (free, no key)
+    - Text-only display — clean and tactical, no gauge clutter
+
+[x] Data screen refresh deadlock — all 6 data screens fixed
+    - Root cause: g_xxxPending set BEFORE triggerXxxFetch() worker-busy guard
+    - If Core 0 worker was occupied, flag stayed true forever → permanent stall
+    - Fix: moved g_xxxPending = true inside each trigger function after the guard
+    - Affected: Fires, USGS, Meteors, Volcanoes, News, Solar
+
+[x] Meteors — stale data auto-refresh
+    - stale() function (15-min cache) was defined but never called
+    - Now wired into screenMeteorsDraw() doFetch condition
+    - Screen auto-refreshes instead of waiting for hour-change only
+
+[x] Meteors — date column fixed
+    - Quantum-Meteor API changed date_utc from YYYY-MM-DD to DD/MM/YYYY
+    - Parser updated to match new format → date column shows MM-DD correctly
+
+[x] FETCH_BOOT_BG — data screen boot flags
+    - s_xxxOk flags now set during boot for all data screens
+    - Prevents false fetch-failure detection and unnecessary immediate re-fetches
+
+v1.3.1
+[x] METEORS screen — IMO fireball tracker
+    - New screen 7: crowd-sourced fireball events via IMO
+    - Quantum-Meteor Cloudflare Worker: scrapes IMO HTML → clean JSON API
+    - Displays date, witness reports, country:state, sound/frag tags (B/F/C)
+    - Themed throughout. Alternating row backgrounds, swipe scroll.
+    - Switched to no_ota partition scheme (compatible with Bruce-Launcher)
+    - PAGE_COUNT 11, screen indices shifted: 7=Meteors, 8=Volcanoes, 9=News, 10=Planner, 11=Settings
+    - Settings page boxes: extra width for double-digit boxes, right-aligned
+
+[x] Battery % — Layer 1 fix
+    - EMA alpha 0.12→0.25 (faster response, less sag chasing)
+    - BATT_SAG_OFFSET_MV 30→100mV (compensates WiFi+display sag)
+    - ±2% display hysteresis (eliminates jitter from minor EMA changes)
+
+v1.2.9
+[x] Remove WiFi Scanner screen
+    - Why: decorative only. WiFi.scanNetworks() every 5s collides with data fetches
+
+[x] Improve battery percentage accuracy (partial — Layer 1 done in v1.3.1)
+    - Added EMA filter (alpha=0.12), 50-sample ADC averaging
+    - Added BATT_SAG_OFFSET_MV, configurable BATT_DIVIDER_RATIO
