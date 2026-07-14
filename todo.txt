@@ -1,8 +1,8 @@
 CYD-Weather TODO
 ================
-Session: 2026-07-13 (v1.3.4 release)
+Session: 2026-07-14 (v1.3.5 release)
 
-NEXT_RELEASE (v1.3.5)
+NEXT_RELEASE (v1.3.6)
 ---------------------
 [ ] AQI category label on FireTeam page
     - Show category word ("Moderate") under or next to the AQI number
@@ -13,10 +13,6 @@ NEXT_RELEASE (v1.3.5)
     - NWS API already in weather fallback chain — just needs display
     - Severity-coded (advisory=yellow, watch=amber, warning=red)
     - Title + headline + expiration time per alert
-
-[x] Weather screen staleness — covered by 2h weatherStale backup in main loop
-    - Data screens (v1.3.3) have 15-min cache; weather source updates hourly
-    - 2h threshold (v1.2.6) is appropriate safety net for hourly-source data
 
 ───── Future Ideas ─────────────────────────────────────────────────────────────
 
@@ -38,17 +34,29 @@ NEXT_RELEASE (v1.3.5)
     - When visible satellite trains are overhead
     - Fits the "looking up" theme with meteors and solar
 
-[x] Battery % — Layer 2/3 improvements
-    - Layer 2: smooth cubic polynomial LiPo curve (replaces 8-segment piecewise)
-    - Layer 3: trimmed-mean ADC sampling (discards top/bottom 10% outliers)
-    - See brightness.cpp:batteryPct()
-
 [ ] Data screen refactor — shared template for all 6 data screens
     - Every screen duplicates: pending flag, trigger fetch, stale check, completion handler
     - Extract into a base pattern or macro to make adding screen N+1 trivial
     - Reduces per-screen boilerplate from ~40 lines to ~10
 
 ───── Completed ────────────────────────────────────────────────────────────────
+
+v1.3.5 — Steady Current
+[x] Fireteam UI polish — card backgrounds + bottom bar
+    - FIRE/STORM/HEAT cards now use black backgrounds (COL_BG) instead of gray
+    - Bottom bar shows date + battery % (same as all other screens)
+
+[x] Meteors UI polish — solid black rows
+    - Removed alternating dim-gray row backgrounds; consistent black like other text screens
+
+[x] Weather screen staleness — confirmed covered
+    - 2h weatherStale backup in main loop (since v1.2.6) is appropriate for hourly-source data
+    - Data screens (v1.3.3) have 15-min cache; weather updates hourly at the API
+
+[x] Battery % — Layer 2/3 improvements
+    - Layer 2: smooth cubic polynomial LiPo curve (replaces 8-segment piecewise)
+    - Layer 3: trimmed-mean ADC sampling (discards top/bottom 10% WiFi TX outliers)
+    - See brightness.cpp:batteryPct()
 
 v1.3.4 — Lost in Translation
 [x] Meteors — country & state name expansion
