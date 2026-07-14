@@ -72,13 +72,25 @@ void brightnessOff() {
 }
 
 int batteryPct() {
-    // Multi-sample averaging to reduce ESP32 ADC noise (50 samples)
-    long sum = 0;
+    // Trimmed-mean sampling — collect 50 samples, sort, discard the
+    // bottom and top 10% (5 each) as WiFi TX / load-spike outliers,
+    // then average the middle 40 for a stable reading.
+    uint16_t raw[BATT_SAMPLES];
     for (int i = 0; i < BATT_SAMPLES; i++) {
-        sum += analogReadMilliVolts(BATT_PIN);
+        raw[i] = (uint16_t)analogReadMilliVolts(BATT_PIN);
         delay(1);
     }
-    int pinMv = sum / BATT_SAMPLES;
+    // Insertion sort — 50 elements, fast enough on ESP32
+    for (int i = 1; i < BATT_SAMPLES; i++) {
+        uint16_t key = raw[i];
+        int j = i - 1;
+        while (j >= 0 && raw[j] > key) { raw[j + 1] = raw[j]; j--; }
+        raw[j + 1] = key;
+    }
+    const int TRIM = BATT_SAMPLES / 10;   // 5 from each end
+    long sum = 0;
+    for (int i = TRIM; i < BATT_SAMPLES - TRIM; i++) sum += raw[i];
+    int pinMv = sum / (BATT_SAMPLES - 2 * TRIM);
 
     if (pinMv < 100) return -1;  // near-zero mV = floating/disconnected
 
@@ -103,20 +115,19 @@ int batteryPct() {
         s_batteryEma = alpha * vBat + (1.0f - alpha) * s_batteryEma;
     }
 
-    // Piecewise LiPo discharge curve — linear mapping badly overestimates
-    // because LiPo voltage hovers near 3.7-3.8V for most of the discharge.
-    // Uses EMA-smoothed voltage for stable display readout.
+    // Smooth cubic polynomial fit of real LiPo discharge curve.
+    // pct(x) = a*x³ + b*x² + c*x  where x = vBat - 3.5V
+    // Fitted to pass through (3.5V,0%), (3.7V,20%), (3.95V,70%), (4.2V,100%).
+    // No segment boundaries → no more boundary-jump jitter.
     float v = s_batteryEma;
     int pct;
-    if      (v >= 4.2f) pct = 100;
-    else if (v >= 4.1f) pct = (int)(90.0f + (v - 4.1f) / 0.1f * 10.0f);
-    else if (v >= 4.0f) pct = (int)(78.0f + (v - 4.0f) / 0.1f * 12.0f);
-    else if (v >= 3.9f) pct = (int)(63.0f + (v - 3.9f) / 0.1f * 15.0f);
-    else if (v >= 3.8f) pct = (int)(43.0f + (v - 3.8f) / 0.1f * 20.0f);
-    else if (v >= 3.7f) pct = (int)(20.0f + (v - 3.7f) / 0.1f * 23.0f);
-    else if (v >= 3.6f) pct = (int)( 6.0f + (v - 3.6f) / 0.1f * 14.0f);
-    else if (v >= 3.5f) pct = (int)( 1.0f + (v - 3.5f) / 0.1f *  5.0f);
-    else                pct = 0;
+    if (v >= 4.2f)      pct = 100;
+    else if (v <= 3.5f) pct = 0;
+    else {
+        float x = v - 3.5f;
+        float pctFloat = -546.03f * x*x*x + 577.14f * x*x + 6.41f * x;
+        pct = (int)(pctFloat + 0.5f);  // round to nearest
+    }
 
     if (pct < 0)   pct = 0;
     if (pct > 100) pct = 100;

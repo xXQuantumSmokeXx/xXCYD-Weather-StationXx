@@ -302,9 +302,6 @@ static void drawMeteorList(TFT_eSPI &tft) {
         int y = curY + 2;
         MeteorItem &m = s_meteors[i];
 
-        if (i & 1)
-            tft.fillRect(4, curY, SCREEN_W - 8, ROW_H - 1, COL_INPUTBG);
-
         // Date — themed
         tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(4, y);

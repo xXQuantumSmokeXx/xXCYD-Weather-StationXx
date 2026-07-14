@@ -14,9 +14,9 @@ NEXT_RELEASE (v1.3.5)
     - Severity-coded (advisory=yellow, watch=amber, warning=red)
     - Title + headline + expiration time per alert
 
-[ ] Weather screen staleness — pull stale() into Weather/NOW screen
-    - Data screens (v1.3.3) and Meteors (v1.3.2) have 15-min auto-refresh
-    - NOW screen still relies on hourly-only refresh — should match pattern
+[x] Weather screen staleness — covered by 2h weatherStale backup in main loop
+    - Data screens (v1.3.3) have 15-min cache; weather source updates hourly
+    - 2h threshold (v1.2.6) is appropriate safety net for hourly-source data
 
 ───── Future Ideas ─────────────────────────────────────────────────────────────
 
@@ -38,10 +38,10 @@ NEXT_RELEASE (v1.3.5)
     - When visible satellite trains are overhead
     - Fits the "looking up" theme with meteors and solar
 
-[ ] Battery % — Layer 2/3 improvements
-    - Layer 2: smooth polynomial LiPo curve instead of piecewise
-    - Layer 3: median filter or WiFi-idle-gated ADC sampling
-    - See CYD-Crypto-Tracker/TODO.md for full diagnosis
+[x] Battery % — Layer 2/3 improvements
+    - Layer 2: smooth cubic polynomial LiPo curve (replaces 8-segment piecewise)
+    - Layer 3: trimmed-mean ADC sampling (discards top/bottom 10% outliers)
+    - See brightness.cpp:batteryPct()
 
 [ ] Data screen refactor — shared template for all 6 data screens
     - Every screen duplicates: pending flag, trigger fetch, stale check, completion handler
