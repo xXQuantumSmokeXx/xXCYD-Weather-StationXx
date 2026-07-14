@@ -4,6 +4,10 @@ Session: 2026-07-14 (v1.3.5 release)
 
 NEXT_RELEASE (v1.3.6)
 ---------------------
+[ ] To be determined
+
+───── Future Ideas ─────────────────────────────────────────────────────────────
+
 [ ] AQI category label on FireTeam page
     - Show category word ("Moderate") under or next to the AQI number
     - FONT_SM, same color as the AQI number, right-aligned
@@ -13,8 +17,6 @@ NEXT_RELEASE (v1.3.6)
     - NWS API already in weather fallback chain — just needs display
     - Severity-coded (advisory=yellow, watch=amber, warning=red)
     - Title + headline + expiration time per alert
-
-───── Future Ideas ─────────────────────────────────────────────────────────────
 
 [ ] Alert aggregation — unified threat indicator
     - Single icon or topbar glyph that glows when any source has urgent data
