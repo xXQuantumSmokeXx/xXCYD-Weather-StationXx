@@ -1,9 +1,13 @@
 /**
  * Quantum-Meteor API — Cloudflare Worker
- * Scrapes IMO fireball page, returns clean JSON for ESP32 CYD-Weather.
+ * Serves lightweight JSON for ESP32 CYD-Weather:
+ *   /fireballs — scraped IMO fireball events
+ *   /ews       — EWS (Apocalypse Early Warning System) summary
  * Deploy: npx wrangler deploy
- * Endpoint: https://quantum-meteor.<your-subdomain>.workers.dev/fireballs
  */
+
+// ── EWS R2 dashboard URL ──────────────────────────────────────────────────
+const EWS_R2 = "https://pub-49bb6a6f314c47be9b481c25e5f6ca9e.r2.dev/dashboard.json";
 
 export default {
   async fetch(request) {
@@ -14,13 +18,49 @@ export default {
       return await serveFireballs(url);
     }
 
+    // GET /ews — EWS summary (no live aircraft — ~300 bytes)
+    if (url.pathname === "/ews") {
+      return await serveEws();
+    }
+
     // GET / — simple status
     return new Response(
-      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs"] }),
+      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews"] }),
       { headers: { "Content-Type": "application/json" } }
     );
   }
 };
+
+// ── /ews — Apocalypse Early Warning System summary ────────────────────────
+// Fetches the full dashboard.json from R2 (server-side, no ESP32 involved),
+// extracts only the 7 summary fields the CYD displays.  ~400 bytes on the
+// wire vs 100+ KB for the full JSON with 800+ live aircraft.
+async function serveEws() {
+  try {
+    const resp = await fetch(EWS_R2, {
+      headers: { "User-Agent": "Quantum-Meteor/1.0", "Accept-Encoding": "identity" }
+    });
+    if (!resp.ok) throw new Error(`EWS R2 returned ${resp.status}`);
+
+    const data = await resp.json();
+    const cur = data.current || {};
+    const live = data.liveStatus || {};
+    const coh = data.cohort || {};
+
+    return json(200, {
+      level:   cur.emergencyLevel   ?? 1,
+      alert:   cur.alertLevel       ?? "normal",
+      z:       +(cur.zScore || 0).toFixed(2),
+      jets:    cur.concurrentCount  ?? 0,
+      baseline: Math.round(cur.baselineMean || 0),
+      tracked: coh.trackedCount     ?? 0,
+      updated: cur.asOf             ?? null,
+      airborne: live.airborneCount  ?? 0,
+    });
+  } catch (e) {
+    return json(500, { error: e.message });
+  }
+}
 
 async function serveFireballs(url) {
   try {

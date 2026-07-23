@@ -159,7 +159,7 @@ static void fmtLocation(const char *country, const char *state, char *out, size_
 }
 
 // ── Fetch from Quantum-Meteor API (Cloudflare Worker) ─────────────────────
-#define QM_URL "http://quantum-meteor.assorted-cardboard.workers.dev/fireballs?limit=30"
+#define QM_URL "http://quantum-meteor.qsmoke.workers.dev/fireballs?limit=30"
 
 static int fetchImoFireballs() {
     WiFiClient client;
@@ -332,7 +332,7 @@ void screenMeteorsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "METEORS", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 7, 12);
+    drawBottombar(tft, dateStr, 8, 13);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     bool doFetch = (!s_fetchedOnce || s_forceRefresh || stale()) && wifiOk && !g_meteorsPending;

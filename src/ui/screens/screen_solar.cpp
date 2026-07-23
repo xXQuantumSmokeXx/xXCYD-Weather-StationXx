@@ -523,7 +523,7 @@ void screenSolarDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SOLAR", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 3, 12);
+    drawBottombar(tft, dateStr, 3, 13);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     bool doFetch = (!s_solar.fetchedOnce || s_forceRefresh || stale()) && wifiOk && !g_solarPending;

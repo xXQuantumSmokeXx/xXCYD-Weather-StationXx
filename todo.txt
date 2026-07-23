@@ -2,9 +2,27 @@ CYD-Weather TODO
 ================
 Session: 2026-07-23 (v1.3.6 release)
 
-NEXT_RELEASE (v1.3.7)
+NEXT_RELEASE (v1.4.0)
 ---------------------
 [ ] To be determined
+
+───── Completed ────────────────────────────────────────────────────────────────
+
+v1.3.7 — Apocalypse Early Warning
+[x] AEWS screen — Apocalypse Early Warning System integration
+    - New screen 5 (after FIRETEAM): tracks business-jet activity anomaly levels
+    - Data via Kyle McDonald's EWS project (ews.kylemcdonald.net)
+    - Quantum-Meteor Worker /ews endpoint extracts summary from 600 KB dashboard.json
+      → ~300 bytes on the wire for the CYD
+    - Color-coded emergency level (1-5, green→amber→red), z-score, jets/baseline/deviation
+    - 35-minute cache (EWS data refreshes every 30 min)
+    - UTC timestamps converted to local time via IP geolocation offset
+    - Page order: 5=AEWS, 6=FIRES, 7=USGS, 8=METEORS, 9=VOLCANOES, 10=NEWS
+    - Settings page rotation: 2 rows × 6 columns (was 1 row of 11, too cramped at 12)
+
+[x] Quantum-Meteor Worker — migrated to qsmoke.workers.dev
+    - All CYD URLs updated: screen_ews.cpp + screen_meteors.cpp
+    - Status page now lists both /fireballs and /ews endpoints
 
 ───── Future Ideas ─────────────────────────────────────────────────────────────
 

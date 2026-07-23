@@ -15,72 +15,74 @@
 #include <cstring>
 
 // ── Layout constants ──────────────────────────────────────────────────────────
-// Section 1 — Sleep Timer (replaces old WiFi/IP/LOC/BAT info)
-#define SLP_LABEL_Y   (CONTENT_Y + 8)    // 31
-#define SLP_BTN_Y0    (SLP_LABEL_Y + 10) // 37
+// Section 1 — Sleep Timer
+#define SLP_LABEL_Y   (CONTENT_Y + 4)    // 27
+#define SLP_BTN_Y0    (SLP_LABEL_Y + 9)  // 36
 #define SLP_BTN_H     13
 #define SLP_BTN_W     28
 #define SLP_COUNT      5
 #define SLP_GAP        2
 
 // Schedule row — 3 buttons under sleep timer
-#define SCHED_BTN_Y    (SLP_BTN_Y0 + SLP_BTN_H + 1)   // 51
-#define SCHED_PAD      3    // px padding each side of text inside button
-#define SLEEP_W        64   // unchanged per user request
+#define SCHED_BTN_Y    (SLP_BTN_Y0 + SLP_BTN_H + 1)   // 50
+#define SCHED_PAD      3
+#define SLEEP_W        64
 #define SCHED_GAP      2
-#define SCHED_COUNT    5    // sleep hour options: 8PM-12AM
-#define WAKE_COUNT     5    // wake hour options: 5AM-9AM
+#define SCHED_COUNT    5
+#define WAKE_COUNT     5
 
 // Dynamic button geometry (computed during draw, used by both draw & tap)
 static int s_schedX1 = 0, s_schedW = 0;
 static int s_schedX2 = 0, s_sleepW = 0;
 static int s_schedX3 = 0, s_wakeW  = 0;
 
-// Right column — 2×2 grid, same height as brightness buttons
+// Right column — 2×2 grid
 #define BTN_X1       180
 #define BTN_X2       (BTN_X1 + BTN_SQ_W + 2)   // 247
 #define BTN_SQ_W     65
-#define BTN_SQ_H     18   // matches BRI_BTN_H
+#define BTN_SQ_H     18
 
-#define EINK_X       BTN_X1                    // 180
+#define EINK_X       BTN_X1
 #define EINK_Y       SLP_LABEL_Y               // 27
-#define PWR_X        BTN_X2                    // 247
+#define PWR_X        BTN_X2
 #define PWR_Y        SLP_LABEL_Y               // 27
-#define REFRESH_X    BTN_X1                    // 180
+#define REFRESH_X    BTN_X1
 #define REFRESH_Y    (EINK_Y + BTN_SQ_H + 2)   // 47
-#define LOC_X        BTN_X2                    // 247
+#define LOC_X        BTN_X2
 #define LOC_Y        (EINK_Y + BTN_SQ_H + 2)   // 47
 
 // Divider between info and controls
-#define DIV1_Y       79
+#define DIV1_Y       67    // tightened from 79
 
 // Section 2 — Brightness + Rotate + Page checkboxes (middle)
 #define SEC2_X       8
 #define SEC2_W       (SCREEN_W - 2 * SEC2_X)   // 304
 
-#define BRI_LABEL_Y  (DIV1_Y + 4)               // 83
-#define BRI_BTN_Y0   (BRI_LABEL_Y + 8)          // 91
+#define BRI_LABEL_Y  (DIV1_Y + 4)               // 71
+#define BRI_BTN_Y0   (BRI_LABEL_Y + 8)          // 79
 #define BRI_BTN_H    18
 #define BRI_BTN_W    ((SEC2_W - (BRI_LEVELS - 1) * 3) / BRI_LEVELS)  // 48
 
-#define ROT_LABEL_Y  (BRI_BTN_Y0 + BRI_BTN_H + 7)   // 116
-#define ROT_BTN_Y0   (ROT_LABEL_Y + 8)               // 124
+#define ROT_LABEL_Y  (BRI_BTN_Y0 + BRI_BTN_H + 4)   // 101
+#define ROT_BTN_Y0   (ROT_LABEL_Y + 8)               // 109
 #define ROT_BTN_H    18
 #define ROT_BTN_COUNT 5
 #define ROT_BTN_W    ((SEC2_W - (ROT_BTN_COUNT - 1) * 3) / ROT_BTN_COUNT)  // 58
 
-#define PAGE_LABEL_Y (ROT_BTN_Y0 + ROT_BTN_H + 8)    // 150
-#define PAGE_BTN_Y0  (PAGE_LABEL_Y + 8)               // 158
+// Page rotation — 2 rows × 6 columns
+#define PAGE_LABEL_Y (ROT_BTN_Y0 + ROT_BTN_H + 4)    // 131
+#define PAGE_BTN_Y0  (PAGE_LABEL_Y + 8)               // 139
 #define PAGE_BTN_H   18
 #define PAGE_GAP     2
-#define PAGE_COUNT   11
-#define PAGE_BTN_W   ((SEC2_W - (PAGE_COUNT - 1) * PAGE_GAP) / PAGE_COUNT)  // 28
-#define PAGE_EXTRA   (SEC2_W - (PAGE_COUNT * PAGE_BTN_W + (PAGE_COUNT - 1) * PAGE_GAP))  // px remainder
-#define PAGE_SPLIT   (PAGE_EXTRA / 2)      // split extra between last 2 boxes (both 2-digit)
+#define PAGE_COUNT   12
+#define PAGE_COLS    6
+#define PAGE_ROWS    2
+#define PAGE_ROW_GAP 2
+#define PAGE_BTN_W   ((SEC2_W - (PAGE_COLS - 1) * PAGE_GAP) / PAGE_COLS)  // 49
 
 // Section 3 — Theme Color (bottom)
-#define THEME_LABEL_Y 182   // moved up 3px from 185
-#define SWATCH_Y0     192   // moved up 3px from 195
+#define THEME_LABEL_Y (PAGE_BTN_Y0 + PAGE_ROWS * PAGE_BTN_H + (PAGE_ROWS - 1) * PAGE_ROW_GAP + 4)  // 181
+#define SWATCH_Y0     (THEME_LABEL_Y + 10)  // 191
 #define SWATCH_H      20
 #define SWATCH_W      ((SEC2_W - (THEME_COUNT - 1) * 2) / THEME_COUNT)  // 32
 #define SWATCH_PAD    2
@@ -149,26 +151,38 @@ static void autoRotLoad() {
 }
 
 // ── Page rotation mask ────────────────────────────────────────────────────────
-// Bit 0 = NOW, ..., bit 9 = PLANNER
-static uint16_t s_pageMask  = 0x3FF;  // 10 pages (0-9)
+// v3 layout (12 pages): NOW=0,HOURLY=1,5DAY=2,SOLAR=3,FIRETEAM=4,AEWS=5,
+//   FIRES=6,USGS=7,METEORS=8,VOLCANOES=9,NEWS=10,PLANNER=11
+// Migration from v2 (11 pages: 0-4 unchanged, 5-10 shift right by 1, AEWS at 5).
+static uint16_t s_pageMask  = 0xFFF;
 static bool     s_pageLoaded = false;
 
 static void pageMaskLoad() {
     if (s_pageLoaded) return;
-    int v2 = nvsGetInt("page_mask_v2", -1);
-    if (v2 < 0) {
-        uint16_t old = (uint16_t)nvsGetInt("page_mask", 0x3FF);
-        s_pageMask = (old & 0x000F) | 0x0010 | ((old & 0x03F0) << 1);
-        nvsPutInt("page_mask_v2", s_pageMask);
+    int v3 = nvsGetInt("page_mask_v3", -1);
+    if (v3 >= 0) {
+        s_pageMask = (uint16_t)v3;
     } else {
-        s_pageMask = (uint16_t)v2;
+        // Migrate from v2 or from the original single-byte page_mask
+        int v2 = nvsGetInt("page_mask_v2", -1);
+        uint16_t old;
+        if (v2 >= 0) {
+            old = (uint16_t)v2;
+        } else {
+            uint16_t pm = (uint16_t)nvsGetInt("page_mask", 0x3FF);
+            old = (pm & 0x000F) | 0x0010 | ((pm & 0x03F0) << 1);
+        }
+        // Bits 0-4 unchanged, bit 5 (AEWS) = ON, old bits 5-10 → new bits 6-11
+        s_pageMask = (old & 0x1F) | (1u << 5) | ((old & 0x7E0u) << 1);
+        if (s_pageMask == 0) s_pageMask = 0xFFF;
+        nvsPutInt("page_mask_v3", s_pageMask);
     }
-    if (s_pageMask == 0) s_pageMask = 0x3FF;
+    if (s_pageMask == 0) s_pageMask = 0xFFF;
     s_pageLoaded = true;
 }
 
 static void pageMaskSave() {
-    nvsPutInt("page_mask_v2", s_pageMask);
+    nvsPutInt("page_mask_v3", s_pageMask);
 }
 
 // ── Favorite mask ────────────────────────────────────────────────────────────
@@ -177,12 +191,20 @@ static bool     s_favLoaded = false;
 
 static void favMaskLoad() {
     if (s_favLoaded) return;
-    s_favMask = (uint16_t)nvsGetInt("fav_mask", 0x0000);
+    int v3 = nvsGetInt("fav_mask_v3", -1);
+    if (v3 >= 0) {
+        s_favMask = (uint16_t)v3;
+    } else {
+        // Migrate from v2 fav_mask — bits 0-4 unchanged, old bits 5-10 → new 6-11
+        uint16_t old = (uint16_t)nvsGetInt("fav_mask", 0x0000);
+        s_favMask = (old & 0x1F) | ((old & 0x7E0u) << 1);
+        nvsPutInt("fav_mask_v3", s_favMask);
+    }
     s_favLoaded = true;
 }
 
 static void favMaskSave() {
-    nvsPutInt("fav_mask", s_favMask);
+    nvsPutInt("fav_mask_v3", s_favMask);
 }
 
 // ── Double-tap state for favorite toggle ─────────────────────────────────────
@@ -255,7 +277,7 @@ int screenSettingsGetNextRotatePage(int current) {
 void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SETTINGS", timeStr, wifiOk);
-    drawBottombar(tft, "", 11, 12);
+    drawBottombar(tft, "", 12, 13);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     slpCacheLoad();
@@ -464,11 +486,11 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     tft.print("PAGE ROTATION");
 
     for (int i = 0; i < PAGE_COUNT; i++) {
-        int bx  = SEC2_X + i * (PAGE_BTN_W + PAGE_GAP);
-        int by  = PAGE_BTN_Y0;
+        int col = i % PAGE_COLS;
+        int row = i / PAGE_COLS;
+        int bx  = SEC2_X + col * (PAGE_BTN_W + PAGE_GAP);
+        int by  = PAGE_BTN_Y0 + row * (PAGE_BTN_H + PAGE_ROW_GAP);
         int bw  = PAGE_BTN_W;
-        if (i == PAGE_COUNT - 1)      bw += PAGE_EXTRA - PAGE_SPLIT;  // last
-        else if (i == PAGE_COUNT - 2) bw += PAGE_SPLIT;               // 2nd-to-last
         bool enabled = (s_pageMask >> i) & 1;
         bool favorite = enabled && ((s_favMask >> i) & 1);
 
@@ -487,7 +509,6 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         char numBuf[3];
         snprintf(numBuf, sizeof(numBuf), "%d", i + 1);
         tft.setTextColor(favorite ? COL_AMBER : (enabled ? COL_WHITE : COL_DIM), COL_INPUTBG);
-        // Right-align the number in the box
         int numW = tft.textWidth(numBuf);
         tft.setCursor(bx + bw - numW - 4, by + (PAGE_BTN_H - 8) / 2);
         tft.print(numBuf);
@@ -623,12 +644,13 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
     pageMaskLoad();
     favMaskLoad();
     for (int i = 0; i < PAGE_COUNT; i++) {
-        int bx = SEC2_X + i * (PAGE_BTN_W + PAGE_GAP);
+        int col = i % PAGE_COLS;
+        int row = i / PAGE_COLS;
+        int bx = SEC2_X + col * (PAGE_BTN_W + PAGE_GAP);
+        int by = PAGE_BTN_Y0 + row * (PAGE_BTN_H + PAGE_ROW_GAP);
         int bw = PAGE_BTN_W;
-        if (i == PAGE_COUNT - 1)      bw += PAGE_EXTRA - PAGE_SPLIT;
-        else if (i == PAGE_COUNT - 2) bw += PAGE_SPLIT;
         if (tx >= bx && tx < bx + bw &&
-            ty >= PAGE_BTN_Y0 && ty < PAGE_BTN_Y0 + PAGE_BTN_H) {
+            ty >= by && ty < by + PAGE_BTN_H) {
 
             // Double-tap: same box within 500ms → toggle favorite
             if (s_lastTapPage == i && (millis() - s_lastTapMs) < 500) {

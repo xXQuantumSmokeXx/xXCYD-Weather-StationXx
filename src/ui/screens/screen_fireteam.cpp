@@ -142,7 +142,7 @@ const char *guidance(const Assessment &a) {
 void card(TFT_eSPI&t,int x,const char*label,Risk r){uint16_t c=color(r);t.fillRoundRect(x,104,96,48,4,COL_BG);t.drawRoundRect(x,104,96,48,4,g_themeColor);t.setTextFont(FONT_SM);t.setTextColor(g_themeColor,COL_BG);t.setCursor(x+7,111);t.print(label);t.setTextFont(FONT_MD);t.setTextColor(c,COL_BG);t.setCursor(x+7,128);t.print(name(r));}
 }
 void screenFireteamDraw(TFT_eSPI &tft, bool wifiOk) {
-    char ts[10];timeGetShort(ts);drawTopbar(tft,g_location.valid?g_location.city:"","FIRETEAM",ts,wifiOk);char dateStr[28];timeGetDateLong(dateStr,sizeof(dateStr));drawBottombar(tft,dateStr,4,12);tft.fillRect(0,CONTENT_Y,SCREEN_W,CONTENT_H,COL_BG);
+    char ts[10];timeGetShort(ts);drawTopbar(tft,g_location.valid?g_location.city:"","FIRETEAM",ts,wifiOk);char dateStr[28];timeGetDateLong(dateStr,sizeof(dateStr));drawBottombar(tft,dateStr,4,13);tft.fillRect(0,CONTENT_Y,SCREEN_W,CONTENT_H,COL_BG);
     if(!g_current.valid){tft.setTextFont(FONT_MD);tft.setTextColor(g_themeColor,COL_BG);tft.setCursor(74,102);tft.print(wifiOk?"Awaiting weather data":"Fireteam offline");return;}
     Assessment a=assess();uint16_t c=color(a.overall);tft.setTextFont(FONT_SM);tft.setTextColor(g_themeColor,COL_BG);tft.setCursor(10,31);tft.print("READINESS LEVEL");tft.setTextFont(FONT_LG);tft.setTextColor(c,COL_BG);tft.setCursor(10,46);tft.print(name(a.overall));
     // Air Quality — right-aligned, same y as readiness
