@@ -2,4 +2,6 @@
 src/config/secrets.h
 ScreenShots/*.bmp
 firmware.bin
+merged-firmware-*.bin
+*-upload.bin
 TODO.txt
