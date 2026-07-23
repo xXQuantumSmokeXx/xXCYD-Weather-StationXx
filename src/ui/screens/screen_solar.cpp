@@ -146,46 +146,101 @@ static bool fetchKp() {
 }
 
 static void fetchPlasma() {
+    // NOAA SWPC deprecated /products/solar-wind/plasma-*.json Apr 2026.
+    // Replacement /json/rtsw/rtsw_wind_1m.json returns ~2.7 MB (multi-day,
+    // multi-satellite), far too large for ESP32 JsonDocument.  Stream-read
+    // only the first ~2 KB — newest data is prepended — and parse the first
+    // JSON object.  Field mapping: density→proton_density, speed→proton_speed,
+    // temperature→proton_temperature.
     static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
-    http.begin(client, "https://services.swpc.noaa.gov/products/solar-wind/plasma-2-hour.json");
-    http.setTimeout(10000);
+    http.begin(client, "https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json");
+    http.setTimeout(12000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
-    if (http.GET() == 200) {
-        JsonDocument doc;
-        if (!deserializeJson(doc, http.getString())) {
-            JsonArray arr = doc.as<JsonArray>();
-            int last = arr.size() - 1;
-            if (last > 0) {
-                if (!arr[last][1].isNull()) s_solar.density = arr[last][1].as<float>();
-                if (!arr[last][2].isNull()) s_solar.windKms = arr[last][2].as<float>();
-                if (!arr[last][3].isNull()) s_solar.solarTemp = arr[last][3].as<float>();
-            }
+    if (http.GET() != 200) { http.end(); return; }
+
+    static const int BUF_SZ = 2048;
+    char buf[BUF_SZ + 1];
+    int bufLen = 0;
+    WiFiClient *stream = http.getStreamPtr();
+    uint32_t deadline = millis() + 10000;
+
+    while (bufLen < BUF_SZ && millis() < deadline) {
+        int avail = stream->available();
+        if (avail <= 0) {
+            if (!http.connected()) break;
+            delay(5);
+            continue;
         }
+        int n = stream->readBytes((uint8_t*)(buf + bufLen),
+                                  avail < (BUF_SZ - bufLen) ? avail : (BUF_SZ - bufLen));
+        if (n <= 0) break;
+        bufLen += n;
     }
     http.end();
+    buf[bufLen] = '\0';
+
+    // Find first JSON object: first '{' to matching '}' (no nested braces in these records)
+    char *start = strchr(buf, '{');
+    if (!start) return;
+    char *end = strchr(start, '}');
+    if (!end) return;
+    *(end + 1) = '\0';
+
+    JsonDocument doc;
+    if (deserializeJson(doc, start)) return;
+    if (!doc["proton_density"].isNull())     s_solar.density  = doc["proton_density"].as<float>();
+    if (!doc["proton_speed"].isNull())       s_solar.windKms  = doc["proton_speed"].as<float>();
+    if (!doc["proton_temperature"].isNull()) s_solar.solarTemp = doc["proton_temperature"].as<float>();
 }
 
 static void fetchMag() {
+    // NOAA SWPC deprecated /products/solar-wind/mag-*.json Apr 2026.
+    // Replacement /json/rtsw/rtsw_mag_1m.json returns ~1.5 MB (multi-day,
+    // multi-satellite), far too large for ESP32 JsonDocument.  Stream-read
+    // only the first ~2 KB — newest data is prepended — and parse the first
+    // JSON object.  Field names bz_gsm and bt are unchanged.
     static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
-    http.begin(client, "https://services.swpc.noaa.gov/products/solar-wind/mag-2-hour.json");
-    http.setTimeout(10000);
+    http.begin(client, "https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json");
+    http.setTimeout(12000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
-    if (http.GET() == 200) {
-        JsonDocument doc;
-        if (!deserializeJson(doc, http.getString())) {
-            JsonArray arr = doc.as<JsonArray>();
-            int last = arr.size() - 1;
-            if (last > 0) {
-                if (!arr[last][3].isNull()) s_solar.bz = arr[last][3].as<float>();
-                if (!arr[last][4].isNull()) s_solar.bt = arr[last][4].as<float>();
-            }
+    if (http.GET() != 200) { http.end(); return; }
+
+    static const int BUF_SZ = 2048;
+    char buf[BUF_SZ + 1];
+    int bufLen = 0;
+    WiFiClient *stream = http.getStreamPtr();
+    uint32_t deadline = millis() + 10000;
+
+    while (bufLen < BUF_SZ && millis() < deadline) {
+        int avail = stream->available();
+        if (avail <= 0) {
+            if (!http.connected()) break;
+            delay(5);
+            continue;
         }
+        int n = stream->readBytes((uint8_t*)(buf + bufLen),
+                                  avail < (BUF_SZ - bufLen) ? avail : (BUF_SZ - bufLen));
+        if (n <= 0) break;
+        bufLen += n;
     }
     http.end();
+    buf[bufLen] = '\0';
+
+    // Find first JSON object: first '{' to matching '}' (no nested braces in these records)
+    char *start = strchr(buf, '{');
+    if (!start) return;
+    char *end = strchr(start, '}');
+    if (!end) return;
+    *(end + 1) = '\0';
+
+    JsonDocument doc;
+    if (deserializeJson(doc, start)) return;
+    if (!doc["bz_gsm"].isNull()) s_solar.bz = doc["bz_gsm"].as<float>();
+    if (!doc["bt"].isNull())     s_solar.bt = doc["bt"].as<float>();
 }
 
 static void fetchXray() {
