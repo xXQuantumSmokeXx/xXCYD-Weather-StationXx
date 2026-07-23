@@ -1,10 +1,39 @@
 CYD-Weather TODO
 ================
-Session: 2026-07-23 (v1.3.6 release)
+Session: 2026-07-23 (v1.3.7 release)
 
-NEXT_RELEASE (v1.4.0)
+NEXT_RELEASE (v1.3.8)
 ---------------------
-[ ] To be determined
+[ ] Data screen fetch timestamps — fires, USGS, volcanoes, news
+    - Show last-fetched time in the header (meteors already has this via s_sync)
+    - Shared pattern: stampSync() + s_sync field in each screen
+    - FIRETEAM and AEWS already show sync times → just need Fires/Usgs/Volcanoes/News
+
+───── Future Ideas ─────────────────────────────────────────────────────────────
+
+[ ] Lightning strike tracker — Blitzortung.org (free, no key)
+    - Real-time lightning strikes for the region via public JSON feed
+    - Fits the "monitoring station" theme with fires, quakes, volcanoes
+    - Could show strike count, distance/direction to nearest, time since last strike
+    - Lightweight data — just lat/lon/timestamp for recent strikes
+
+[ ] NWS Alerts screen — active watches/warnings for current location
+    - NWS API already in weather fallback chain — just needs display
+    - Severity-coded (advisory=yellow, watch=amber, warning=red)
+    - Title + headline + expiration time per alert
+
+[ ] ISS Pass Predictor — api.open-notify.org (free, no key)
+    - Shows upcoming visible ISS passes for current location
+    - Time, duration, elevation, direction for next 3-5 passes
+
+[ ] Satellite visibility tracker — Starlink trains / bright sats
+    - When visible satellite trains are overhead
+    - Fits the "looking up" theme with meteors and solar
+
+[ ] Data screen refactor — shared template for all data screens
+    - Every screen duplicates: pending flag, trigger fetch, stale check, completion handler
+    - Extract into a base pattern or macro to make adding screen N+1 trivial
+    - Reduces per-screen boilerplate from ~40 lines to ~10
 
 ───── Completed ────────────────────────────────────────────────────────────────
 
@@ -23,28 +52,6 @@ v1.3.7 — Apocalypse Early Warning
 [x] Quantum-Meteor Worker — migrated to qsmoke.workers.dev
     - All CYD URLs updated: screen_ews.cpp + screen_meteors.cpp
     - Status page now lists both /fireballs and /ews endpoints
-
-───── Future Ideas ─────────────────────────────────────────────────────────────
-
-[ ] NWS Alerts screen — active watches/warnings for current location
-    - NWS API already in weather fallback chain — just needs display
-    - Severity-coded (advisory=yellow, watch=amber, warning=red)
-    - Title + headline + expiration time per alert
-
-[ ] ISS Pass Predictor — api.open-notify.org (free, no key)
-    - Shows upcoming visible ISS passes for current location
-    - Time, duration, elevation, direction for next 3-5 passes
-
-[ ] Satellite visibility tracker — Starlink trains / bright sats
-    - When visible satellite trains are overhead
-    - Fits the "looking up" theme with meteors and solar
-
-[ ] Data screen refactor — shared template for all 6 data screens
-    - Every screen duplicates: pending flag, trigger fetch, stale check, completion handler
-    - Extract into a base pattern or macro to make adding screen N+1 trivial
-    - Reduces per-screen boilerplate from ~40 lines to ~10
-
-───── Completed ────────────────────────────────────────────────────────────────
 
 v1.3.6 — Catching the Solar Wind
 [x] NOAA SWPC API migration — plasma & magnetometer endpoints resurrected
