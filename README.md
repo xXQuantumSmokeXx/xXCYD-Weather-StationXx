@@ -1,6 +1,6 @@
 # xXCYD-Weather-StationXx
 
-CYD tactical monitoring station — real-time weather, space weather, solar day almanac, fireball & meteor tracking, volcano activity tracking, wildfire & earthquake tracking, breaking news, customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
+CYD tactical monitoring station — real-time weather, space weather, solar day almanac, fireball & meteor tracking, volcano activity tracking, wildfire & earthquake tracking, breaking news, Apocalypse Early Warning System (business-jet anomaly detection), customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
 
 [![Support on Patreon](https://img.shields.io/badge/Support-Patreon-orange)](https://www.patreon.com/c/xXQuantumSmokeXx)
 
@@ -49,6 +49,16 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Actionable safety guidance for the highest forecast threat
 - Official NWS alert status and severity override for the current location
 - Forecast update time and highest-risk time window
+
+**AEWS screen — Apocalypse Early Warning System:**
+- Tracks business-jet activity anomalies via Kyle McDonald's [Apocalypse Early Warning System](https://ews.kylemcdonald.net/)
+- Monitors ~31,000+ business jets worldwide against historical baselines — unusual spikes in private-jet traffic may indicate powerful people responding to an unreported crisis
+- Color-coded emergency level (1–5, green → amber → red): z-score deviation from expected traffic for the current time/day
+- Stats: jets currently airborne, total tracked aircraft, expected baseline, deviation from baseline
+- Data via [Quantum-Meteor Worker](https://quantum-meteor.qsmoke.workers.dev/ews) — lightweight ~300-byte JSON extract from the full EWS dashboard
+- 35-minute auto-refresh (EWS data updates every 30 min); tap title bar to force refresh
+- Timestamps displayed in local time (UTC → local via IP geolocation offset)
+- Credit: EWS project and data by [Kyle McDonald](https://github.com/kylemcdonald/ews)
 
 **FIRES screen:**
 - Dual-query WFIGS active wildfire events — fire name, state, acreage, cause, and containment %
@@ -99,7 +109,7 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - **Scheduled Sleep & Wake Timer** — daily schedule to turn the backlight off during configured sleep hours (e.g. 10PM–7AM), every day. Toggle on with SCHED, then tap SLEEP and WAKE to cycle through preset hours. ESP32 stays running so NTP time and all data fetches continue normally. Backlight off saves display life without losing connectivity. Tap anywhere during the sleep window for a 30-second wake grace period before the schedule re-enforces. Independent of the inactivity timer — both can be active simultaneously, with the schedule acting as the daily default and the quick timers as one-off overrides.
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
 - Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
-- 11 per-page rotation checkboxes — toggle which screens are included in auto-rotate
+- 12 per-page rotation checkboxes (2 rows × 6) — toggle which screens are included in auto-rotate
 - **Favorite screens** — double-tap any page checkbox to mark it as a favorite (amber highlight). Favorites are interspersed between regular screens during rotation (e.g. Fav, 2, Fav, 3, Fav, 4…), so your most-used screens appear twice as often. Multiple favorites cycle round-robin. Double-tap again to un-favorite; disabling a page auto-clears its favorite
 - Refresh Weather and Location buttons in a 2x2 grid next to E-Ink and Power Off
 - 9 theme accent colors, saved across reboots
@@ -112,7 +122,7 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Refreshes at the top of each hour
 - Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, NEWS)
 - FIRES and USGS headline text uses the active theme color
-- 12 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, FIRES, USGS, METEORS, VOLCANOES, NEWS, ALMANAC, SETTINGS
+- 13 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, AEWS, FIRES, USGS, METEORS, VOLCANOES, NEWS, ALMANAC, SETTINGS
 
 ### Setup
 
