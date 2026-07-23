@@ -1,32 +1,17 @@
 CYD-Weather TODO
 ================
-Session: 2026-07-14 (v1.3.5 release)
+Session: 2026-07-23 (v1.3.6 release)
 
-NEXT_RELEASE (v1.3.6)
+NEXT_RELEASE (v1.3.7)
 ---------------------
 [ ] To be determined
 
 ───── Future Ideas ─────────────────────────────────────────────────────────────
 
-[ ] AQI category label on FireTeam page
-    - Show category word ("Moderate") under or next to the AQI number
-    - FONT_SM, same color as the AQI number, right-aligned
-    - Already have aqiLabel() helper — just not used in draw yet
-
 [ ] NWS Alerts screen — active watches/warnings for current location
     - NWS API already in weather fallback chain — just needs display
     - Severity-coded (advisory=yellow, watch=amber, warning=red)
     - Title + headline + expiration time per alert
-
-[ ] Alert aggregation — unified threat indicator
-    - Single icon or topbar glyph that glows when any source has urgent data
-    - Sources: Kp≥5, nearby wildfire, M3.5+ quake, volcano watch/orange/red, NWS warning
-    - Color-coded: amber=advisory, red=warning
-
-[ ] Sparklines on NOW screen — temp/pressure trend mini-charts
-    - 24h rolling history stored in RAM (circular buffer)
-    - Small line graphs (2-3px tall) in themed color
-    - Temp, pressure, humidity each get a sparkline
 
 [ ] ISS Pass Predictor — api.open-notify.org (free, no key)
     - Shows upcoming visible ISS passes for current location
@@ -42,6 +27,18 @@ NEXT_RELEASE (v1.3.6)
     - Reduces per-screen boilerplate from ~40 lines to ~10
 
 ───── Completed ────────────────────────────────────────────────────────────────
+
+v1.3.6 — Catching the Solar Wind
+[x] NOAA SWPC API migration — plasma & magnetometer endpoints resurrected
+    - NOAA retired /products/solar-wind/plasma-*.json and mag-*.json (Apr 30, 2026)
+    - Migrated plasma to /json/rtsw/rtsw_wind_1m.json with renamed fields
+      (density→proton_density, speed→proton_speed, temperature→proton_temperature)
+    - Migrated magnetometer to /json/rtsw/rtsw_mag_1m.json (bz_gsm/bt unchanged)
+    - New endpoints return multi-MB multi-day multi-satellite payloads — far too
+      large for ESP32 heap. Implemented streaming partial-read: download only the
+      first 2 KB (newest data is prepended), extract the single JSON object needed,
+      discard the remaining 2.7 MB. Same pattern fetchXray() already used.
+    - All seven solar metrics back online: Kp, Wind, Bz, Density, X-Ray, Flares, CME
 
 v1.3.5 — Steady Current
 [x] Fireteam UI polish — card backgrounds + bottom bar
