@@ -9,13 +9,12 @@ NEXT_RELEASE (v1.3.8)
     - Shared pattern: stampSync() + s_sync field in each screen
     - FIRETEAM and AEWS already show sync times → just need Fires/Usgs/Volcanoes/News
 
-───── Future Ideas ─────────────────────────────────────────────────────────────
-
 [ ] Lightning strike tracker — Blitzortung.org (free, no key)
     - Real-time lightning strikes for the region via public JSON feed
     - Fits the "monitoring station" theme with fires, quakes, volcanoes
-    - Could show strike count, distance/direction to nearest, time since last strike
-    - Lightweight data — just lat/lon/timestamp for recent strikes
+    - Show strike count, distance/direction to nearest, time since last strike
+
+───── Future Ideas ─────────────────────────────────────────────────────────────
 
 [ ] NWS Alerts screen — active watches/warnings for current location
     - NWS API already in weather fallback chain — just needs display
