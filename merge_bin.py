@@ -1,4 +1,9 @@
-"""PlatformIO post-build script: merge bootloader + partitions + app into one flashable .bin"""
+"""PlatformIO post-build script: merge bootloader + partitions + app into one flashable .bin.
+
+Generates CYD-Weather-1usb.bin and CYD-Weather-2usb.bin from the two PlatformIO
+environments.  Hooked via extra_scripts in platformio.ini — runs automatically
+after each successful build.
+"""
 import os
 
 Import("env")
