@@ -11,6 +11,12 @@ NEXT_RELEASE (v1.4.0)
 
 ───── Future Ideas ─────────────────────────────────────────────────────────────
 
+[ ] Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
+    - Dropping "CYD" now because future ports (larger screens, other boards) are planned
+    - Both names are hardware-agnostic, one-word, and honest about what the device does
+    - Open to community suggestions — keeping the debate visible for now
+    - See: https://github.com/xXQuantumSmokeXx/xXCYD-Weather-StationXx/discussions
+
 [ ] NWS Alerts screen — active watches/warnings for current location
     - NWS API already in weather fallback chain — just needs display
     - Severity-coded (advisory=yellow, watch=amber, warning=red)
