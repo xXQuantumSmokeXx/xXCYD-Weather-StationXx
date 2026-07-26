@@ -41,7 +41,7 @@ static bool s_fetchedOnce = false;
 static unsigned long s_fetchedMs = 0;
 static bool s_forceRefresh = false;
 static int  s_scrollOff = 0;
-static char s_sync[10] = "--:--";
+static char s_sync[18] = "--:--";
 bool g_firesPending = false;
 
 static void copyFit(const char *src, char *dst, size_t len) {
@@ -79,7 +79,7 @@ static bool stale() {
 static void stampSync() {
     char t[10];
     timeGetShort(t);
-    snprintf(s_sync, sizeof(s_sync), "%s", t);
+    snprintf(s_sync, sizeof(s_sync), "Updated %s", t);
 }
 
 // Format "1234" → "1,234" for acreage display
@@ -330,8 +330,11 @@ static void drawFireList(TFT_eSPI &tft) {
     tft.setTextColor(COL_WHITE, COL_BG);
     char hdr[32];
     snprintf(hdr, sizeof(hdr), "OPEN WILDFIRES: %d", s_fireCount);
-    tft.setCursor(8, CONTENT_Y + 4);
+    tft.setCursor(8, CONTENT_Y + 7);
     tft.print(hdr);
+    int sw = tft.textWidth(s_sync);
+    tft.setCursor(SCREEN_W - sw - 6, CONTENT_Y + 7);
+    tft.print(s_sync);
     tft.drawFastHLine(0, CONTENT_Y + HEADER_H - 4, SCREEN_W, g_themeColor);
 
     int perPage = (CONTENT_H - HEADER_H) / FIRE_ROW_H;

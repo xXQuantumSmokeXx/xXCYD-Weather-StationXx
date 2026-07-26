@@ -31,7 +31,7 @@ static bool s_fetchedOnce  = false;
 static unsigned long s_fetchedMs = 0;
 static bool s_forceRefresh = false;
 static int  s_scrollOff    = 0;
-static char s_sync[10] = "--:--";
+static char s_sync[18] = "--:--";
 bool g_meteorsPending = false;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ static bool stale() {
 static void stampSync() {
     char t[10];
     timeGetShort(t);
-    snprintf(s_sync, sizeof(s_sync), "%s", t);
+    snprintf(s_sync, sizeof(s_sync), "Updated %s", t);
 }
 
 // ── Country & state name lookup ────────────────────────────────────────────
@@ -283,12 +283,12 @@ static void drawMeteorList(TFT_eSPI &tft) {
     tft.setTextColor(COL_WHITE, COL_BG);
     char hdr[40];
     snprintf(hdr, sizeof(hdr), "FIREBALL EVENTS: %d", s_meteorCount);
-    tft.setCursor(8, CONTENT_Y + 4);
+    tft.setCursor(8, CONTENT_Y + 7);
     tft.print(hdr);
 
     tft.setTextColor(COL_WHITE, COL_BG);
     int sw = tft.textWidth(s_sync);
-    tft.setCursor(SCREEN_W - sw - 6, CONTENT_Y + 4);
+    tft.setCursor(SCREEN_W - sw - 6, CONTENT_Y + 7);
     tft.print(s_sync);
 
     tft.drawFastHLine(0, CONTENT_Y + HEADER_H - 4, SCREEN_W, g_themeColor);

@@ -30,7 +30,7 @@ static bool s_fetchedOnce = false;
 static unsigned long s_fetchedMs = 0;
 static bool s_forceRefresh = false;
 static int  s_scrollOff = 0;
-static char s_sync[10] = "--:--";
+static char s_sync[18] = "--:--";
 bool g_volcanoesPending = false;
 
 static void copyFit(const char *src, char *dst, size_t len) {
@@ -59,7 +59,7 @@ static bool stale() {
 static void stampSync() {
     char t[10];
     timeGetShort(t);
-    snprintf(s_sync, sizeof(s_sync), "%s", t);
+    snprintf(s_sync, sizeof(s_sync), "Updated %s", t);
 }
 
 // Parse "2026-06-04 19:24:56" → relative time string like "2h ago" or "Jun 4"
@@ -230,8 +230,11 @@ static void drawVolcanoList(TFT_eSPI &tft) {
     int elevated = s_volcanoCount - 1; // exclude Yellowstone from elevated count
     if (elevated < 0) elevated = 0;
     snprintf(hdr, sizeof(hdr), "TRACKED:1 + ELEVATED:%d", elevated);
-    tft.setCursor(8, CONTENT_Y + 4);
+    tft.setCursor(8, CONTENT_Y + 8);
     tft.print(hdr);
+    int sw = tft.textWidth(s_sync);
+    tft.setCursor(SCREEN_W - sw - 6, CONTENT_Y + 8);
+    tft.print(s_sync);
     tft.drawFastHLine(0, CONTENT_Y + HEADER_H - 4, SCREEN_W, g_themeColor);
 
     int perPage = (CONTENT_H - HEADER_H) / VOLCANO_ROW_H;

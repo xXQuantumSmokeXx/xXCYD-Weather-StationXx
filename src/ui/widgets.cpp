@@ -68,13 +68,13 @@ void drawBottombar(TFT_eSPI &tft, const char *label, int activeScreen, int total
     tft.setTextFont(FONT_MD);
     int arrowW = tft.textWidth(">");
 
-    uint16_t lCol = (activeScreen > 0) ? g_themeColor : COL_DIM;
+    uint16_t lCol = g_themeColor;  // always active — screens wrap around
     tft.setTextColor(lCol, COL_BG);
     tft.setCursor(TK_H + 2, my - 8);
     tft.print("<");
 
     int rarrowX = SCREEN_W - TK_H - 2 - arrowW;
-    uint16_t rCol = (activeScreen < totalScreens - 1) ? g_themeColor : COL_DIM;
+    uint16_t rCol = g_themeColor;  // always active — screens wrap around
     tft.setTextColor(rCol, COL_BG);
     tft.setCursor(rarrowX, my - 8);
     tft.print(">");

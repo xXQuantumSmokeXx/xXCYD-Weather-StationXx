@@ -484,7 +484,8 @@ static void ensureLocation() {
 
 // Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fireteam, 5=AEWS, 6=Fires, 7=USGS, 8=Meteors, 9=Volcanoes, 10=News, 11=Planner, 12=Settings
 static void gotoScreen(int n) {
-    s_screen         = constrain(n, 0, 12);
+    // Wrap around: 12→0 forward, 0→12 backward
+    s_screen         = (n % 13 + 13) % 13;
     s_lastAutoRotate = millis();
     s_needsRedraw    = true;
 }

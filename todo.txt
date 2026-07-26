@@ -2,13 +2,8 @@ CYD-Weather TODO
 ================
 Session: 2026-07-23 (v1.3.7 release)
 
-NEXT_RELEASE (v1.3.8)
+NEXT_RELEASE (v1.4.0)
 ---------------------
-[ ] Data screen fetch timestamps — fires, USGS, volcanoes, news
-    - Show last-fetched time in the header (meteors already has this via s_sync)
-    - Shared pattern: stampSync() + s_sync field in each screen
-    - FIRETEAM and AEWS already show sync times → just need Fires/Usgs/Volcanoes/News
-
 [ ] Lightning strike tracker — Blitzortung.org (free, no key)
     - Real-time lightning strikes for the region via public JSON feed
     - Fits the "monitoring station" theme with fires, quakes, volcanoes
@@ -35,6 +30,15 @@ NEXT_RELEASE (v1.3.8)
     - Reduces per-screen boilerplate from ~40 lines to ~10
 
 ───── Completed ────────────────────────────────────────────────────────────────
+
+v1.3.8 — It's About Time
+[x] Data screen fetch timestamps — all 6 screens show "Updated 2:05pm" in header
+    - stampSync() now writes "Updated" prefix; s_sync buffer bumped [10→18]
+    - Fires, USGS, Volcanoes, News headers now display sync time (Meteors already had it)
+[x] Header text vertical centering — all data screen headers centered in 22px bar
+    - Fires/USGS/Meteors: +7, Volcanoes: +8, News refactored to match standard pattern
+[x] Screen navigation wrap-around — right arrow on Settings wraps to Now, left on Now wraps to Settings
+[x] News header standardized — now uses same HEADER_H=22 pattern as other data screens
 
 v1.3.7 — Apocalypse Early Warning
 [x] AEWS screen — Apocalypse Early Warning System integration

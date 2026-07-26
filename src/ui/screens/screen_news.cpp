@@ -32,7 +32,7 @@ static unsigned long s_fetchedMs = 0;
 static unsigned long s_lastAttempt = 0;
 static bool s_forceRefresh = false;
 static int  s_scrollOff = 0;
-static char s_sync[10] = "--:--";
+static char s_sync[18] = "--:--";
 bool g_newsPending = false;
 
 static void copyFit(const char *src, char *dst, size_t len) {
@@ -62,7 +62,7 @@ static bool stale() {
 static void stampSync() {
     char t[10];
     timeGetShort(t);
-    snprintf(s_sync, sizeof(s_sync), "%s", t);
+    snprintf(s_sync, sizeof(s_sync), "Updated %s", t);
 }
 
 static void xmlDecode(char *dst, const char *src, size_t dstLen) {
@@ -254,17 +254,19 @@ static void splitTitle(TFT_eSPI &tft, const char *title, int maxPx, String &line
 static void drawNewsList(TFT_eSPI &tft) {
     const int MARGIN = 8;
     const int LINE_W = SCREEN_W - MARGIN * 2;
-    int curY = CONTENT_Y + 4;
+    const int HEADER_H = 22;
 
     tft.setTextFont(FONT_SM);
 
     tft.setTextColor(COL_WHITE, COL_BG);
-    tft.setCursor(MARGIN, curY);
+    tft.setCursor(MARGIN, CONTENT_Y + 7);
     tft.print("BREAKING NEWS");
-    curY += 14;
-    tft.drawFastHLine(8, curY, SCREEN_W - 16, g_themeColor);
-    curY += 3;
+    int sw = tft.textWidth(s_sync);
+    tft.setCursor(SCREEN_W - sw - 6, CONTENT_Y + 7);
+    tft.print(s_sync);
+    tft.drawFastHLine(8, CONTENT_Y + HEADER_H - 4, SCREEN_W - 16, g_themeColor);
 
+    int curY = CONTENT_Y + HEADER_H;
     int bottomY = SCREEN_H - BOTBAR_H;
 
     for (int i = s_scrollOff; i < s_count; i++) {
@@ -340,8 +342,8 @@ void screenNewsTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {
 
 void screenNewsSwipe(int dir) {
     // Count how many items fit on one screen
-    int headerH = 14 + 5;       // label + line + gap
-    int listH = CONTENT_H - headerH - 4;
+    const int HEADER_H = 22;
+    int listH = CONTENT_H - HEADER_H;
     int perPage = listH / NEWS_ROW_H;
 
     int maxOff = s_count - perPage;
