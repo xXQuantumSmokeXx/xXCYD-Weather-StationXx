@@ -8,4 +8,4 @@ void screenUsgsSwipe(int dir);
 // Async fetch — called from Core 0 worker
 bool usgsFetch(bool wifiOk);
 extern bool g_usgsPending;
-void triggerUsgsFetch();
+bool triggerUsgsFetch();

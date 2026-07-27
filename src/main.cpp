@@ -306,67 +306,74 @@ static void triggerFetch(bool includeLocation) {
 }
 
 // Screen triggers (called from screen draw functions — must be non-static)
-void triggerFiresFetch() {
-    if (!s_fetchTask || workerBusy()) return;
+bool triggerFiresFetch() {
+    if (!s_fetchTask || workerBusy()) return false;
     g_firesPending = true;
     s_firesDone = false;
     s_fetchCmd  = FETCH_FIRES;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
+    return true;
 }
 
-void triggerUsgsFetch() {
-    if (!s_fetchTask || workerBusy()) return;
+bool triggerUsgsFetch() {
+    if (!s_fetchTask || workerBusy()) return false;
     g_usgsPending = true;
     s_usgsDone = false;
     s_fetchCmd  = FETCH_USGS;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
+    return true;
 }
 
-void triggerMeteorsFetch() {
-    if (!s_fetchTask || workerBusy()) return;
+bool triggerMeteorsFetch() {
+    if (!s_fetchTask || workerBusy()) return false;
     g_meteorsPending = true;
     s_meteorsDone = false;
     s_fetchCmd  = FETCH_METEORS;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
+    return true;
 }
 
-void triggerSolarFetch() {
-    if (!s_fetchTask || workerBusy()) return;
+bool triggerSolarFetch() {
+    if (!s_fetchTask || workerBusy()) return false;
     g_solarPending = true;
     s_solarDone = false;
     s_fetchCmd  = FETCH_SOLAR;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
+    return true;
 }
 
-void triggerNewsFetch() {
-    if (!s_fetchTask || workerBusy()) return;
+bool triggerNewsFetch() {
+    if (!s_fetchTask || workerBusy()) return false;
     g_newsPending = true;
     s_newsDone = false;
     s_fetchCmd  = FETCH_NEWS;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
+    return true;
 }
 
-void triggerVolcanoesFetch() {
-    if (!s_fetchTask || workerBusy()) return;
+bool triggerVolcanoesFetch() {
+    if (!s_fetchTask || workerBusy()) return false;
     g_volcanoesPending = true;
     s_volcanoesDone = false;
     s_fetchCmd  = FETCH_VOLCANOES;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
+    return true;
 }
 
-void triggerEwsFetch() {
-    if (!s_fetchTask || workerBusy()) return;
+bool triggerEwsFetch() {
+    if (!s_fetchTask || workerBusy()) return false;
     g_ewsPending = true;
     s_ewsDone = false;
     s_fetchCmd  = FETCH_EWS;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
+    return true;
 }
 
 // ── Splash art — quantum smoke / orbital design ───────────────────────────
@@ -910,6 +917,27 @@ void loop() {
         }
     }
 
+    // Heap watchdog — log free heap every 5 min to track fragmentation
+    {
+        static unsigned long s_lastHeapLog = 0;
+        if (millis() - s_lastHeapLog > 300000) {
+            Serial.printf("[HEAP] free:%u maxBlock:%u\n",
+                          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+            s_lastHeapLog = millis();
+        }
+    }
+
+    // Data freshness watchdog — force-refresh all data screens every 45 min.
+    // This is a safety net: even if the hourly trigger and per-screen stale()
+    // checks both miss, no data source can be older than 45 min.
+    {
+        static unsigned long s_lastWatchdog = 0;
+        if (s_wifiOk && millis() - s_lastWatchdog > 2700000UL) {  // 45 min
+            s_refreshQueue |= REFRESH_ALL_DATA;
+            s_lastWatchdog = millis();
+        }
+    }
+
     // Weather and data refresh scheduler. Every due source is queued, then a
     // single job is dispatched when the Core 0 worker is free.
     if (s_wifiOk && timeIsValid()) {
@@ -949,26 +977,26 @@ void loop() {
 
     if (s_wifiOk && !workerBusy() && s_refreshQueue) {
         if (s_refreshQueue & REFRESH_FIRES) {
-            s_refreshQueue &= ~REFRESH_FIRES;
-            s_lastFiresAttempt = millis(); triggerFiresFetch();
+            s_lastFiresAttempt = millis();
+            if (triggerFiresFetch()) s_refreshQueue &= ~REFRESH_FIRES;
         } else if (s_refreshQueue & REFRESH_USGS) {
-            s_refreshQueue &= ~REFRESH_USGS;
-            s_lastUsgsAttempt = millis(); triggerUsgsFetch();
+            s_lastUsgsAttempt = millis();
+            if (triggerUsgsFetch()) s_refreshQueue &= ~REFRESH_USGS;
         } else if (s_refreshQueue & REFRESH_METEORS) {
-            s_refreshQueue &= ~REFRESH_METEORS;
-            s_lastMeteorsAttempt = millis(); triggerMeteorsFetch();
+            s_lastMeteorsAttempt = millis();
+            if (triggerMeteorsFetch()) s_refreshQueue &= ~REFRESH_METEORS;
         } else if (s_refreshQueue & REFRESH_EWS) {
-            s_refreshQueue &= ~REFRESH_EWS;
-            s_lastEwsAttempt = millis(); triggerEwsFetch();
+            s_lastEwsAttempt = millis();
+            if (triggerEwsFetch()) s_refreshQueue &= ~REFRESH_EWS;
         } else if (s_refreshQueue & REFRESH_NEWS) {
-            s_refreshQueue &= ~REFRESH_NEWS;
-            s_lastNewsAttempt = millis(); triggerNewsFetch();
+            s_lastNewsAttempt = millis();
+            if (triggerNewsFetch()) s_refreshQueue &= ~REFRESH_NEWS;
         } else if (s_refreshQueue & REFRESH_VOLCANOES) {
-            s_refreshQueue &= ~REFRESH_VOLCANOES;
-            s_lastVolcanoesAttempt = millis(); triggerVolcanoesFetch();
+            s_lastVolcanoesAttempt = millis();
+            if (triggerVolcanoesFetch()) s_refreshQueue &= ~REFRESH_VOLCANOES;
         } else if (s_refreshQueue & REFRESH_SOLAR) {
-            s_refreshQueue &= ~REFRESH_SOLAR;
-            s_lastSolarAttempt = millis(); triggerSolarFetch();
+            s_lastSolarAttempt = millis();
+            if (triggerSolarFetch()) s_refreshQueue &= ~REFRESH_SOLAR;
         }
     }
     // Weather fetch completion

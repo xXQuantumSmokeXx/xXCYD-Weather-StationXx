@@ -8,4 +8,4 @@ void screenFiresSwipe(int dir);
 // Async fetch — called from Core 0 worker
 bool firesFetch(bool wifiOk);
 extern bool g_firesPending;
-void triggerFiresFetch();
+bool triggerFiresFetch();

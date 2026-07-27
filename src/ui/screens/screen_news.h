@@ -8,4 +8,4 @@ void screenNewsSwipe(int dir);  // 1 = down (next page), -1 = up (prev page)
 // Async fetch — called from Core 0 worker
 bool newsFetch(bool wifiOk, const char *city);
 extern bool g_newsPending;
-void triggerNewsFetch();
+bool triggerNewsFetch();

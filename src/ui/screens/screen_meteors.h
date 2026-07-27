@@ -8,4 +8,4 @@ void screenMeteorsSwipe(int dir);
 // Async fetch — called from Core 0 worker
 bool meteorsFetch(bool wifiOk);
 extern bool g_meteorsPending;
-void triggerMeteorsFetch();
+bool triggerMeteorsFetch();

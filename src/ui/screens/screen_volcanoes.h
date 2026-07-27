@@ -8,4 +8,4 @@ void screenVolcanoesSwipe(int dir);
 // Async fetch — called from Core 0 worker
 bool volcanoesFetch(bool wifiOk);
 extern bool g_volcanoesPending;
-void triggerVolcanoesFetch();
+bool triggerVolcanoesFetch();
