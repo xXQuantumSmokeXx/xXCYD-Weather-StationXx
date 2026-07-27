@@ -1,9 +1,15 @@
 CYD-Weather TODO
 ================
-Session: 2026-07-23 (v1.3.7 release)
+Session: 2026-07-27 (v1.3.9 release)
 
 NEXT_RELEASE (v1.4.0)
 ---------------------
+[ ] Heap fragmentation fix — periodic ESP.restart()
+    - Root cause: JsonDocument DynamicJsonDocument reallocs fragment heap over hours
+    - Fix: smart periodic restart every 4-6 hours (during sleep window if configured)
+    - Only restart when worker idle, 30-min floor between reboots
+    - Fallback if v1.3.9 watchdog + trigger fixes still show freezes in extended testing
+
 [ ] Lightning strike tracker — Blitzortung.org (free, no key)
     - Real-time lightning strikes for the region via public JSON feed
     - Fits the "monitoring station" theme with fires, quakes, volcanoes
@@ -35,6 +41,17 @@ NEXT_RELEASE (v1.4.0)
     - Reduces per-screen boilerplate from ~40 lines to ~10
 
 ───── Completed ────────────────────────────────────────────────────────────────
+
+v1.3.9 — Hour Hand
+[x] Silent fetch loss — trigger functions return bool, dispatch confirms before clearing bit
+    - triggerXxxFetch() now returns true only when worker accepts the task
+    - Dispatch only clears REFRESH_XXX bit on confirmed dispatch
+    - Prevents race where bit cleared but worker busy → fetch lost forever
+[x] 45-minute data freshness watchdog — all 7 data screens force-refreshed every 45 min
+    - Safety net: even if hourly trigger + stale() both miss, no data older than 45 min
+    - Uses existing REFRESH_ALL_DATA bit in the dispatch queue
+[x] Periodic heap monitor — free heap + max alloc block logged every 5 min (Serial 115200)
+    - Early-warning system for fragmentation in long-running deployments
 
 v1.3.8 — It's About Time
 [x] Data screen fetch timestamps — all 6 screens show "Updated 2:05pm" in header
