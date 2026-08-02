@@ -4,17 +4,11 @@ Session: 2026-07-27 (v1.3.9 release)
 
 NEXT_RELEASE (v1.4.0)
 ---------------------
-[ ] Heap fragmentation fix — StaticJsonDocument
-    - Replace DynamicJsonDocument with StaticJsonDocument<N> across all screens
-    - Compile-time buffers — zero heap alloc, zero realloc cycles
-    - Must test: build, flash, run 6+ hours before release
-    - Lesson from failed attempt: ONE change per build, no other refactoring
-
-[ ] TLS entropy workaround — route external APIs through Worker
-    - ESP32 mbedTLS RSA handshakes fail after first connection
-    - Worker proxy: add /usgs, /volcanoes, /news, /proxy endpoints
-    - CYD uses plain HTTP to Worker — zero TLS from ESP32 side
-    - Same pattern as existing /fireballs and /ews
+[ ] Heap fragmentation fix — periodic ESP.restart()
+    - Root cause: JsonDocument DynamicJsonDocument reallocs fragment heap over hours
+    - Fix: smart periodic restart every 4-6 hours (during sleep window if configured)
+    - Only restart when worker idle, 30-min floor between reboots
+    - Fallback if v1.3.9 watchdog + trigger fixes still show freezes in extended testing
 
 [ ] Lightning strike tracker — Blitzortung.org (free, no key)
     - Real-time lightning strikes for the region via public JSON feed
