@@ -10,6 +10,10 @@ NEXT_RELEASE (v1.4.0)
     - Only restart when worker idle, 30-min floor between reboots
     - Fallback if v1.3.9 watchdog + trigger fixes still show freezes in extended testing
 
+[ ] CME kms fix — switch from getString() to http.getStream()
+    - NASA DONKI response is 55KB — String + JsonDocument = 110KB peak → OOM
+    - Stream directly into JsonDocument, avoid double allocation
+
 [ ] Lightning strike tracker — Blitzortung.org (free, no key)
     - Real-time lightning strikes for the region via public JSON feed
     - Fits the "monitoring station" theme with fires, quakes, volcanoes
