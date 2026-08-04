@@ -111,9 +111,8 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
 - 12 per-page rotation checkboxes (2 rows × 6) — toggle which screens are included in auto-rotate
 - **Favorite screens** — double-tap any page checkbox to mark it as a favorite (amber highlight). Favorites are interspersed between regular screens during rotation (e.g. Fav, 2, Fav, 3, Fav, 4…), so your most-used screens appear twice as often. Multiple favorites cycle round-robin. Double-tap again to un-favorite; disabling a page auto-clears its favorite
-- 2×2 control grid: E-Ink toggle, Power Off (two-tap), Refresh Weather, and AUTO RST (5-hour periodic reboot ON/OFF)
-- 9 theme accent colors, saved across reboots
 - E-Ink mode — inverts display to white-background / black-foreground, toggled from the settings screen
+- 9 theme accent colors, saved across reboots
 - **Auto Reboot Toggle** — tap AUTO RST to enable/disable the 5-hour periodic ESP.restart() that prevents heap fragmentation. Theme-color border when ON, dim when OFF. Defaults to ON — toggle OFF for long-running uptime testing.
 - Power Off — two-tap confirmation ("PWR OFF" → "SURE?") engages **Somnus Deep-Sleep Recovery**: ESP32 enters ultra-low-power deep sleep with EXT0 touch-IRQ wake on GPIO 36. A single screen tap reanimates the device instantly — no hardware reset required
 
