@@ -134,7 +134,7 @@ static bool fetchKp() {
     return true;
 }
 
-static void fetchPlasma() {
+static bool fetchPlasma() {
     // NOAA SWPC deprecated /products/solar-wind/plasma-*.json Apr 2026.
     // Replacement /json/rtsw/rtsw_wind_1m.json returns ~2.7 MB (multi-day,
     // multi-satellite), far too large for ESP32 JsonDocument.  Stream-read
@@ -147,7 +147,7 @@ static void fetchPlasma() {
     http.begin(client, "https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json");
     http.setTimeout(12000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
-    if (http.GET() != 200) { http.end(); return; }
+    if (http.GET() != 200) { http.end(); return false; }
 
     static const int BUF_SZ = 2048;
     char buf[BUF_SZ + 1];
@@ -172,19 +172,21 @@ static void fetchPlasma() {
 
     // Find first JSON object: first '{' to matching '}' (no nested braces in these records)
     char *start = strchr(buf, '{');
-    if (!start) return;
+    if (!start) return false;
     char *end = strchr(start, '}');
-    if (!end) return;
+    if (!end) return false;
     *(end + 1) = '\0';
 
     JsonDocument doc;
-    if (deserializeJson(doc, start)) return;
+    if (deserializeJson(doc, start)) return false;
+    // Only write fields that are present — old values survive on failure
     if (!doc["proton_density"].isNull())     s_solar.density  = doc["proton_density"].as<float>();
     if (!doc["proton_speed"].isNull())       s_solar.windKms  = doc["proton_speed"].as<float>();
     if (!doc["proton_temperature"].isNull()) s_solar.solarTemp = doc["proton_temperature"].as<float>();
+    return true;
 }
 
-static void fetchMag() {
+static bool fetchMag() {
     // NOAA SWPC deprecated /products/solar-wind/mag-*.json Apr 2026.
     // Replacement /json/rtsw/rtsw_mag_1m.json returns ~1.5 MB (multi-day,
     // multi-satellite), far too large for ESP32 JsonDocument.  Stream-read
@@ -196,7 +198,7 @@ static void fetchMag() {
     http.begin(client, "https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json");
     http.setTimeout(12000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
-    if (http.GET() != 200) { http.end(); return; }
+    if (http.GET() != 200) { http.end(); return false; }
 
     static const int BUF_SZ = 2048;
     char buf[BUF_SZ + 1];
@@ -221,25 +223,27 @@ static void fetchMag() {
 
     // Find first JSON object: first '{' to matching '}' (no nested braces in these records)
     char *start = strchr(buf, '{');
-    if (!start) return;
+    if (!start) return false;
     char *end = strchr(start, '}');
-    if (!end) return;
+    if (!end) return false;
     *(end + 1) = '\0';
 
     JsonDocument doc;
-    if (deserializeJson(doc, start)) return;
+    if (deserializeJson(doc, start)) return false;
+    // Only write fields that are present — old values survive on failure
     if (!doc["bz_gsm"].isNull()) s_solar.bz = doc["bz_gsm"].as<float>();
     if (!doc["bt"].isNull())     s_solar.bt = doc["bt"].as<float>();
+    return true;
 }
 
-static void fetchXray() {
+static bool fetchXray() {
     static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json");
     http.setTimeout(12000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
-    if (http.GET() != 200) { http.end(); return; }
+    if (http.GET() != 200) { http.end(); return false; }
 
     static const int TAIL_MAX = 500;
     char tail[TAIL_MAX + 1];
@@ -275,62 +279,76 @@ static void fetchXray() {
 
     char *pos = nullptr;
     for (char *p = tail; (p = strstr(p, "0.1-0.8nm")) != nullptr; ++p) pos = p;
-    if (!pos) return;
+    if (!pos) return false;
     for (char *fp = pos; fp > tail; --fp) {
         if (strncmp(fp, "\"flux\"", 6) == 0) {
             char *colon = strchr(fp, ':');
             if (!colon) continue;
             s_solar.xrayFlux = atof(colon + 1);
             fluxToClass(s_solar.xrayFlux, s_solar.xrayClass, sizeof(s_solar.xrayClass));
-            return;
+            return true;
         }
     }
+    return false;
 }
 
-static void fetchFlare() {
+static bool fetchFlare() {
     static WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services.swpc.noaa.gov/json/goes/primary/xray-flares-latest.json");
     http.setTimeout(8000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
-    if (http.GET() != 200) { http.end(); return; }
+    if (http.GET() != 200) { http.end(); return false; }
     String body = http.getString();
     http.end();
 
     JsonDocument doc;
-    if (deserializeJson(doc, body)) return;
+    if (deserializeJson(doc, body)) return false;
     JsonArray arr = doc.as<JsonArray>();
-    if (arr.size() == 0) return;
+    if (arr.size() == 0) return false;
     JsonObject flare = arr[0];
     const char *cls = flare["max_class"] | flare["current_class"] | "NONE";
     const char *peak = flare["max_time"] | flare["time_tag"] | "";
     snprintf(s_solar.flareClass, sizeof(s_solar.flareClass), "%s", cls);
-    if (peak && strlen(peak) >= 16) snprintf(s_solar.flareTime, sizeof(s_solar.flareTime), "%.5s %.5s", peak + 5, peak + 11);
+    if (peak && strlen(peak) >= 16)
+        snprintf(s_solar.flareTime, sizeof(s_solar.flareTime), "%.5s %.5s", peak + 5, peak + 11);
+    return true;
 }
 
-static void fetchCme() {
+static bool fetchCme() {
     // Quantum-Meteor Worker proxies NASA DONKI (55 KB → ~100 bytes).
     // The worker extracts only the latest CME's startTime + speed, so the
-    // ESP32 never touches the full payload.
+    // ESP32 never touches the full payload.  Worker caches DONKI for 1 h
+    // so we stay well under NASA DEMO_KEY's 50 req/day limit.
     WiFiClient client;
     HTTPClient http;
     http.begin(client, "http://quantum-meteor.qsmoke.workers.dev/cme");
     http.setTimeout(10000);
-    if (http.GET() != 200) { http.end(); return; }
+    if (http.GET() != 200) { http.end(); return false; }
     String body = http.getString();
     http.end();
 
     JsonDocument doc;
-    if (deserializeJson(doc, body)) return;
+    if (deserializeJson(doc, body)) return false;
 
     const char *start = doc["startTime"] | "";
     float speed = doc["speed"].as<float>();
-    s_solar.cmeSpeedKms = (speed > 0) ? speed : 0;
-    if (start && strlen(start) >= 16)
+
+    // Only update on successful parse — old values survive fetch failures
+    if (start && strlen(start) >= 16) {
+        s_solar.cmeSpeedKms = (speed > 0) ? speed : 0;
         snprintf(s_solar.cmeTime, sizeof(s_solar.cmeTime), "%.5s %.5s", start + 5, start + 11);
-    else
+    } else if (speed > 0) {
+        // Speed without a parseable time — still record it
+        s_solar.cmeSpeedKms = speed;
         snprintf(s_solar.cmeTime, sizeof(s_solar.cmeTime), "NONE");
+    } else {
+        // No CME data from worker (legitimate empty state)
+        s_solar.cmeSpeedKms = 0;
+        snprintf(s_solar.cmeTime, sizeof(s_solar.cmeTime), "NONE");
+    }
+    return true;
 }
 
 void solarFetch(bool wifiOk) {
@@ -341,14 +359,11 @@ void solarFetch(bool wifiOk) {
     // Save old state in case Kp fetch fails
     SolarState old = s_solar;
 
-    // Reset fields that sub-fetchers will populate
-    snprintf(s_solar.xrayClass, sizeof(s_solar.xrayClass), "N/A");
-    snprintf(s_solar.flareClass, sizeof(s_solar.flareClass), "NONE");
-    snprintf(s_solar.flareTime, sizeof(s_solar.flareTime), "---");
-    snprintf(s_solar.cmeTime, sizeof(s_solar.cmeTime), "NONE");
-    s_solar.cmeSpeedKms = 0;
-    s_solar.bt = 0;
-    s_solar.solarTemp = 0;
+    // NOTE: no longer pre-reset sub-fields to defaults.  Each fetch*()
+    // returns bool and only writes to s_solar on success — old values
+    // survive individual fetch failures.  The old Kp-only save/restore
+    // remains as a last resort (Kp is the critical piece that anchors
+    // the whole screen).
 
     bool kpOk = fetchKp();
     fetchPlasma();

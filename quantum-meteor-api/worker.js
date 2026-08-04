@@ -71,9 +71,21 @@ async function serveEws() {
 // ── /cme — latest Coronal Mass Ejection from NASA DONKI ───────────────────
 // Fetches the last 4 days of CME data (~55 KB JSON array), extracts only the
 // most recent CME's startTime and speed.  ~100 bytes on the wire.
+//
+// Two-tier cache: primary (1 h) absorbs normal traffic (~24 DONKI calls/day,
+// well under DEMO_KEY's 50/day).  Fallback (24 h) serves stale data when
+// DONKI has an outage — the ESP32 always gets something to display.
 async function serveCme() {
+  const cache = caches.default;
+  const CACHE_KEY = "https://qsmoke-cache/cme-donki";
+  const STALE_KEY = "https://qsmoke-cache/cme-donki-stale";
+
+  // 1. Primary cache hit → return immediately, zero DONKI calls
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
+  // 2. Cache miss — fetch DONKI
   try {
-    // Compute date range: last 4 days
     const now = new Date();
     const end = now.toISOString().split("T")[0];
     const start = new Date(now.getTime() - 4 * 86400000).toISOString().split("T")[0];
@@ -85,24 +97,36 @@ async function serveCme() {
     if (!resp.ok) throw new Error(`DONKI returned ${resp.status}`);
 
     const arr = await resp.json();
-    if (!Array.isArray(arr) || arr.length === 0) {
-      return json(200, { startTime: null, speed: null });
-    }
+    let startTime = null, speed = null;
 
-    const last = arr[arr.length - 1];
-    let speed = null;
-    const analyses = last.cmeAnalyses;
-    if (Array.isArray(analyses)) {
-      for (const a of analyses) {
-        if (a.speed != null) { speed = a.speed; break; }
+    if (Array.isArray(arr) && arr.length > 0) {
+      const last = arr[arr.length - 1];
+      startTime = last.startTime || null;
+      const analyses = last.cmeAnalyses;
+      if (Array.isArray(analyses)) {
+        for (const a of analyses) {
+          if (a.speed != null) { speed = a.speed; break; }
+        }
       }
     }
 
-    return json(200, {
-      startTime: last.startTime || null,
-      speed: speed,
-    });
+    const out = json(200, { startTime, speed });
+
+    // Primary: 1 h — limits DONKI calls to ~24/day
+    out.headers.set("Cache-Control", "s-maxage=3600");
+    await cache.put(CACHE_KEY, out.clone());
+
+    // Fallback: 24 h — survives DONKI outages
+    const stale = out.clone();
+    stale.headers.set("Cache-Control", "s-maxage=86400");
+    await cache.put(STALE_KEY, stale);
+
+    return out;
   } catch (e) {
+    // 3. DONKI failed — serve fallback if we have it
+    const stale = await cache.match(STALE_KEY);
+    if (stale) return stale;
+
     return json(500, { error: e.message });
   }
 }
