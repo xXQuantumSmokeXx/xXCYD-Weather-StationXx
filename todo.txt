@@ -1,6 +1,6 @@
 CYD-Weather TODO
 ================
-Session: 2026-08-04 (v1.4.1 Patch)
+Session: 2026-08-04 (v1.4.1 CME Patch)
 
 NEXT_RELEASE (v1.4.2)
 ------------------------------
