@@ -4,9 +4,15 @@
 
 Ideas for new data the Cloudflare Worker can aggregate, boil down, and serve to the ESP32.
 
-### Lightning Strike Tracker 🟢 To Research
+### Lightning Strike Tracker 🟡 Research Done
 Real-time lightning strike data for tactical weather awareness.
-- Potential sources: Blitzortung (crowd-sourced, real-time), NOAA LightningCast, Vaisala (commercial)
+- **Blitzortung** — worldwide community network, ~100 strikes/min globally, free for non-commercial use with attribution. No official REST API.
+- **Data flow:** WebSocket (`wss://ws1.blitzortung.org/`) → LZW decompress (starts code 256) → one JSON strike per frame → normalize. Handshake: `{"a": 111}` (value rotates, scrape from `map.blitzortung.org` JS bundle if stale). Keepalive: 30s ping, reconnect w/ exponential backoff (1s→30s cap).
+- **Strike shape:** `{"lat": 34.05, "lon": -118.24, "time": 1785859200000, "pol": 1, "region": 0, "e": 0.42, "mode": "live"}` — `e` is relative intensity proxy (0.15–1.0), not calibrated kA.
+- **Mirrors:** ws1, ws2, ws7, ws8 — round-robin on failure.
+- **Worker approach:** Durable Object maintains persistent WebSocket → rolling 30-min strike buffer → query by lat/lon for closest strikes. Reference: `fltman/lightings` (GitHub) Node relay with LZW decoder.
+- **ESP32 payload concept:** `{"strikes":47,"closest":3.2,"direction":"SW","minutes":5}`
+- **Alternative:** Xweather (Vaisala) REST API — 15K free calls/mo, includes strike type/intensity. Not Blitzortung-sourced.
 
 ---
 
@@ -25,10 +31,6 @@ State-by-state customers without power, updated every 10-15 min.
 - **California OES ArcGIS** — ✅ **PROVEN WORKING** (2026-08-04): live, free, 15-min refresh. PG&E, SCE, SDG&E, SMUD. Fields: UtilityCompany, County, ImpactedCustomers, Cause, OutageType, EstimatedRestoreDate. Endpoint at `services.arcgis.com/BLN4oKB0N1YSgvY8/arcgis/rest/services/Power_Outages_(View)/FeatureServer/0/query`
 - **GateHouseMedia/power-outages** (GitHub) — MIT-licensed Python scrapers for FPL, Duke Energy (6 states). Last updated 2020, likely broken but good reference architecture.
 - Approach: Worker aggregates 5-10 state/utility ArcGIS REST endpoints → boils down to per-state outage counts + totals. No single free nationwide API exists; must be built.
-
-### Lightning Strikes 🟢 To Research
-Real-time lightning strike data for tactical weather awareness.
-- Potential sources: Blitzortung (crowd-sourced, real-time), NOAA LightningCast, Vaisala (commercial)
 
 ### ISS Passes 🟢 To Research
 Next visible ISS overhead pass for the user's GPS location.
@@ -61,6 +63,15 @@ ADC noise, load sag, no smoothing. EMA filter + more samples needed.
 - EAGLE-I dataset DOI: `10.13139/ORNLNCCS/1975202`
 - Presented at FOSS4GNA 2023 by Aaron Myers (GE Informatics Engineering Group)
 - Status: internal DOE tool — investigating public API availability
+
+### Blitzortung LZW Decode (for reference)
+- WebSocket to `wss://ws1.blitzortung.org/` (mirrors: ws2, ws7, ws8)
+- Handshake: send `{"a": 111}` on connect
+- Each frame: single lightning strike, LZW-compressed string (not binary)
+- Decode: start with code 256. First char emitted literally. Each subsequent: if codepoint < 256 → literal; if ≥ 256 → dict lookup; KwKwK edge case: phrase = oldPhrase + first char of oldPhrase
+- Decoded → JSON.parse → normalize (time ns→ms, compute `e` intensity proxy from station count + coverage)
+- 30s ping keepalive, exponential backoff reconnect (1s→30s cap), advance to next mirror each retry
+- Reference: `fltman/lightings/server/blitzortung.js`
 
 ### PowerOutage.us Architecture (for reference)
 - ~10,000 lines of C# ("PowerOutageBot") on Azure
