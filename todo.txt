@@ -8,14 +8,6 @@ TBD
 
 ───── Future Ideas ─────────────────────────────────────────────────────────────
 
-[ ] Battery Monitor Accuracy — ADC noise, load sag, no smoothing
-    - EMA filter alpha 0.12→0.25 already done in v1.3.1, still needs more
-    - More ADC samples per reading, trimmed mean, sag compensation
-
-[ ] WiFi Scanner Removal — decorative, interferes with data fetches
-    - WiFi.scanNetworks() every 5s collides with background HTTP fetches
-    - Already removed in v1.2.9, but scanner code may still be in some branches
-
 [ ] Lightning Strike Tracker — Blitzortung.org (RESEARCH DONE)
     - Worldwide community network, ~100 strikes/min, free non-commercial w/ attribution
     - No official REST API — WebSocket: wss://ws1.blitzortung.org/ (mirrors: ws2, ws7, ws8)
