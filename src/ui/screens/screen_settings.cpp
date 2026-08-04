@@ -437,7 +437,7 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.drawRect(LOC_X, LOC_Y, BTN_SQ_W, BTN_SQ_H, rstBorder);
         tft.setTextFont(FONT_SM);
         tft.setTextColor(rstText, COL_INPUTBG);
-        const char *rstLabel = s_autoReboot ? "AUTO RST ON" : "AUTO RST OFF";
+        const char *rstLabel = "AUTO RST";
         int rlw2 = tft.textWidth(rstLabel);
         tft.setCursor(LOC_X + (BTN_SQ_W - rlw2) / 2, LOC_Y + (BTN_SQ_H - 8) / 2);
         tft.print(rstLabel);
