@@ -1,8 +1,8 @@
 CYD-Weather TODO
 ================
-Session: 2026-08-04 (v1.4.1 CME Patch)
+Session: 2026-08-04 (v1.4.2 AUTO RST)
 
-NEXT_RELEASE (v1.4.2)
+NEXT_RELEASE (v1.4.3)
 ------------------------------
 TBD
 
@@ -70,6 +70,13 @@ TBD
     - Both names hardware-agnostic, one-word, honest about what the device does
 
 ───── Completed ────────────────────────────────────────────────────────────────
+
+v1.4.2 — AUTO RST (2026-08-04)
+[x] Repurpose LOCATION button → AUTO RST toggle in Settings
+    - Toggles 5-hour periodic auto-reboot ON/OFF
+    - NVS key 'auto_rst' persists across boots (default: ON)
+    - Theme-color border when ON, dim when OFF — same pattern as SCHED
+    - main.cpp restart gated on screenSettingsGetAutoReboot()
 
 v1.4.1 — Patch (2026-08-04)
 [x] CME data disappearing after a few hours — fetchCme() fix
