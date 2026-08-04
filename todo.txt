@@ -1,8 +1,8 @@
 CYD-Weather TODO
 ================
-Session: 2026-08-04 (v1.4.2 AUTO RST)
+Session: 2026-08-04 (v1.4.3 Second Wind)
 
-NEXT_RELEASE (v1.4.3)
+NEXT_RELEASE (v1.4.4)
 ------------------------------
 TBD
 
@@ -70,6 +70,14 @@ TBD
     - Both names hardware-agnostic, one-word, honest about what the device does
 
 ───── Completed ────────────────────────────────────────────────────────────────
+
+v1.4.3 — Second Wind (2026-08-04)
+[x] DONKI dual-source fallback — CCMC endpoint resurrects CME data
+    - api.nasa.gov/DONKI was down all day (503); CME showed "NONE" for hours
+    - Added fallback: kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/CMEAnalysis
+    - CCMC runs on separate NASA infrastructure — stayed up through the outage
+    - 8-second AbortController timeouts prevent Worker wall-clock exhaustion
+    - Same DEMO_KEY, same ~100-byte output, transparent to the ESP32
 
 v1.4.2 — AUTO RST (2026-08-04)
 [x] Repurpose LOCATION button → AUTO RST toggle in Settings
