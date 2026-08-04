@@ -69,65 +69,124 @@ async function serveEws() {
 }
 
 // ── /cme — latest Coronal Mass Ejection from NASA DONKI ───────────────────
-// Fetches the last 4 days of CME data (~55 KB JSON array), extracts only the
-// most recent CME's startTime and speed.  ~100 bytes on the wire.
+// Dual-source with automatic fallback:
+//   1. api.nasa.gov/DONKI/CME          (primary)
+//   2. kauai.ccmc.gsfc.nasa.gov/DONKI  (fallback — separate NASA infra)
+// Extracts only the most recent CME's startTime and speed.  ~100 bytes.
 //
-// Two-tier cache: primary (1 h) absorbs normal traffic (~24 DONKI calls/day,
+// Two-tier cache: primary (1 h) absorbs normal traffic (~24 calls/day,
 // well under DEMO_KEY's 50/day).  Fallback (24 h) serves stale data when
-// DONKI has an outage — the ESP32 always gets something to display.
+// both sources are unreachable.
 async function serveCme() {
   const cache = caches.default;
   const CACHE_KEY = "https://qsmoke-cache/cme-donki";
   const STALE_KEY = "https://qsmoke-cache/cme-donki-stale";
 
-  // 1. Primary cache hit → return immediately, zero DONKI calls
+  // 1. Primary cache hit → return immediately, zero upstream calls
   const fresh = await cache.match(CACHE_KEY);
   if (fresh) return fresh;
 
-  // 2. Cache miss — fetch DONKI
+  // 2. Cache miss — try primary (api.nasa.gov), then fallback (CCMC)
+  let result = null;
+  let error = null;
+
+  result = await tryDonkiPrimary();
+  if (!result) {
+    result = await tryDonkiFallback();
+  }
+
+  if (result) {
+    const out = json(200, result);
+
+    // Primary: 1 h
+    out.headers.set("Cache-Control", "s-maxage=3600");
+    await cache.put(CACHE_KEY, out.clone());
+
+    // Fallback: 24 h — survives multi-source outage
+    const stale = out.clone();
+    stale.headers.set("Cache-Control", "s-maxage=86400");
+    await cache.put(STALE_KEY, stale);
+
+    return out;
+  }
+
+  // 3. Both sources failed — serve stale if we have it
+  const stale = await cache.match(STALE_KEY);
+  if (stale) return stale;
+
+  return json(500, { error: error || "DONKI unreachable" });
+}
+
+// Primary: api.nasa.gov/DONKI/CME
+async function tryDonkiPrimary() {
   try {
     const now = new Date();
     const end = now.toISOString().split("T")[0];
     const start = new Date(now.getTime() - 4 * 86400000).toISOString().split("T")[0];
 
     const url = `https://api.nasa.gov/DONKI/CME?startDate=${start}&endDate=${end}&api_key=DEMO_KEY`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);  // 8 s timeout
     const resp = await fetch(url, {
-      headers: { "User-Agent": "Quantum-Meteor/1.0", "Accept-Encoding": "identity" }
+      headers: { "User-Agent": "Quantum-Meteor/1.0", "Accept-Encoding": "identity" },
+      signal: ctrl.signal,
     });
+    clearTimeout(timer);
     if (!resp.ok) throw new Error(`DONKI returned ${resp.status}`);
 
     const arr = await resp.json();
-    let startTime = null, speed = null;
+    if (!Array.isArray(arr) || arr.length === 0) return null;
 
-    if (Array.isArray(arr) && arr.length > 0) {
-      const last = arr[arr.length - 1];
-      startTime = last.startTime || null;
-      const analyses = last.cmeAnalyses;
-      if (Array.isArray(analyses)) {
-        for (const a of analyses) {
-          if (a.speed != null) { speed = a.speed; break; }
-        }
+    const last = arr[arr.length - 1];
+    const startTime = last.startTime || null;
+    let speed = null;
+    const analyses = last.cmeAnalyses;
+    if (Array.isArray(analyses)) {
+      for (const a of analyses) {
+        if (a.speed != null) { speed = a.speed; break; }
       }
     }
-
-    const out = json(200, { startTime, speed });
-
-    // Primary: 1 h — limits DONKI calls to ~24/day
-    out.headers.set("Cache-Control", "s-maxage=3600");
-    await cache.put(CACHE_KEY, out.clone());
-
-    // Fallback: 24 h — survives DONKI outages
-    const stale = out.clone();
-    stale.headers.set("Cache-Control", "s-maxage=86400");
-    await cache.put(STALE_KEY, stale);
-
-    return out;
+    return { startTime, speed };
   } catch (e) {
-    // 3. DONKI failed — serve fallback if we have it
-    const stale = await cache.match(STALE_KEY);
-    if (stale) return stale;
+    console.log(`DONKI primary: ${e.message}`);
+    return null;
+  }
+}
 
-    return json(500, { error: e.message });
+// Fallback: CCMC DONKI CME Analysis (kauai.ccmc.gsfc.nasa.gov — separate infra)
+async function tryDonkiFallback() {
+  try {
+    const now = new Date();
+    const end = now.toISOString().split("T")[0];
+    const start = new Date(now.getTime() - 4 * 86400000).toISOString().split("T")[0];
+
+    const url = `https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/CMEAnalysis?startDate=${start}&endDate=${end}&mostAccurateOnly=true&api_key=DEMO_KEY`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);  // 8 s timeout
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "Quantum-Meteor/1.0", "Accept-Encoding": "identity" },
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!resp.ok) throw new Error(`CCMC DONKI returned ${resp.status}`);
+
+    const arr = await resp.json();
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+
+    // Filter for most-accurate entries, take the latest by time21_5
+    const accurate = arr.filter(a => a.isMostAccurate);
+    if (accurate.length === 0) return null;
+
+    accurate.sort((a, b) => (b.time21_5 || "").localeCompare(a.time21_5 || ""));
+    const latest = accurate[0];
+
+    return {
+      startTime: latest.time21_5 || null,
+      speed: latest.speed || null,
+    };
+  } catch (e) {
+    console.log(`DONKI fallback: ${e.message}`);
+    return null;
   }
 }
 
