@@ -1,35 +1,90 @@
 CYD-Weather TODO
 ================
-Session: 2026-08-03 (v1.4.0 release)
+Session: 2026-08-04 (v1.4.1 release)
 
-NEXT_RELEASE (v1.4.1)
----------------------
-[ ] Lightning strike tracker — Blitzortung.org (free, no key)
-    - Real-time lightning strikes for the region via public JSON feed
-    - Fits the "monitoring station" theme with fires, quakes, volcanoes
-    - Show strike count, distance/direction to nearest, time since last strike
+NEXT_RELEASE (v1.4.2 — patch)
+------------------------------
+[ ] Battery Monitor Accuracy — ADC noise, load sag, no smoothing
+    - EMA filter alpha 0.12→0.25 already done in v1.3.1, still needs more
+    - More ADC samples per reading, trimmed mean, sag compensation
+
+[ ] WiFi Scanner Removal — decorative, interferes with data fetches
+    - WiFi.scanNetworks() every 5s collides with background HTTP fetches
+    - Already removed in v1.2.9, but scanner code may still be in some branches
 
 ───── Future Ideas ─────────────────────────────────────────────────────────────
 
-[ ] Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
-    - Dropping "CYD" now because future ports (larger screens, other boards) are planned
-    - Both names are hardware-agnostic, one-word, and honest about what the device does
-    - Open to community suggestions — keeping the debate visible for now
+[ ] Lightning Strike Tracker — Blitzortung.org (RESEARCH DONE)
+    - Worldwide community network, ~100 strikes/min, free non-commercial w/ attribution
+    - No official REST API — WebSocket: wss://ws1.blitzortung.org/ (mirrors: ws2, ws7, ws8)
+    - Handshake: {"a": 111} (value rotates server-side)
+    - Each frame: single strike, LZW-compressed string (not binary). Decode starts at code 256.
+      First char literal; subsequent: codepoint < 256 → literal; ≥ 256 → dict lookup
+    - Strike shape: {"lat", "lon", "time", "pol", "region", "e": intensity proxy (0.15–1.0)}
+    - Worker approach: Durable Object → persistent WebSocket → rolling 30-min buffer
+    - Reference: fltman/lightings/server/blitzortung.js
+    - ESP32 payload: {"strikes":47,"closest":3.2,"direction":"SW","minutes":5}
+    - Alternative: Xweather (Vaisala) REST API, 15K free calls/mo, strike type/intensity
 
-[ ] NWS Alerts screen — active watches/warnings for current location
-    - NWS API already in weather fallback chain — just needs display
-    - Severity-coded (advisory=yellow, watch=amber, warning=red)
-    - Title + headline + expiration time per alert
+[ ] Power Grid Status — real-time US grid telemetry
+    - Kardashev API: free hosted, no key, all 7 US ISOs (fuel mix, load, carbon, outages)
+    - EIA Grid Monitor: free API key, hourly, national (demand, generation, emissions)
+    - MISO Public API: public-api.misoenergy.org, 37 anonymous JSON endpoints, 30-sec res
+    - ESP32 payload: GRID: 482GW | 38% Gas | 22% Nuclear | 14% Wind | 5% Solar | 60.00 Hz
+
+[ ] Power Outage Tracking — state-by-state customers without power
+    - PowerOutage.us: gold standard (97% US, ~1000 utilities, 10-min) but enterprise only
+    - EAGLE Eye (DOE/ORNL): open-source, scrapes 450 utilities/15 min, 93% US — internal tool
+      ⚡ User investigating if DOE exposes a public API
+    - California OES ArcGIS: ✅ PROVEN WORKING (2026-08-04) — live, free, 15-min refresh
+      PG&E, SCE, SDG&E, SMUD. Endpoint: services.arcgis.com/.../Power_Outages_(View)/...
+    - Approach: Worker aggregates 5-10 state/utility ArcGIS endpoints → per-state counts
+    - No single free nationwide API exists; must be built
+
+[ ] Internet Outage Monitor — BGP route monitoring, carrier status
+    - Sources: Cloudflare Radar, ThousandEyes, DownDetector
+    - Answers "is it just me, or is the internet down?"
+
+[ ] GPS / GNSS Status — WAAS/DGPS corrections, satellite count, dilution of precision
+    - Tactical: knowing whether GPS is degraded before relying on it
+
+[ ] Cell Tower Status — nearby tower proximity, carrier signal context
+    - Sources: OpenCelliD, carrier APIs
+
+[ ] NWS Watches & Warnings (Expanded) — flood, tsunami, tornado, hurricane watches
+    - Already pulling active alerts; expand to pre-event watches
+
+[ ] Disaster Declarations — FEMA, state of emergency, evacuation zones
+    - Sources: FEMA API, state emergency management feeds
+
+[ ] Aviation — NOTAMs & TFRs near location
+    - TFRs often precede news: VIP movement, wildfire air ops, disaster response
+    - Sources: FAA NOTAM API, SkyVector
+
+[ ] Aviation — ADS-B Traffic Density
+    - Pattern disruption as signal: sudden silence (ground stop) or unusual clustering
+    - Sources: ADS-B Exchange API, OpenSky Network
 
 [ ] ISS Pass Predictor — api.open-notify.org (free, no key)
-    - Shows upcoming visible ISS passes for current location
-    - Time, duration, elevation, direction for next 3-5 passes
+    - Upcoming visible ISS passes: time, duration, elevation, direction for next 3-5
 
-[ ] Satellite visibility tracker — Starlink trains / bright sats
-    - When visible satellite trains are overhead
-    - Fits the "looking up" theme with meteors and solar
+[ ] Starlink Trains — visible satellite train predictions
+    - Satellite tracking APIs or TLE-based orbital prediction
+
+[ ] Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
+    - Dropping "CYD" for future ports (larger screens, other boards)
+    - Both names hardware-agnostic, one-word, honest about what the device does
 
 ───── Completed ────────────────────────────────────────────────────────────────
+
+v1.4.1 — Patch (2026-08-04)
+[x] CME data disappearing after a few hours — fetchCme() fix
+    - Now handles missing startTime, speed-only, and empty Worker responses
+    - Old values survive individual fetch failures
+[x] TODO.txt updated — merged new research from TODO.md
+    - Lightning strike full Blitzortung research, power grid, power outage tracking
+    - Tactical data categories: internet, GPS, cell tower, disasters, NOTAMs, ADS-B
+    - ISS, Starlink, expanded NWS watches, project rename
 
 v1.4.0 — Steady Hand
 [x] Heap fragmentation fix — 5-hour periodic ESP.restart()
