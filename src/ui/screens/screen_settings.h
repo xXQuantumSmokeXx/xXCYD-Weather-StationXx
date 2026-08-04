@@ -14,3 +14,4 @@ int      screenSettingsGetSleepTimerSecs();  // 0=OFF, 15/30/60/300 seconds
 bool     screenSettingsGetScheduleEnabled();  // daily sleep/wake schedule active
 int      screenSettingsGetSleepHour();        // 0-23, hour to turn backlight off
 int      screenSettingsGetWakeHour();         // 0-23, hour to turn backlight on
+bool     screenSettingsGetAutoReboot();         // 5-hour periodic restart toggle

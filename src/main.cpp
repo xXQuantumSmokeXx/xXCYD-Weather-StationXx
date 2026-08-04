@@ -916,7 +916,7 @@ void loop() {
     // 5-hour periodic restart — prevents heap fragmentation from
     // JsonDocument reallocs accumulating over long uptimes.
     // Only restarts when the Core 0 worker is idle (no fetch in flight).
-    if (millis() > 18000000UL && !workerBusy()) {  // 5 h
+    if (millis() > 18000000UL && !workerBusy() && screenSettingsGetAutoReboot()) {  // 5 h
         Serial.println("[RESTART] 5-hour periodic restart");
         Serial.flush();
         delay(100);

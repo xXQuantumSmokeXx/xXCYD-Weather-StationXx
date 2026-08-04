@@ -137,6 +137,17 @@ static bool s_refreshRequested = false;
 static bool s_pwrConfirm = false;
 static unsigned long s_pwrConfirmMs = 0;
 
+// ── Auto-reboot toggle ──────────────────────────────────────────────────────
+static bool s_autoReboot = true;   // default ON
+
+static void autoRebootLoad() {
+    s_autoReboot = nvsGetInt("auto_rst", 1) != 0;
+}
+
+static void autoRebootSave() {
+    nvsPutInt("auto_rst", s_autoReboot ? 1 : 0);
+}
+
 // ── Auto-rotate state ─────────────────────────────────────────────────────────
 static const uint32_t s_rotMs[]     = { 0, 5000, 10000, 30000, 60000 };
 static const char    *s_rotLabels[] = { "OFF", "5s", "10s", "30s", "1m" };
@@ -417,15 +428,19 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.print("REFRESH");
     }
 
-    // Bottom-right: Update Location
+    // Bottom-right: Auto Reboot toggle
     {
+        autoRebootLoad();
+        uint16_t rstBorder = s_autoReboot ? g_themeColor : COL_DIM;
+        uint16_t rstText   = s_autoReboot ? g_themeColor : COL_DIM;
         tft.fillRect(LOC_X, LOC_Y, BTN_SQ_W, BTN_SQ_H, COL_INPUTBG);
-        tft.drawRect(LOC_X, LOC_Y, BTN_SQ_W, BTN_SQ_H, COL_AMBER);
+        tft.drawRect(LOC_X, LOC_Y, BTN_SQ_W, BTN_SQ_H, rstBorder);
         tft.setTextFont(FONT_SM);
-        tft.setTextColor(COL_AMBER, COL_INPUTBG);
-        int llw = tft.textWidth("LOCATION");
-        tft.setCursor(LOC_X + (BTN_SQ_W - llw) / 2, LOC_Y + (BTN_SQ_H - 8) / 2);
-        tft.print("LOCATION");
+        tft.setTextColor(rstText, COL_INPUTBG);
+        const char *rstLabel = s_autoReboot ? "AUTO RST ON" : "AUTO RST OFF";
+        int rlw2 = tft.textWidth(rstLabel);
+        tft.setCursor(LOC_X + (BTN_SQ_W - rlw2) / 2, LOC_Y + (BTN_SQ_H - 8) / 2);
+        tft.print(rstLabel);
     }
 
     // Divider 1
@@ -571,11 +586,13 @@ bool screenSettingsTap(TFT_eSPI &tft, int16_t tx, int16_t ty) {
         return true;
     }
 
-    // Update Location (bottom-right)
+    // Auto Reboot toggle (bottom-right)
     if (tx >= LOC_X && tx < LOC_X + BTN_SQ_W &&
         ty >= LOC_Y && ty < LOC_Y + BTN_SQ_H) {
         s_pwrConfirm = false;
-        s_refreshRequested = true;
+        autoRebootLoad();
+        s_autoReboot = !s_autoReboot;
+        autoRebootSave();
         return true;
     }
 
@@ -725,4 +742,9 @@ bool screenSettingsGetAutoRotate() {
 uint32_t screenSettingsGetAutoRotateMs() {
     autoRotLoad();
     return s_rotMs[s_autoRotSel];
+}
+
+bool screenSettingsGetAutoReboot() {
+    autoRebootLoad();
+    return s_autoReboot;
 }
