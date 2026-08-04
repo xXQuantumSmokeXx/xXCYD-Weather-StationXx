@@ -11,6 +11,9 @@
 #include <time.h>
 
 extern bool g_spriteCapture;
+extern bool triggerWeatherRefresh();
+
+#define WEATHER_STALE_SECS 1800UL  // 30 min — re-fetch when data older than this
 
 static float calcDewPoint(float tempF, int humidity) {
     if (humidity <= 0) return tempF;
@@ -111,6 +114,12 @@ void screenCurrentDraw(TFT_eSPI &tft, bool wifiOk) {
         snprintf(ebuf, sizeof(ebuf), "Err:%d Loc:%d Wifi:%d", g_weatherError, (int)g_location.valid, (int)wifiOk);
         tft.print(ebuf);
         return;
+    }
+
+    // Trigger a background weather refresh if data is stale
+    if (wifiOk && g_weatherUpdatedEpoch > 0 &&
+        time(nullptr) - (time_t)g_weatherUpdatedEpoch > WEATHER_STALE_SECS) {
+        triggerWeatherRefresh();
     }
 
     // ── Layout ───────────────────────────────────────────────────────────

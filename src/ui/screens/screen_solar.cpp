@@ -105,17 +105,6 @@ static void fluxToClass(float flux, char *out, size_t len) {
     snprintf(out, len, "%c%.1f", letters[idx], flux / bounds[idx]);
 }
 
-static void getUtcDate(int dayOffset, char *out, size_t len) {
-    time_t now = time(nullptr);
-    if (now < 1000000) {
-        snprintf(out, len, "2026-05-21");
-        return;
-    }
-    now += (time_t)dayOffset * 86400;
-    struct tm *ti = gmtime(&now);
-    snprintf(out, len, "%04d-%02d-%02d", ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday);
-}
-
 static bool fetchKp() {
     static WiFiClientSecure client;
     client.setInsecure();
@@ -321,36 +310,27 @@ static void fetchFlare() {
 }
 
 static void fetchCme() {
-    char startDate[12], endDate[12], url[220];
-    getUtcDate(-4, startDate, sizeof(startDate));
-    getUtcDate(0, endDate, sizeof(endDate));
-    snprintf(url, sizeof(url), "https://api.nasa.gov/DONKI/CME?startDate=%s&endDate=%s&api_key=DEMO_KEY", startDate, endDate);
-
-    static WiFiClientSecure client;
-    client.setInsecure();
+    // Quantum-Meteor Worker proxies NASA DONKI (55 KB → ~100 bytes).
+    // The worker extracts only the latest CME's startTime + speed, so the
+    // ESP32 never touches the full payload.
+    WiFiClient client;
     HTTPClient http;
-    http.begin(client, url);
-    http.setTimeout(12000);
-    http.addHeader("User-Agent", "CYD-Weather/1.0");
+    http.begin(client, "http://quantum-meteor.qsmoke.workers.dev/cme");
+    http.setTimeout(10000);
     if (http.GET() != 200) { http.end(); return; }
     String body = http.getString();
     http.end();
 
     JsonDocument doc;
     if (deserializeJson(doc, body)) return;
-    JsonArray arr = doc.as<JsonArray>();
-    if (arr.size() == 0) return;
 
-    JsonObject cme = arr[arr.size() - 1];
-    const char *start = cme["startTime"] | "";
-    s_solar.cmeSpeedKms = 0;
-    for (JsonVariant a : cme["cmeAnalyses"].as<JsonArray>()) {
-        if (!a["speed"].isNull()) {
-            s_solar.cmeSpeedKms = a["speed"].as<float>();
-            break;
-        }
-    }
-    if (start && strlen(start) >= 16) snprintf(s_solar.cmeTime, sizeof(s_solar.cmeTime), "%.5s %.5s", start + 5, start + 11);
+    const char *start = doc["startTime"] | "";
+    float speed = doc["speed"].as<float>();
+    s_solar.cmeSpeedKms = (speed > 0) ? speed : 0;
+    if (start && strlen(start) >= 16)
+        snprintf(s_solar.cmeTime, sizeof(s_solar.cmeTime), "%.5s %.5s", start + 5, start + 11);
+    else
+        snprintf(s_solar.cmeTime, sizeof(s_solar.cmeTime), "NONE");
 }
 
 void solarFetch(bool wifiOk) {

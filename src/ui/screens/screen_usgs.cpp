@@ -127,10 +127,14 @@ bool usgsFetch(bool wifiOk) {
     int count = tempCount < QUAKE_MAX ? tempCount : QUAKE_MAX;
     for (int i = 0; i < count; i++) s_quakes[i] = temp[i];
     s_quakeCount = count;
-    s_fetchedMs = millis();
     s_fetchedOnce = true;
-    stampSync();
-    return s_quakeCount > 0;
+    if (count > 0) {
+        s_fetchedMs = millis();
+        stampSync();
+    } else {
+        s_fetchedMs = 0;
+    }
+    return count > 0;
 }
 
 static void drawQuakeList(TFT_eSPI &tft) {

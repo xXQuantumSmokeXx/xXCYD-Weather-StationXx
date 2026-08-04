@@ -9,6 +9,10 @@
 #include <cstdio>
 #include <math.h>
 
+extern bool triggerWeatherRefresh();
+
+#define WEATHER_STALE_SECS 1800UL  // 30 min — re-fetch when data older than this
+
 // 6 cols × 2 rows = 12 hours
 #define COLS   6
 #define ROWS   2
@@ -35,6 +39,12 @@ void screenHourlyDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.setCursor(60, 110);
         tft.print("No weather data");
         return;
+    }
+
+    // Trigger a background weather refresh if data is stale
+    if (wifiOk && g_weatherUpdatedEpoch > 0 &&
+        time(nullptr) - (time_t)g_weatherUpdatedEpoch > WEATHER_STALE_SECS) {
+        triggerWeatherRefresh();
     }
 
     for (int i = 0; i < HOURLY_COUNT; i++) {

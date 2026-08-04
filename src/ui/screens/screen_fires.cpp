@@ -317,10 +317,14 @@ bool firesFetch(bool wifiOk) {
         formatFireTitle(merged[i], s_fires[i]);
     }
     s_fireCount = count;
-    s_fetchedMs = millis();
     s_fetchedOnce = true;
-    stampSync();
-    return s_fireCount > 0;
+    if (count > 0) {
+        s_fetchedMs = millis();
+        stampSync();
+    } else {
+        s_fetchedMs = 0;  // mark stale so next visit triggers a retry
+    }
+    return count > 0;
 }
 
 // ── Draw ─────────────────────────────────────────────────────────────────────

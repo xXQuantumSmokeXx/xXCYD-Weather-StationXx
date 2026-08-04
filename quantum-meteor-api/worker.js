@@ -3,6 +3,7 @@
  * Serves lightweight JSON for ESP32 CYD-Weather:
  *   /fireballs — scraped IMO fireball events
  *   /ews       — EWS (Apocalypse Early Warning System) summary
+ *   /cme       — latest CME speed & time from NASA DONKI (~100 bytes vs 55 KB)
  * Deploy: npx wrangler deploy
  */
 
@@ -23,9 +24,14 @@ export default {
       return await serveEws();
     }
 
+    // GET /cme — latest CME from NASA DONKI (~100 bytes vs 55 KB direct)
+    if (url.pathname === "/cme") {
+      return await serveCme();
+    }
+
     // GET / — simple status
     return new Response(
-      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews"] }),
+      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme"] }),
       { headers: { "Content-Type": "application/json" } }
     );
   }
@@ -56,6 +62,45 @@ async function serveEws() {
       tracked: coh.trackedCount     ?? 0,
       updated: cur.asOf             ?? null,
       airborne: live.airborneCount  ?? 0,
+    });
+  } catch (e) {
+    return json(500, { error: e.message });
+  }
+}
+
+// ── /cme — latest Coronal Mass Ejection from NASA DONKI ───────────────────
+// Fetches the last 4 days of CME data (~55 KB JSON array), extracts only the
+// most recent CME's startTime and speed.  ~100 bytes on the wire.
+async function serveCme() {
+  try {
+    // Compute date range: last 4 days
+    const now = new Date();
+    const end = now.toISOString().split("T")[0];
+    const start = new Date(now.getTime() - 4 * 86400000).toISOString().split("T")[0];
+
+    const url = `https://api.nasa.gov/DONKI/CME?startDate=${start}&endDate=${end}&api_key=DEMO_KEY`;
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "Quantum-Meteor/1.0", "Accept-Encoding": "identity" }
+    });
+    if (!resp.ok) throw new Error(`DONKI returned ${resp.status}`);
+
+    const arr = await resp.json();
+    if (!Array.isArray(arr) || arr.length === 0) {
+      return json(200, { startTime: null, speed: null });
+    }
+
+    const last = arr[arr.length - 1];
+    let speed = null;
+    const analyses = last.cmeAnalyses;
+    if (Array.isArray(analyses)) {
+      for (const a of analyses) {
+        if (a.speed != null) { speed = a.speed; break; }
+      }
+    }
+
+    return json(200, {
+      startTime: last.startTime || null,
+      speed: speed,
     });
   } catch (e) {
     return json(500, { error: e.message });

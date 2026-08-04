@@ -224,9 +224,13 @@ bool newsFetch(bool wifiOk, const char *city) {
     qsort(s_items, count, sizeof(NewsItem), dateCmp);
 
     s_count = count;
-    s_fetchedMs = millis();
     s_fetchedOnce = true;
-    stampSync();
+    if (count > 0) {
+        s_fetchedMs = millis();
+        stampSync();
+    } else {
+        s_fetchedMs = 0;
+    }
     return true;
 }
 

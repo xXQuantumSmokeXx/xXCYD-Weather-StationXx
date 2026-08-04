@@ -215,10 +215,14 @@ bool volcanoesFetch(bool wifiOk) {
     int count = tempCount < VOLCANO_MAX ? tempCount : VOLCANO_MAX;
     for (int i = 0; i < count; i++) s_volcanoes[i] = temp[i];
     s_volcanoCount = count;
-    s_fetchedMs = millis();
     s_fetchedOnce = true;
-    stampSync();
-    return s_volcanoCount > 0;
+    if (count > 0) {
+        s_fetchedMs = millis();
+        stampSync();
+    } else {
+        s_fetchedMs = 0;
+    }
+    return count > 0;
 }
 
 static void drawVolcanoList(TFT_eSPI &tft) {

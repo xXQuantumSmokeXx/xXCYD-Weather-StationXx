@@ -1,19 +1,9 @@
 CYD-Weather TODO
 ================
-Session: 2026-07-27 (v1.3.9 release)
+Session: 2026-08-03 (v1.4.0 release)
 
-NEXT_RELEASE (v1.4.0)
+NEXT_RELEASE (v1.4.1)
 ---------------------
-[ ] Heap fragmentation fix — periodic ESP.restart()
-    - Root cause: JsonDocument DynamicJsonDocument reallocs fragment heap over hours
-    - Fix: smart periodic restart every 4-6 hours (during sleep window if configured)
-    - Only restart when worker idle, 30-min floor between reboots
-    - Fallback if v1.3.9 watchdog + trigger fixes still show freezes in extended testing
-
-[ ] CME kms fix — switch from getString() to http.getStream()
-    - NASA DONKI response is 55KB — String + JsonDocument = 110KB peak → OOM
-    - Stream directly into JsonDocument, avoid double allocation
-
 [ ] Lightning strike tracker — Blitzortung.org (free, no key)
     - Real-time lightning strikes for the region via public JSON feed
     - Fits the "monitoring station" theme with fires, quakes, volcanoes
@@ -40,6 +30,22 @@ NEXT_RELEASE (v1.4.0)
     - Fits the "looking up" theme with meteors and solar
 
 ───── Completed ────────────────────────────────────────────────────────────────
+
+v1.4.0 — Steady Hand
+[x] Heap fragmentation fix — 5-hour periodic ESP.restart()
+    - Restarts when worker idle at exactly 5 h uptime (18,000,000 ms)
+    - Prevents JsonDocument realloc fragmentation over long runs
+[x] CME via Quantum-Meteor Worker — proxied through /cme endpoint
+    - Worker fetches NASA DONKI (55 KB) server-side, returns ~100 bytes
+    - Eliminates 110 KB peak heap pressure on ESP32 during solar fetch
+[x] Architecture: removed hour-change trigger + 45-min watchdog
+    - Background fetch bursts replaced by on-demand per-screen stale() checks
+    - Data screens auto-retry on next visit when boot fetch returns zero results
+[x] Weather hour-change trigger — lightweight, weather-only
+    - Single fetch at hour boundary keeps hourly screen aligned to wall clock
+[x] Weather screens — 30-min stale() check (Now, Hourly, 5-Day)
+[x] Zero-results auto-retry — fires, USGS, volcanoes, news mark stale on empty
+[x] CME, XRAY, FLR all populate correctly on first visit
 
 v1.3.9 — Hour Hand
 [x] Silent fetch loss — trigger functions return bool, dispatch confirms before clearing bit
