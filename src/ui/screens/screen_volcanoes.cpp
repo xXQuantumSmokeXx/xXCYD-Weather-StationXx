@@ -5,22 +5,26 @@
 #include "../../modules/location.h"
 #include "../../modules/time_sync.h"
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
 
-#define VOLCANO_CACHE_MS (15UL * 60UL * 1000UL)
-#define VOLCANO_MAX 24
+// Data comes from the Quantum-Meteor worker (/volcanoes): Smithsonian WVAR
+// weekly "New" items + same-day GDACS VAAs, regions joined server-side.
+// The report updates weekly, so a long cache is fine — tap topbar to refresh.
+#define VOLCANO_CACHE_MS (6UL * 60UL * 60UL * 1000UL)
+#define VOLCANO_MAX 12
 #define VOLCANO_ROW_H 34   // two lines per volcano
+
+#define QM_URL "http://quantum-meteor.qsmoke.workers.dev/volcanoes"
 
 struct VolcanoItem {
     char name[40];
-    char obs[36];        // observatory full name (e.g. "Yellowstone Volcano Observatory")
-    char color_code[8];
-    char alert_level[10];
+    char loc[56];        // "Country - Volcanic Region"
+    char color_code[8];  // GREEN/YELLOW/ORANGE/RED
+    bool fresh;          // same-day VAA — not yet in the weekly report
     char when[16];
 };
 
@@ -136,93 +140,73 @@ static uint16_t colorDot(const char *code) {
 bool volcanoesFetch(bool wifiOk) {
     if (!wifiOk || !WiFi.isConnected()) return false;
 
-    static WiFiClientSecure client;
-    client.setInsecure();
+    WiFiClient client;
     HTTPClient http;
-    http.begin(client, "https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes");
     http.setTimeout(15000);
-    http.addHeader("User-Agent", "CYD-Weather/1.0");
-    int code = http.GET();
-    if (code != 200) { http.end(); return false; }
-    String body = http.getString();
-    http.end();
-
-    JsonDocument filter;
-    filter[0]["volcano_name"]  = true;
-    filter[0]["obs_fullname"]  = true;
-    filter[0]["color_code"]    = true;
-    filter[0]["alert_level"]   = true;
-    filter[0]["sent_utc"]      = true;
-
-    JsonDocument doc;
-    if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) {
+    if (!http.begin(client, QM_URL)) {
+        Serial.println("[VOL] begin fail");
         return false;
     }
-    JsonArray arr = doc.as<JsonArray>();
+
+    int code = http.GET();
+    if (code != 200) {
+        Serial.printf("[VOL] HTTP %d\n", code);
+        http.end();
+        return false;
+    }
+
+    // Stream directly — mirrors the meteors screen's worker fetch pattern.
+    JsonDocument filter;
+    filter["volcanoes"][0]["name"]    = true;
+    filter["volcanoes"][0]["country"] = true;
+    filter["volcanoes"][0]["region"]  = true;
+    filter["volcanoes"][0]["code"]    = true;
+    filter["volcanoes"][0]["fresh"]   = true;
+    filter["volcanoes"][0]["when"]    = true;
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
+    http.end();
+    if (err) {
+        Serial.printf("[VOL] JSON: %s\n", err.c_str());
+        return false;
+    }
+    JsonArray arr = doc["volcanoes"].as<JsonArray>();
     if (arr.isNull()) return false;
 
-    const int TEMP_MAX = 40;
-    VolcanoItem temp[TEMP_MAX];
-    int tempCount = 0;
-
-    // ── Yellowstone always first (hardcoded baseline) ──
-    {
-        VolcanoItem &y = temp[tempCount++];
-        copyFit("Yellowstone", y.name, sizeof(y.name));
-        copyFit("Yellowstone Volcano Observatory", y.obs, sizeof(y.obs));
-        copyFit("GREEN", y.color_code, sizeof(y.color_code));
-        copyFit("NORMAL", y.alert_level, sizeof(y.alert_level));
-        copyFit("--", y.when, sizeof(y.when));
-    }
-
-    // ── Elevated volcanoes from API ──
-    bool yellowstoneElevated = false;
+    int count = 0;
     for (JsonObject v : arr) {
-        if (tempCount >= TEMP_MAX) break;
+        if (count >= VOLCANO_MAX) break;
+        VolcanoItem &vi = s_volcanoes[count];
 
-        const char *vname   = v["volcano_name"] | "";
-        const char *obs     = v["obs_fullname"] | "";
-        const char *color   = v["color_code"]   | "";
-        const char *alert   = v["alert_level"]  | "";
-        const char *sent    = v["sent_utc"]     | "";
+        copyFit(v["name"] | "", vi.name, sizeof(vi.name));
 
-        // Deduplicate: if Yellowstone is in elevated list, replace the hardcoded entry
-        if (strcmp(vname, "Yellowstone") == 0) {
-            yellowstoneElevated = true;
-            copyFit(vname, temp[0].name, sizeof(temp[0].name));
-            copyFit(obs,   temp[0].obs,  sizeof(temp[0].obs));
-            copyFit(color, temp[0].color_code, sizeof(temp[0].color_code));
-            copyFit(alert, temp[0].alert_level, sizeof(temp[0].alert_level));
-            char rel[16];
-            fmtRelativeTime(sent, rel, sizeof(rel));
-            copyFit(rel, temp[0].when, sizeof(temp[0].when));
-            continue;
+        const char *country = v["country"] | "";
+        const char *region  = v["region"]  | "";
+        if (region[0]) {
+            snprintf(vi.loc, sizeof(vi.loc), "%s - %s", country, region);
+        } else {
+            copyFit(country, vi.loc, sizeof(vi.loc));
         }
 
-        VolcanoItem &vi = temp[tempCount++];
-        copyFit(vname, vi.name, sizeof(vi.name));
-        copyFit(obs,   vi.obs,  sizeof(vi.obs));
-        copyFit(color, vi.color_code, sizeof(vi.color_code));
-        copyFit(alert, vi.alert_level, sizeof(vi.alert_level));
+        copyFit(v["code"] | "RED", vi.color_code, sizeof(vi.color_code));
+        vi.fresh = v["fresh"] | false;
+
         char rel[16];
-        fmtRelativeTime(sent, rel, sizeof(rel));
+        fmtRelativeTime(v["when"] | "", rel, sizeof(rel));
         copyFit(rel, vi.when, sizeof(vi.when));
+
+        count++;
     }
 
-    // If Yellowstone NOT elevated, keep it at first position with NORMAL/GREEN
-    // (already done above — only replaced if found in elevated list)
-
-    int count = tempCount < VOLCANO_MAX ? tempCount : VOLCANO_MAX;
-    for (int i = 0; i < count; i++) s_volcanoes[i] = temp[i];
+    // A legitimately quiet week returns an empty list — still a successful
+    // fetch, so the screen can show "No new activity" instead of stale rows.
     s_volcanoCount = count;
     s_fetchedOnce = true;
-    if (count > 0) {
-        s_fetchedMs = millis();
-        stampSync();
-    } else {
-        s_fetchedMs = 0;
-    }
-    return count > 0;
+    s_fetchedMs = millis();
+    stampSync();
+    Serial.printf("[VOL] QM parsed %d\n", count);
+    return true;
 }
 
 static void drawVolcanoList(TFT_eSPI &tft) {
@@ -231,9 +215,7 @@ static void drawVolcanoList(TFT_eSPI &tft) {
     tft.setTextFont(FONT_SM);
     tft.setTextColor(COL_WHITE, COL_BG);
     char hdr[48];
-    int elevated = s_volcanoCount - 1; // exclude Yellowstone from elevated count
-    if (elevated < 0) elevated = 0;
-    snprintf(hdr, sizeof(hdr), "TRACKED:1 + ELEVATED:%d", elevated);
+    snprintf(hdr, sizeof(hdr), "NEW ACTIVITY: %d", s_volcanoCount);
     tft.setCursor(8, CONTENT_Y + 8);
     tft.print(hdr);
     int sw = tft.textWidth(s_sync);
@@ -253,22 +235,27 @@ static void drawVolcanoList(TFT_eSPI &tft) {
         uint16_t dotCol = colorDot(s_volcanoes[i].color_code);
         tft.fillCircle(9, y + VOLCANO_ROW_H / 2, 4, dotCol);
 
-        // ── Line 1: Volcano name ──
+        // ── Line 1: Volcano name (+ NEW tag for same-day VAAs) ──
         tft.setTextFont(FONT_MD);
         tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(18, y);
-        String nameFit = fitText(tft, s_volcanoes[i].name, SCREEN_W - 24);
-        tft.print(nameFit);
+        if (s_volcanoes[i].fresh) {
+            // Reserve room for the red "NEW" tag, then print it
+            String nFit = fitText(tft, s_volcanoes[i].name,
+                                  SCREEN_W - 24 - tft.textWidth(" NEW"));
+            tft.print(nFit);
+            tft.setTextColor(COL_RED, COL_BG);
+            tft.print(" NEW");
+            tft.setTextColor(g_themeColor, COL_BG);
+        } else {
+            tft.print(fitText(tft, s_volcanoes[i].name, SCREEN_W - 24));
+        }
 
-        // ── Line 2: Observatory / Alert level / Timestamp ──
+        // ── Line 2: Country - Region / relative report date ──
         tft.setTextFont(FONT_SM);
         int timeW = tft.textWidth(s_volcanoes[i].when);
         int timeX = SCREEN_W - timeW - 4;
-        char sub[80];
-        snprintf(sub, sizeof(sub), "%s  %s",
-                 s_volcanoes[i].obs,
-                 s_volcanoes[i].alert_level);
-        String subFit = fitText(tft, sub, timeX - 22);
+        String subFit = fitText(tft, s_volcanoes[i].loc, timeX - 22);
         tft.setTextColor(COL_WHITE, COL_BG);
         tft.setCursor(18, y + 20);
         tft.print(subFit);
@@ -307,7 +294,7 @@ void screenVolcanoesDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.setTextFont(FONT_MD);
         tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(wifiOk ? 68 : 92, 104);
-        tft.print(wifiOk ? "No volcano data" : "Volcanoes offline");
+        tft.print(wifiOk ? "No new activity" : "Volcanoes offline");
     }
 }
 
