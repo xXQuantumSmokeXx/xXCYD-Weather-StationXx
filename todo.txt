@@ -1,8 +1,8 @@
 CYD-Weather TODO
 ================
-Session: 2026-08-04 (v1.4.3 Second Wind)
+Session: 2026-08-14 (v1.4.4 Eruption Watch)
 
-NEXT_RELEASE (v1.4.4)
+NEXT_RELEASE (v1.4.5)
 ------------------------------
 TBD
 
@@ -70,6 +70,20 @@ TBD
     - Both names hardware-agnostic, one-word, honest about what the device does
 
 ───── Completed ────────────────────────────────────────────────────────────────
+
+v1.4.4 — Eruption Watch (2026-08-14)
+[x] Volcanoes screen — global new-eruption data (was US-only elevated list)
+    - New Quantum-Meteor Worker endpoint /volcanoes merges two sources:
+      1. Smithsonian/USGS Weekly Volcanic Activity Report (weekly, curated)
+         — "New Eruptive Activity" / "New Unrest" items only
+      2. GDACS Volcanic Ash Advisories (near-real-time) — same-day eruptions
+         between weekly reports, tagged NEW in red on screen
+    - Volcanic region joined server-side from GVP GeoServer WFS (Subregion)
+    - Worker caches 6 h primary + 24 h stale; region lookups cached 30 days
+    - Device: 12-row cap, 6 h cache, tap topbar to refresh, "No new activity"
+      empty state
+    - Replaced USGS HANS getElevatedVolcanoes (US-only, elevated-only) and
+      hardcoded Yellowstone row
 
 v1.4.3 — Second Wind (2026-08-04)
 [x] DONKI dual-source fallback — CCMC endpoint resurrects CME data
