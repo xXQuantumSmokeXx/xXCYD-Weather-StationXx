@@ -1,10 +1,25 @@
 CYD-Weather TODO
 ================
-Session: 2026-08-14 (v1.4.4 Eruption Watch)
+Session: 2026-09-07 (v1.4.5)
 
 NEXT_RELEASE (v1.4.5)
 ------------------------------
-TBD
+[x] Meteors screen — IMO outage handling (2026-09-07)
+    - fireball.imo.net down since ~2026-07 (cyber attack, "We're rebuilding")
+    - Device: fetch-failure backoff (s_attemptMs) — retries every 15 min
+      instead of every redraw; was spamming fetches continuously
+    - Worker /fireballs: 15-min primary + 6h stale cache (empty until IMO
+      returns — data reappears automatically, no redeploy needed)
+    - Worker deployed 2026-09-07 (Version e53d4f28)
+
+[ ] CNEOS fireball fallback — DECISION PENDING 2026-09-13 (end of week)
+    - If fireball.imo.net is still down by Sun 2026-09-13, implement fallback
+    - Source: ssd-api.jpl.nasa.gov/fireball.api (verified live, no key)
+      ~2-3 sensor-grade bolides/month globally; fields date/energy/lat/lon/alt/vel
+    - Plan: worker falls back when IMO throws, tags source:"imo"|"cneos";
+      device renders kt + lat/lon columns for cneos rows (no geocode tables)
+    - Geocoded country/state version + GMN source deferred unless IMO is
+      permanently unreliable
 
 ───── Future Ideas ─────────────────────────────────────────────────────────────
 

@@ -197,12 +197,32 @@ async function tryDonkiFallback() {
 }
 
 async function serveFireballs(url) {
+  const cache = caches.default;
+  const CACHE_KEY = "https://qsmoke-cache/fireballs";
+  const STALE_KEY = "https://qsmoke-cache/fireballs-stale";
+
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
   try {
     const limit = parseInt(url.searchParams.get("limit")) || 50;
     const html = await fetchIMO();
     const events = parseFireballs(html, limit);
-    return json(200, { count: events.length, events });
+    // Empty parse usually means the page structure changed — throw so the
+    // cache isn't poisoned and stale data is served instead.
+    if (!events.length) throw new Error("No events parsed — upstream structure may have changed");
+
+    const out = json(200, { count: events.length, events });
+    out.headers.set("Cache-Control", "s-maxage=900");       // 15 min — matches device cache window
+    await cache.put(CACHE_KEY, out.clone());
+
+    const stale = out.clone();
+    stale.headers.set("Cache-Control", "s-maxage=21600");   // 6 h
+    await cache.put(STALE_KEY, stale);
+    return out;
   } catch (e) {
+    const stale = await cache.match(STALE_KEY);
+    if (stale) return stale;
     return json(500, { error: e.message });
   }
 }

@@ -27,8 +27,7 @@ struct MeteorItem {
 
 static MeteorItem s_meteors[METEOR_MAX];
 static int  s_meteorCount = 0;
-static bool s_fetchedOnce  = false;
-static unsigned long s_fetchedMs = 0;
+static unsigned long s_attemptMs = 0; // last fetch attempt — success or fail
 static bool s_forceRefresh = false;
 static int  s_scrollOff    = 0;
 static char s_sync[18] = "--:--";
@@ -42,9 +41,9 @@ static void copyFit(const char *src, char *dst, size_t len) {
 }
 
 static bool stale() {
-    if (!s_fetchedOnce) return true;
+    if (s_attemptMs == 0) return true;   // never attempted
     if (s_forceRefresh) return true;
-    return millis() - s_fetchedMs > METEOR_CACHE_MS;
+    return millis() - s_attemptMs > METEOR_CACHE_MS;
 }
 
 static void stampSync() {
@@ -252,11 +251,10 @@ bool meteorsFetch(bool wifiOk) {
 
     Serial.println("[MET] fetching...");
     int count = fetchImoFireballs();
+    s_attemptMs = millis(); // stamp attempt — failure also backs off via stale()
     if (count > 0) {
         s_meteorCount = count;
         s_scrollOff   = 0;
-        s_fetchedMs   = millis();
-        s_fetchedOnce = true;
         stampSync();
         Serial.printf("[MET] done: %d events\n", count);
         return true;
@@ -335,7 +333,7 @@ void screenMeteorsDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 8, 13);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    bool doFetch = (!s_fetchedOnce || s_forceRefresh || stale()) && wifiOk && !g_meteorsPending;
+    bool doFetch = (s_forceRefresh || stale()) && wifiOk && !g_meteorsPending;
     s_forceRefresh = false;
 
     if (doFetch) {
@@ -360,7 +358,7 @@ void screenMeteorsDraw(TFT_eSPI &tft, bool wifiOk) {
 void screenMeteorsTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {
     if (y <= TOPBAR_H && wifiOk) {
         s_forceRefresh = true;
-        s_fetchedMs = 0;
+        s_attemptMs = 0; // retry until a fetch actually runs
         s_scrollOff = 0;
     }
 }
