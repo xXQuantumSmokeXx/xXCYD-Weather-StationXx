@@ -1,25 +1,10 @@
 CYD-Weather TODO
 ================
-Session: 2026-09-07 (v1.4.5)
+Session: 2026-09-27 (v1.4.6)
 
-NEXT_RELEASE (v1.4.5)
+NEXT_RELEASE (v1.4.7)
 ------------------------------
-[x] Meteors screen — IMO outage handling (2026-09-07)
-    - fireball.imo.net down since ~2026-07 (cyber attack, "We're rebuilding")
-    - Device: fetch-failure backoff (s_attemptMs) — retries every 15 min
-      instead of every redraw; was spamming fetches continuously
-    - Worker /fireballs: 15-min primary + 6h stale cache (empty until IMO
-      returns — data reappears automatically, no redeploy needed)
-    - Worker deployed 2026-09-07 (Version e53d4f28)
-
-[ ] CNEOS fireball fallback — DECISION PENDING 2026-09-13 (end of week)
-    - If fireball.imo.net is still down by Sun 2026-09-13, implement fallback
-    - Source: ssd-api.jpl.nasa.gov/fireball.api (verified live, no key)
-      ~2-3 sensor-grade bolides/month globally; fields date/energy/lat/lon/alt/vel
-    - Plan: worker falls back when IMO throws, tags source:"imo"|"cneos";
-      device renders kt + lat/lon columns for cneos rows (no geocode tables)
-    - Geocoded country/state version + GMN source deferred unless IMO is
-      permanently unreliable
+(TBD)
 
 ───── Future Ideas ─────────────────────────────────────────────────────────────
 
@@ -85,6 +70,29 @@ NEXT_RELEASE (v1.4.5)
     - Both names hardware-agnostic, one-word, honest about what the device does
 
 ───── Completed ────────────────────────────────────────────────────────────────
+
+v1.4.6 — Triple Tap (2026-09-27)
+[x] Triple-tap reboot — three taps in the content area restart the firmware
+    - Gesture fires on screens 0-10 only (content area between top/bottom bars)
+    - No collision with bottom-bar nav, top-bar refresh, or settings buttons —
+      content taps on those screens are otherwise inert
+    - "Rebooting..." splash → ESP.restart(); counter resets on swipe,
+      non-content tap, and screen change
+[x] CNEOS fireball fallback — DECISION: SKIP (2026-09-27)
+    - fireball.imo.net (AMS) down since ~2026-07; NASA CNEOS fallback
+      (ssd-api.jpl.nasa.gov/fireball.api) evaluated and declined
+    - Decision: wait for IMO to return — data reappears automatically via
+      the 15m/6h worker cache, no code change needed
+    - Revisit only if IMO is permanently unreliable
+
+v1.4.5 — IMO Outage Handling (2026-09-07)
+[x] Meteors screen — IMO outage handling
+    - fireball.imo.net down since ~2026-07 (cyber attack, "We're rebuilding")
+    - Device: fetch-failure backoff (s_attemptMs) — retries every 15 min
+      instead of every redraw; was spamming fetches continuously
+    - Worker /fireballs: 15-min primary + 6h stale cache (empty until IMO
+      returns — data reappears automatically, no redeploy needed)
+    - Worker deployed 2026-09-07 (Version e53d4f28)
 
 v1.4.4 — Eruption Watch (2026-08-14)
 [x] Volcanoes screen — global new-eruption data (was US-only elevated list)

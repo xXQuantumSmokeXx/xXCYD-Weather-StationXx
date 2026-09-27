@@ -50,6 +50,8 @@ static unsigned long s_lastTouchMs         = 0;    // sleep timer
 static bool         s_backlightOff         = false; // sleep timer
 static bool         s_scheduleSleeping     = false; // schedule put backlight to sleep
 static unsigned long s_schedGraceUntil     = 0;     // grace period after touch during schedule sleep
+static int           s_ttCount             = 0;     // triple-tap reboot: consecutive content-area taps
+static unsigned long s_ttLastMs            = 0;     // triple-tap reboot: timestamp of last counted tap
 static char          s_updateStr[24]  = "Never";
 enum RefreshBit : uint8_t {
     REFRESH_FIRES     = 1 << 0,
@@ -481,6 +483,7 @@ static void gotoScreen(int n) {
     s_screen         = (n % 13 + 13) % 13;
     s_lastAutoRotate = millis();
     s_needsRedraw    = true;
+    s_ttCount        = 0;   // a screen change breaks any triple-tap sequence
 }
 
 static void redrawTo(TFT_eSPI &target) {
@@ -1074,6 +1077,7 @@ void loop() {
 
     // Touch
     TouchEvent evt = touchPoll();
+    if (evt.swipe != SwipeDir::None) s_ttCount = 0;   // any swipe breaks a triple-tap sequence
     if (evt.swipe == SwipeDir::Left) {
         gotoScreen(s_screen + 1);
         s_needsRedraw = true;
@@ -1112,6 +1116,33 @@ void loop() {
         s_needsRedraw = true;
     } else if (evt.tap == TapEvent::Tap) {
         int tx = evt.tapX, ty = evt.tapY;
+
+        // ── Triple-tap reboot ───────────────────────────────────────────────
+        // Three quick taps in the content area (between the top and bottom bars)
+        // on screens 0-10 restart the firmware.  Content-area taps on those
+        // screens are otherwise inert, so this can't collide with navigation
+        // (bottom bar), refresh (top bar), or settings buttons (screen 12).
+        {
+            bool contentTap = (ty >= TOPBAR_H && ty < SCREEN_H - BOTBAR_H) &&
+                              (s_screen >= 0 && s_screen <= 10);
+            if (contentTap) {
+                unsigned long now = millis();
+                if (s_ttCount == 0 || now - s_ttLastMs > 600) s_ttCount = 1;
+                else                                          s_ttCount++;
+                s_ttLastMs = now;
+                if (s_ttCount >= 3) {
+                    s_ttCount = 0;
+                    showSplash("Rebooting...");
+                    Serial.println("[REBOOT] triple-tap");
+                    Serial.flush();
+                    delay(400);
+                    ESP.restart();
+                }
+            } else {
+                s_ttCount = 0;   // any non-content tap breaks the sequence
+            }
+        }
+
         int botY = SCREEN_H - BOTBAR_H;
         if (ty >= botY) {
             if (tx < 50)               gotoScreen(s_screen - 1);
