@@ -13,6 +13,19 @@ NEXT_RELEASE (v1.4.7)
 
 ───── Future Ideas ─────────────────────────────────────────────────────────────
 
+[ ] Water / Hydrology — 2 screens (HYDRO + TIDES) — PLANNING (2026-09-27)
+    - Convention: add features in pairs (2 screens) so the settings page grid
+      stays even — 12 rotatable → 14 (2 rows × 7 cols); Settings shifts 12 → 14
+    - Screen 12 HYDRO (freshwater): drought status (US Drought Monitor) +
+      river gages (USGS WaterServices IV + Site bbox query) + flood warnings
+      (filtered from the existing NWS alert feed)
+    - Screen 13 TIDES (marine): tsunami status line + tide table (NOAA CO-OPS
+      predictions, nearest station) + surf/rip risk (NWS surf-zone forecast)
+    - Worker endpoints /hydro + /tides (Quantum-Meteor)
+    - OPEN QUESTION: TIDES is coastal-only — the first screen not universal.
+      Inland users would uncheck page 14 in rotation, or restructure (fold
+      tides into HYDRO? separate "coastal" section?). Pondering 2026-09-27.
+
 [ ] Lightning Strike Tracker — Blitzortung.org (RESEARCH DONE)
     - Worldwide community network, ~100 strikes/min, free non-commercial w/ attribution
     - No official REST API — WebSocket: wss://ws1.blitzortung.org/ (mirrors: ws2, ws7, ws8)
