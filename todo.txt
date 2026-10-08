@@ -1,13 +1,13 @@
 CYD-Weather TODO
 ================
-Session: 2026-09-27 (v1.4.6)
+Session: 2026-10-08 (v1.4.7 Under Watch)
 
 Release how-to: version = git tag + this file (no code constant). GitHub release
 title is thematic (may differ from the entry title here). Draft → publish via
 `gh release create vX.Y.Z --draft …` then `gh release edit vX.Y.Z --draft=false`,
 attaching both .bin. File is tracked lowercase — `git add todo.txt`, not TODO.txt.
 
-NEXT_RELEASE (v1.4.7)
+NEXT_RELEASE (v1.4.8)
 ------------------------------
 (TBD)
 
@@ -88,6 +88,22 @@ NEXT_RELEASE (v1.4.7)
     - Both names hardware-agnostic, one-word, honest about what the device does
 
 ───── Completed ────────────────────────────────────────────────────────────────
+
+v1.4.7 — Under Watch (2026-10-08)
+[x] Volcanoes screen — USGS elevated statuses merged with new-activity feeds
+    - Screen showed "No new activity" while 4 US volcanoes sat at WATCH/ADVISORY:
+      the weekly report source was down and ongoing statuses were filtered out
+    - Re-added USGS HANS getElevatedVolcanoes as a third merged source (removed
+      in v1.4.4): every US volcano above NORMAL now shows with observatory +
+      alert level on line 2 (e.g. "HVO WATCH - Hawaiian-Emperor Hotspot
+      Volcano Group") and its color-coded dot
+    - Severity-first sort: RED > ORANGE > YELLOW, then same-day VAAs, then newest
+    - Header "ACTIVE VOLCANOES"; empty state "No activity reported"
+    - Worker serves partial data when 1-2 sources are down; throws only when
+      all three are unreachable; cache keys versioned (v2) to clear the cached
+      empty list on redeploy
+    - wrangler.toml: account_id pinned to the qsmoke subdomain account
+      (same Cloudflare login has three accounts — deploys failed otherwise)
 
 v1.4.6 — Triple Tap (2026-09-27)
 [x] Triple-tap reboot — three taps in the content area restart the firmware
