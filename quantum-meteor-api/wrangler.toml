@@ -2,6 +2,11 @@ name = "quantum-meteor"
 main = "worker.js"
 compatibility_date = "2024-07-01"
 
+# Pinned to the account that owns the qsmoke workers.dev subdomain (the one
+# the CYD devices call). The same Cloudflare login has three accounts and
+# non-interactive deploys fail without this. Do NOT change to another account.
+account_id = "76404a896503482bef751490312298d2"
+
 # Free tier: 100,000 requests/day — more than enough
 # Deploy with: npx wrangler deploy
 # Your endpoint will be: https://quantum-meteor.<your-subdomain>.workers.dev/fireballs

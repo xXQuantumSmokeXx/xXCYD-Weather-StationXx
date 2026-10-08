@@ -4,7 +4,7 @@
  *   /fireballs — scraped IMO fireball events
  *   /ews       — EWS (Apocalypse Early Warning System) summary
  *   /cme       — latest CME speed & time from NASA DONKI (~100 bytes vs 55 KB)
- *   /volcanoes — new volcanic activity worldwide (WVAR weekly + GDACS VAAs)
+ *   /volcanoes — active volcanoes (USGS HANS elevated + WVAR weekly + GDACS VAAs)
  * Deploy: npx wrangler deploy
  */
 
@@ -283,18 +283,22 @@ function parseFireballs(html, limit) {
   return events;
 }
 
-// ── /volcanoes — new volcanic activity worldwide ───────────────────────────
-// Two sources, merged:
-//   1. Smithsonian/USGS Weekly Volcanic Activity Report RSS (weekly, curated):
+// ── /volcanoes — active volcanoes worldwide ────────────────────────────────
+// Three sources, merged:
+//   1. USGS HANS getElevatedVolcanoes (near-real-time): every US volcano
+//      currently above NORMAL with its color code / alert level.
+//   2. Smithsonian/USGS Weekly Volcanic Activity Report RSS (weekly, curated):
 //      keeps only "New Eruptive Activity" / "New Unrest" items.
-//   2. GDACS VO feed (Volcanic Ash Advisories, near-real-time): items first
+//   3. GDACS VO feed (Volcanic Ash Advisories, near-real-time): items first
 //      added within the last 7 days — catches eruptions between Thursdays.
 // Volcanic region joined from Smithsonian GVP GeoServer WFS (static data,
 // cached 30 days per volcano). 6 h primary + 24 h stale cache, like /cme.
 async function serveVolcanoes() {
   const cache = caches.default;
-  const CACHE_KEY = "https://qsmoke-cache/volcanoes";
-  const STALE_KEY = "https://qsmoke-cache/volcanoes-stale";
+  // v2 — keys bumped when the USGS source was added so the old cached
+  // empty list (both sources down) can't be served after redeploy.
+  const CACHE_KEY = "https://qsmoke-cache/volcanoes-v2";
+  const STALE_KEY = "https://qsmoke-cache/volcanoes-v2-stale";
 
   const fresh = await cache.match(CACHE_KEY);
   if (fresh) return fresh;
@@ -316,31 +320,38 @@ async function serveVolcanoes() {
 }
 
 async function buildVolcanoes() {
-  const [wvarXml, gdacsXml] = await Promise.all([
+  const [wvarXml, gdacsXml, usgsJson] = await Promise.all([
     fetchUpstream("https://volcano.si.edu/news/WeeklyVolcanoRSS.xml", "iso-8859-1"),
     fetchUpstream("https://www.gdacs.org/xml/rss_7d.xml"),
+    fetchUpstream("https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes"),
   ]);
-  // Both sources down → throw so the caller serves stale instead of caching
-  // an empty list. One source down is fine (partial data beats nothing).
-  if (!wvarXml && !gdacsXml) throw new Error("WVAR and GDACS unreachable");
+  // All sources down → throw so the caller serves stale instead of caching
+  // an empty list. One or two sources down is fine (partial data beats nothing).
+  if (!wvarXml && !gdacsXml && !usgsJson) throw new Error("all volcano sources unreachable");
 
   let wvar = [];
   let gdacs = [];
+  let usgs = [];
   if (wvarXml) wvar = parseWvar(wvarXml);
   if (gdacsXml) gdacs = parseGdacs(gdacsXml);
+  if (usgsJson) usgs = parseUsgs(usgsJson);
 
   // Dedupe GDACS against WVAR (lowercase name); WVAR data is richer.
+  // USGS elevated dedupes against both — the "New" entries keep their tags.
   const wvarNames = new Set(wvar.map(v => v.name.toLowerCase()));
   const fresh = gdacs.filter(g => !wvarNames.has(g.name.toLowerCase()));
+  const baseNames = new Set([...wvar, ...fresh].map(v => v.name.toLowerCase()));
+  const elevated = usgs.filter(u => !baseNames.has(u.name.toLowerCase()));
 
   // Region join via GVP WFS (cached per volcano)
   const items = await Promise.all(
-    [...wvar, ...fresh].map(async v => ({ ...v, region: await gvpRegion(v) }))
+    [...wvar, ...fresh, ...elevated].map(async v => ({ ...v, region: await gvpRegion(v) }))
   );
 
-  // Sort: same-day VAA first, then eruptive, then unrest; newest first within groups
-  const rank = v => (v.fresh ? 0 : v.cat === "New Eruptive Activity" ? 1 : 2);
-  items.sort((a, b) => rank(a) - rank(b) || (b.when || "").localeCompare(a.when || ""));
+  // Sort: severity first (RED > ORANGE > YELLOW), then same-day VAAs,
+  // then newest report first within groups.
+  const sev = c => ({ RED: 0, ORANGE: 1, YELLOW: 2 }[c] ?? 3);
+  items.sort((a, b) => sev(a.code) - sev(b.code) || (b.fresh - a.fresh) || (b.when || "").localeCompare(a.when || ""));
 
   const out = items.slice(0, 12).map(v => ({
     name: v.name,
@@ -351,7 +362,8 @@ async function buildVolcanoes() {
     when: v.when,
   }));
 
-  return { updated: items[0]?.when || null, count: out.length, volcanoes: out };
+  const newest = items.map(v => v.when || "").sort().pop() || null;
+  return { updated: newest, count: out.length, volcanoes: out };
 }
 
 // Fetch a remote document with UA + timeout; decode ISO-8859-1 where needed.
@@ -433,7 +445,31 @@ function parseGdacs(xml) {
   return out;
 }
 
-// GVP WFS region lookup — by volcano number (WVAR) or by name (GDACS-only).
+// USGS HANS getElevatedVolcanoes → [{name, country, cat, vnum, when, code, fresh}]
+// Returns only US volcanoes currently above NORMAL (WATCH/ADVISORY/WARNING)
+// with the notice's color code and alert level.  vnums match GVP numbers, so
+// the WFS region join works unchanged.  "country" carries "OBS LEVEL" so the
+// device shows the observatory + alert level on line 2.
+const OBS_ABBR = { avo: "AVO", hvo: "HVO", cvo: "CVO", yvo: "YVO", nmi: "NMI" };
+function parseUsgs(text) {
+  let arr;
+  try { arr = JSON.parse(text); } catch { return []; }
+  if (!Array.isArray(arr)) return [];
+
+  return arr
+    .map(v => ({
+      name: (v.volcano_name || "").trim(),
+      country: `${OBS_ABBR[v.obs_abbr] || (v.obs_abbr || "").toUpperCase()} ${v.alert_level || ""}`.trim(),
+      cat: "Elevated",
+      vnum: v.vnum || null,
+      when: v.sent_utc || "",
+      code: v.color_code || "RED",
+      fresh: false,
+    }))
+    .filter(v => v.name);
+}
+
+// GVP WFS region lookup — by volcano number (WVAR, USGS) or by name (GDACS-only).
 // Returns subregion ("Sicily Volcanic Province") or region as fallback.
 async function gvpRegion(v) {
   const cache = caches.default;

@@ -11,9 +11,10 @@
 #include <cstring>
 #include <ctime>
 
-// Data comes from the Quantum-Meteor worker (/volcanoes): Smithsonian WVAR
-// weekly "New" items + same-day GDACS VAAs, regions joined server-side.
-// The report updates weekly, so a long cache is fine — tap topbar to refresh.
+// Data comes from the Quantum-Meteor worker (/volcanoes): USGS elevated
+// volcanoes (color code + alert level) merged with Smithsonian WVAR weekly
+// "New" items and same-day GDACS VAAs, regions joined server-side.
+// Statuses change slowly, so a long cache is fine — tap topbar to refresh.
 #define VOLCANO_CACHE_MS (6UL * 60UL * 60UL * 1000UL)
 #define VOLCANO_MAX 12
 #define VOLCANO_ROW_H 34   // two lines per volcano
@@ -215,7 +216,7 @@ static void drawVolcanoList(TFT_eSPI &tft) {
     tft.setTextFont(FONT_SM);
     tft.setTextColor(COL_WHITE, COL_BG);
     char hdr[48];
-    snprintf(hdr, sizeof(hdr), "NEW ACTIVITY: %d", s_volcanoCount);
+    snprintf(hdr, sizeof(hdr), "ACTIVE VOLCANOES: %d", s_volcanoCount);
     tft.setCursor(8, CONTENT_Y + 8);
     tft.print(hdr);
     int sw = tft.textWidth(s_sync);
@@ -294,7 +295,7 @@ void screenVolcanoesDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.setTextFont(FONT_MD);
         tft.setTextColor(g_themeColor, COL_BG);
         tft.setCursor(wifiOk ? 68 : 92, 104);
-        tft.print(wifiOk ? "No new activity" : "Volcanoes offline");
+        tft.print(wifiOk ? "No activity reported" : "Volcanoes offline");
     }
 }
 
