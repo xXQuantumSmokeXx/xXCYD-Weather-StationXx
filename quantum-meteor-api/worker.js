@@ -35,9 +35,14 @@ export default {
       return await serveVolcanoes();
     }
 
+    // GET /outbreaks — WHO Disease Outbreak News, normalised for the crew brains
+    if (url.pathname === "/outbreaks") {
+      return await serveOutbreaks(url);
+    }
+
     // GET / — simple status
     return new Response(
-      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes"] }),
+      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes", "/outbreaks"] }),
       { headers: { "Content-Type": "application/json" } }
     );
   }
@@ -123,14 +128,17 @@ async function serveCme() {
   return json(500, { error: error || "DONKI unreachable" });
 }
 
-// Primary: api.nasa.gov/DONKI/CME
+// Primary: ccmc.gsfc.nasa.gov — DONKI LEFT api.nasa.gov in the September 2026 rewrite.
+// That host now 301s every /DONKI/ path, which is why this endpoint answered
+// "DONKI unreachable" before 2026-10-18. The new host serves the same JSON shape
+// (startTime + cmeAnalyses[].speed) and needs no api_key.
 async function tryDonkiPrimary() {
   try {
     const now = new Date();
     const end = now.toISOString().split("T")[0];
     const start = new Date(now.getTime() - 4 * 86400000).toISOString().split("T")[0];
 
-    const url = `https://api.nasa.gov/DONKI/CME?startDate=${start}&endDate=${end}&api_key=DEMO_KEY`;
+    const url = `https://ccmc.gsfc.nasa.gov/DONKI/WS/get/CME?startDate=${start}&endDate=${end}`;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8000);  // 8 s timeout
     const resp = await fetch(url, {
@@ -194,6 +202,139 @@ async function tryDonkiFallback() {
     console.log(`DONKI fallback: ${e.message}`);
     return null;
   }
+}
+
+// ── /outbreaks — WHO Disease Outbreak News ────────────────────────────────
+// Built 2026-10-18 for Nova's disease-surveillance block, after the old lane
+// (four hardcoded pages with dated regexes) went stale. Nova asked for general
+// outbreaks rather than one curated story, official-first, with per-item source,
+// publication date, location, headline and risk language - and both the source's
+// own updated time and our fetch time on the block.
+//
+// The WHO DON API is Sitecore; no key, no UA fuss, and it carries the fields the
+// crew needs. location is not a field, so it is taken from the title suffix
+// ("... - Kingdom of Saudi Arabia"), which is the shape WHO uses.
+//
+// Fresh cache 30 min, stale 24 h. A stale answer is marked in the body, so the
+// consumer can stamp it honestly rather than passing it off as current.
+const WHO_DON_API =
+  "https://www.who.int/api/news/diseaseoutbreaknews" +
+  "?$orderby=PublicationDateAndTime%20desc&$top={limit}&$format=json";
+
+async function serveOutbreaks(url) {
+  const cache = caches.default;
+  const CACHE_KEY = "https://qsmoke-cache/outbreaks-v3";
+  const STALE_KEY = "https://qsmoke-cache/outbreaks-v3-stale";
+
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
+  try {
+    const limit = Math.min(parseInt(url.searchParams.get("limit")) || 8, 20);
+    // Pull a wider window than asked for: WHO posts repeated updates to the same
+    // event (five BVD/Ebola updates in the top eight on 2026-10-18), and Nova asked
+    // for general coverage. Dedupe per event afterwards, newest first.
+    const fetchCount = Math.min(limit * 4, 40);
+    const fetchedAt = new Date().toISOString();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    const resp = await fetch(WHO_DON_API.replace("{limit}", fetchCount), {
+      headers: { "User-Agent": "Quantum-Meteor/1.0", "Accept-Encoding": "identity" },
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!resp.ok) throw new Error(`WHO DON returned ${resp.status}`);
+
+    const data = await resp.json();
+    const items = dedupeEvents(normaliseDon(data.value || [])).slice(0, limit);
+    if (!items.length) throw new Error("No DON items parsed — upstream shape may have changed");
+
+    const payload = {
+      count: items.length,
+      source: "WHO Disease Outbreak News",
+      fetched_at: fetchedAt,
+      source_updated: items[0].published || null,
+      stale: false,
+      items,
+    };
+    const out = json(200, payload);
+    out.headers.set("Cache-Control", "s-maxage=1800");
+    await cache.put(CACHE_KEY, out.clone());
+
+    const stale = json(200, { ...payload, stale: true });
+    stale.headers.set("Cache-Control", "s-maxage=86400");
+    await cache.put(STALE_KEY, stale);
+    return out;
+  } catch (e) {
+    console.log(`WHO DON: ${e.message}`);
+    const stale = await cache.match(STALE_KEY);
+    if (stale) return stale;
+    return json(502, { error: e.message, source: "WHO Disease Outbreak News", items: [] });
+  }
+}
+
+function normaliseDon(rows) {
+  return rows.map(it => {
+    const title = String(it.Title || "").trim();
+    const split = splitHeadline(title);
+    return {
+      id: it.DonId || null,
+      title: split.headline,
+      location: split.location,
+      published: it.PublicationDateAndTime || null,
+      risk: riskLine(it.Assessment) || riskLine(it.Summary),
+      url: it.UrlName
+        ? `https://www.who.int/emergencies/disease-outbreak-news/item/${it.UrlName}`
+        : "https://www.who.int/emergencies/disease-outbreak-news",
+      source: "WHO Disease Outbreak News",
+      tier: "Official",
+    };
+  }).filter(it => it.title);
+}
+
+// One row per event: WHO re-posts the same outbreak with a fresh DON id and date.
+// Rows arrive newest-first, so the first sighting of a title+place is the latest.
+function dedupeEvents(items) {
+  const seen = new Set();
+  return items.filter(it => {
+    const key = `${it.title}|${it.location}`.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+// WHO titles read "Disease event - Country". Greedy so the LAST dash wins:
+// "Ebola disease caused by Bundibugyo virus - Democratic Republic of the Congo".
+function splitHeadline(title) {
+  const m = title.match(/^(.*)\s+[-–—]\s+(.+)$/);
+  return m ? { headline: m[1].trim(), location: m[2].trim() }
+           : { headline: title.trim(), location: "" };
+}
+
+function stripHtml(value) {
+  return String(value || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&(?:rsquo|lsquo|apos|#39);/g, "'")
+    .replace(/&(?:ldquo|rdquo|quot|#34);/g, '"')
+    .replace(/&(?:mdash|ndash);/g, "-")
+    .replace(/&#?\w+;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Nova asked for risk language. WHO's Assessment field is prose, and its first
+// sentence is often a definition ("MERS is a zoonotic viral respiratory disease...")
+// rather than a level. Prefer a sentence that names a level; fall back to the first.
+function riskLine(value, max = 240) {
+  const text = stripHtml(value);
+  if (!text) return "";
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const level = /\b(very low|very high|low|moderate|high|elevated|risk of)\b/i;
+  const out = (sentences.find(s => level.test(s)) || sentences[0]).trim();
+  return out.length > max ? out.slice(0, max - 1).trimEnd() + "…" : out;
 }
 
 async function serveFireballs(url) {
