@@ -77,7 +77,7 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 **OUTAGES screen:**
 - US power outages — national reported total, active incidents, and the top four states by customers out
 - Two 24-hour sparklines: national and the caller's own state (30 bars, max-per-bucket so spikes survive; the current bar is white)
-- Each chart shows current, 24 h peak, and direction (amber ▲ rising, green ▼ falling, dim flat)
+- Each chart shows current, 24 h peak, and direction (amber ▲ rising, green ▼ falling, theme-colored flat)
 - Source: DOE/ORNL ODIN real-time county feed, keyless. It covers participating utilities only, so the headline is labeled **REPORTED OUT** rather than a national total. A MassOutage key on the Worker (`MO_API_KEY`) automatically upgrades coverage and uses the provider's true 24 h history
 - Data via Quantum-Meteor API (`/grid`), 10-minute cache. Keyless history is sampled into Workers KV every 10 minutes (plus a cron trigger) and rolls over 24 h, so the charts fill in over the first day
 - Tap title bar to force refresh; no scrolling
