@@ -10,3 +10,13 @@ account_id = "76404a896503482bef751490312298d2"
 # Free tier: 100,000 requests/day — more than enough
 # Deploy with: npx wrangler deploy
 # Your endpoint will be: https://quantum-meteor.<your-subdomain>.workers.dev/fireballs
+
+# /grid 24 h history — one sample per ~10 min (144 writes/day, under KV's
+# free-tier 1,000 writes/day). Key: hist:v1, rolling 24 h, trimmed in code.
+[[kv_namespaces]]
+binding = "GRID_HISTORY"
+id = "e1ffc0cc6e31496bb2af3fece9725594"
+
+# Samples history even when the CYD is asleep. Free-plan crons are allowed.
+[triggers]
+crons = ["*/10 * * * *"]

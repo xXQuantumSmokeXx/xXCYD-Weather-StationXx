@@ -1,15 +1,53 @@
 CYD-Weather TODO
 ================
-Session: 2026-10-08 (v1.4.7 Under Watch)
+Session: 2026-10-22 (v1.4.8 Grid Down)
 
 Release how-to: version = git tag + this file (no code constant). GitHub release
 title is thematic (may differ from the entry title here). Draft → publish via
 `gh release create vX.Y.Z --draft …` then `gh release edit vX.Y.Z --draft=false`,
 attaching both .bin. File is tracked lowercase — `git add todo.txt`, not TODO.txt.
 
-NEXT_RELEASE (v1.4.8)
+v1.4.8 — Grid Down
 ------------------------------
-(TBD)
+[x] METEORS replaced by OUTAGES (2026-10-22)
+    - The IMO fireball log never returned: fireball.imo.net/members/imo_view/
+      browse_events is still 503, and IMO's own "View Reports" link now opens
+      the AMS-built viewer. The 2026-09-27 "wait for IMO" decision is closed.
+    - AMS evaluated as a replacement (Oct 2026 Fireball Event Viewer, per-day
+      JSON at fireballs.allsky.org/events/YYYY/MM/DD/) but its Terms & Data
+      Use prohibit use in another application without permission. Screen
+      retired instead of shipping a terms violation.
+    - New OUTAGES screen at index 8 — same slot, PAGE_COUNT stays 12, no
+      settings-grid or index changes.
+    - Worker /grid: DOE/ORNL ODIN (keyless OpenDataSoft) national + per-state
+      meters affected, top 4 states, active incident count.
+    - Two 24 h sparklines (national + caller's state from request.cf.region).
+      History sampled into Workers KV (GRID_HISTORY) every ~10 min, plus a
+      */10 cron trigger; rolling 24 h, 30-bar max-per-bucket on the wire.
+    - COVERAGE CAVEAT: ODIN counts participating utilities only (~11k vs
+      MassOutage's ~76k on 2026-10-22), so the header reads REPORTED OUT.
+    - MassOutage stays wired behind env.MO_API_KEY — its keyless tier is
+      5 req / 5 min per IP, and Cloudflare's shared Worker egress IPs
+      exhaust that budget (confirmed 429 from the Worker, not from home IP).
+      Setting the key auto-upgrades coverage and real 24 h history.
+    - ISO load / fuel mix dropped: Kardashev keyless load works but PJM fuel
+      mix is absent, CAISO timestamps run 16 h into the future, and the
+      aggregate mix was physically impossible (24.6% solar, 6.3% wind).
+      Not trustworthy enough for a headline display.
+    - Screen text is theme/white only — no dim text anywhere (2026-10-22):
+      history placeholder, peak value, baseline, flat delta, source tag and
+      "Local state unavailable" all use the active theme color.
+
+[ ] OUTAGES — verify on device (after 2026-10-22 16:30 UTC)
+    - KV history gate is 4 samples; first points landed 15:58 / 16:10 UTC,
+      so both charts should render on the first fetch after the 16:30 sample
+    - Confirm: national + local sparklines, tap-title refresh, no dim text,
+      REPORTED OUT figure and ODIN tag in the incidents row
+
+[ ] OUTAGES — optional: MassOutage key upgrade
+    - Free account key → `wrangler secret put MO_API_KEY` (no code change)
+    - Restores ~76k coverage (vs ODIN's ~11k) and the provider's real 24 h
+      history; only worth it if the no-keys rule is relaxed
 
 ───── Future Ideas ─────────────────────────────────────────────────────────────
 
@@ -38,20 +76,22 @@ NEXT_RELEASE (v1.4.8)
     - ESP32 payload: {"strikes":47,"closest":3.2,"direction":"SW","minutes":5}
     - Alternative: Xweather (Vaisala) REST API, 15K free calls/mo, strike type/intensity
 
-[ ] Power Grid Status — real-time US grid telemetry
-    - Kardashev API: free hosted, no key, all 7 US ISOs (fuel mix, load, carbon, outages)
-    - EIA Grid Monitor: free API key, hourly, national (demand, generation, emissions)
-    - MISO Public API: public-api.misoenergy.org, 37 anonymous JSON endpoints, 30-sec res
-    - ESP32 payload: GRID: 482GW | 38% Gas | 22% Nuclear | 14% Wind | 5% Solar | 60.00 Hz
+[x] Power Grid Status — DROPPED (2026-10-22, folded into OUTAGES)
+    - Kardashev keyless load verified working (7/7 ISOs, 283 GW total), but
+      fuel mix was unusable: PJM absent, CAISO timestamps +16 h, and the
+      aggregate came out 24.6% solar / 6.3% wind. ISO load block was cut.
+    - EIA Grid Monitor needs an API key — excluded by the no-keys rule.
+    - Remaining idea: true national load/mix if a key-free source appears.
 
-[ ] Power Outage Tracking — state-by-state customers without power
-    - PowerOutage.us: gold standard (97% US, ~1000 utilities, 10-min) but enterprise only
-    - EAGLE Eye (DOE/ORNL): open-source, scrapes 450 utilities/15 min, 93% US — internal tool
-      ⚡ User investigating if DOE exposes a public API
-    - California OES ArcGIS: ✅ PROVEN WORKING (2026-08-04) — live, free, 15-min refresh
-      PG&E, SCE, SDG&E, SMUD. Endpoint: services.arcgis.com/.../Power_Outages_(View)/...
-    - Approach: Worker aggregates 5-10 state/utility ArcGIS endpoints → per-state counts
-    - No single free nationwide API exists; must be built
+[x] Power Outage Tracking — SHIPPED as OUTAGES (2026-10-22)
+    - Keyless nationwide summary found: DOE/ORNL ODIN via openenergyhub.ornl.gov
+      (OpenDataSoft API, no key, county incidents, sum/group_by aggregations).
+      The earlier "no single free nationwide API exists" note is obsolete.
+    - FEMA EAGLE-I FeatureServer still requires a token; EAGLE-I historic
+      dataset is access-restricted.
+    - MassOutage (massoutage.com) has better coverage + true history but its
+      keyless tier is 5 req / 5 min per IP — unusable from a Worker's shared
+      egress IPs. Kept as an optional keyed upgrade in the Worker.
 
 [ ] Internet Outage Monitor — BGP route monitoring, carrier status
     - Sources: Cloudflare Radar, ThousandEyes, DownDetector
@@ -118,6 +158,9 @@ v1.4.6 — Triple Tap (2026-09-27)
     - Decision: wait for IMO to return — data reappears automatically via
       the 15m/6h worker cache, no code change needed
     - Revisit only if IMO is permanently unreliable
+    → CLOSED 2026-10-22: IMO never returned and CNEOS was re-checked
+      (1 event in the prior 30 days — not a replacement). The Meteors
+      screen was retired and replaced by OUTAGES.
 
 v1.4.5 — IMO Outage Handling (2026-09-07)
 [x] Meteors screen — IMO outage handling

@@ -1,6 +1,6 @@
 # xXCYD-Weather-StationXx
 
-CYD tactical monitoring station — real-time weather, space weather, solar day almanac, fireball & meteor tracking, volcano activity tracking, wildfire & earthquake tracking, breaking news, Apocalypse Early Warning System (business-jet anomaly detection), customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
+CYD tactical monitoring station — real-time weather, space weather, solar day almanac, US power outage tracking, volcano activity tracking, wildfire & earthquake tracking, breaking news, Apocalypse Early Warning System (business-jet anomaly detection), customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
 
 [![Support on Patreon](https://img.shields.io/badge/Support-Patreon-orange)](https://www.patreon.com/c/xXQuantumSmokeXx)
 
@@ -74,13 +74,13 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Sorted newest-first (API-native ordering); tap title bar to force a refresh
 - Auto-refreshes every 15 minutes
 
-**METEORS screen:**
-- IMO (International Meteor Organization) crowd-sourced fireball events — real witness reports from today
-- Clear columns: date, witness count, country:state location, and event tags (B = sonic boom, F = fragmentation/meteorites, C = concurrent/electrophonic sound)
-- Themed throughout with alternating row backgrounds for readability
-- Data via Quantum-Meteor API (lightweight proxy, no key required)
-- Scrollable via swipe up/down; tap title bar to force refresh; auto-refreshes hourly
-- 30 most recent events displayed per page
+**OUTAGES screen:**
+- US power outages — national reported total, active incidents, and the top four states by customers out
+- Two 24-hour sparklines: national and the caller's own state (30 bars, max-per-bucket so spikes survive; the current bar is white)
+- Each chart shows current, 24 h peak, and direction (amber ▲ rising, green ▼ falling, dim flat)
+- Source: DOE/ORNL ODIN real-time county feed, keyless. It covers participating utilities only, so the headline is labeled **REPORTED OUT** rather than a national total. A MassOutage key on the Worker (`MO_API_KEY`) automatically upgrades coverage and uses the provider's true 24 h history
+- Data via Quantum-Meteor API (`/grid`), 10-minute cache. Keyless history is sampled into Workers KV every 10 minutes (plus a cron trigger) and rolls over 24 h, so the charts fill in over the first day
+- Tap title bar to force refresh; no scrolling
 
 **VOLCANOES screen:**
 - USGS volcano activity — Yellowstone volcano tracking plus currently elevated volcanoes
@@ -120,9 +120,9 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Auto-detects location via IP geolocation; no config needed beyond WiFi credentials
 - Weather data via Open-Meteo; no API key required
 - Refreshes at the top of each hour
-- Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, NEWS)
+- Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, OUTAGES, NEWS)
 - FIRES and USGS headline text uses the active theme color
-- 13 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, AEWS, FIRES, USGS, METEORS, VOLCANOES, NEWS, ALMANAC, SETTINGS
+- 13 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, AEWS, FIRES, USGS, OUTAGES, VOLCANOES, NEWS, ALMANAC, SETTINGS
 
 ### Setup
 

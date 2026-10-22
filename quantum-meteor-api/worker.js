@@ -12,7 +12,7 @@
 const EWS_R2 = "https://pub-49bb6a6f314c47be9b481c25e5f6ca9e.r2.dev/dashboard.json";
 
 export default {
-  async fetch(request) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     // GET /fireballs — latest fireball events
@@ -40,12 +40,29 @@ export default {
       return await serveOutbreaks(url);
     }
 
+    // GET /grid — US power outages: national + local 24 h trends
+    if (url.pathname === "/grid") {
+      return await serveGrid(request, url, env);
+    }
+
     // GET / — simple status
     return new Response(
-      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes", "/outbreaks"] }),
+      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes", "/outbreaks", "/grid"] }),
       { headers: { "Content-Type": "application/json" } }
     );
-  }
+  },
+
+  // Keeps /grid's 24 h series continuous while nobody is looking at the screen.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil((async () => {
+      try {
+        const { payload, allStates } = await buildGrid(env, "");
+        await recordHistory(env, payload, allStates);
+      } catch (e) {
+        console.log(`grid cron: ${e.message}`);
+      }
+    })());
+  },
 };
 
 // ── /ews — Apocalypse Early Warning System summary ────────────────────────
@@ -646,6 +663,325 @@ async function gvpRegion(v) {
   const out = new Response(region, { headers: { "Cache-Control": "s-maxage=2592000" } }); // 30 d
   await cache.put(key, out.clone());
   return region;
+}
+
+// ── /grid — US power outages + 24 h trends ────────────────────────────────
+// Primary source: DOE/ORNL ODIN (openenergyhub.ornl.gov), keyless OpenDataSoft.
+// Coverage is the participating utilities, not every US utility — it runs
+// below the MassOutage aggregate (≈11 k vs ≈76 k on 2026-10-22), so the
+// device labels the figure "REPORTED OUT" rather than a national total.
+//
+// MassOutage (massoutage.com) has better coverage and true 24 h history, but
+// its keyless tier allows 5 requests / 5 minutes PER IP and Cloudflare's
+// shared Worker egress IPs exhaust that budget (confirmed: the Worker gets
+// 429 within one refresh). It is used only when env.MO_API_KEY is set:
+//   /live/summary          national totals + per-state counts
+//   /trend/data            24 h national customers-out series
+//   /trend/data?stateFips  same for the caller's state
+//
+// Without a key, history is sampled into KV (GRID_HISTORY) once per cache
+// miss (~10 min) and by a cron trigger, so the charts fill in over 24 h.
+// Fresh 10 min, stale 6 h.
+const MO_BASE = "https://massoutage.com/api/v1";
+const ODIN_BASE =
+  "https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/odin-real-time-outages-county/records";
+
+const STATE_ABBR = {
+  Alabama:"AL", Alaska:"AK", Arizona:"AZ", Arkansas:"AR", California:"CA",
+  Colorado:"CO", Connecticut:"CT", Delaware:"DE", "District of Columbia":"DC",
+  Florida:"FL", Georgia:"GA", Hawaii:"HI", Idaho:"ID", Illinois:"IL",
+  Indiana:"IN", Iowa:"IA", Kansas:"KS", Kentucky:"KY", Louisiana:"LA",
+  Maine:"ME", Maryland:"MD", Massachusetts:"MA", Michigan:"MI", Minnesota:"MN",
+  Mississippi:"MS", Missouri:"MO", Montana:"MT", Nebraska:"NE", Nevada:"NV",
+  "New Hampshire":"NH", "New Jersey":"NJ", "New Mexico":"NM", "New York":"NY",
+  "North Carolina":"NC", "North Dakota":"ND", Ohio:"OH", Oklahoma:"OK",
+  Oregon:"OR", Pennsylvania:"PA", "Rhode Island":"RI", "South Carolina":"SC",
+  "South Dakota":"SD", Tennessee:"TN", Texas:"TX", Utah:"UT", Vermont:"VT",
+  Virginia:"VA", Washington:"WA", "West Virginia":"WV", Wisconsin:"WI",
+  Wyoming:"WY",
+};
+
+async function serveGrid(request, url, env) {
+  const cache = caches.default;
+
+  const region = (url.searchParams.get("state") ||
+                  (request.cf && request.cf.region) || "").trim();
+
+  // Cache per region: the local block depends on the caller's state.
+  const rk = encodeURIComponent(region.toLowerCase() || "-");
+  const CACHE_KEY = `https://qsmoke-cache/grid-v2?r=${rk}`;
+  const STALE_KEY = `https://qsmoke-cache/grid-v2-stale?r=${rk}`;
+
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
+  try {
+    const { payload, allStates } = await buildGrid(env, region);
+
+    // A cache miss doubles as the history sampling tick.
+    const hist = await recordHistory(env, payload, allStates);
+    applyHistory(payload, hist);
+
+    const out = json(200, payload);
+    out.headers.set("Cache-Control", "s-maxage=600");        // 10 min
+    await cache.put(CACHE_KEY, out.clone());
+
+    const stale = json(200, { ...payload, stale: true });
+    stale.headers.set("Cache-Control", "s-maxage=21600");    // 6 h
+    await cache.put(STALE_KEY, stale);
+    return out;
+  } catch (e) {
+    console.log(`grid: ${e.message}`);
+    const stale = await cache.match(STALE_KEY);
+    if (stale) return stale;
+    return json(502, { error: e.message });
+  }
+}
+
+async function buildGrid(env, region) {
+  if (env && env.MO_API_KEY) {
+    try { return await buildMassOutage(region, env.MO_API_KEY); }
+    catch (e) { console.log(`grid massoutage: ${e.message}`); }
+  }
+  return await buildOdin(region);
+}
+
+// Better coverage + true history — only with a MassOutage key configured.
+async function buildMassOutage(region, key) {
+  const summary = await moGet("/live/summary", key);
+  const nat = summary.national || {};
+  const states = (summary.states || [])
+    .slice()
+    .sort((a, b) => (b.customers_out || 0) - (a.customers_out || 0));
+
+  const payload = {
+    updated: nat.updated_at || nat.as_of || null,
+    stale: !!nat.stale,
+    source: "MassOutage",
+    national: { now: nat.customers_out || 0 },
+    incidents: nat.incident_count || 0,
+    counties: nat.county_count || 0,
+    states: states.slice(0, 4).map(s => ({ abbr: s.abbr, out: s.customers_out || 0 })),
+    sources: (summary.coverage && summary.coverage.sources) || 0,
+  };
+
+  // Trends are best-effort: totals still render if either call fails.
+  const natTrend = await moGet("/trend/data?range=24h", key)
+    .catch(e => { console.log(`grid national trend: ${e.message}`); return null; });
+  if (natTrend) applyTrend(payload.national, natTrend);
+
+  // Local state: match the caller's region against the summary's state list.
+  // Cloudflare supplies cf.region as a full name ("California"); a state code
+  // also matches, so ?state=CA works for manual testing.
+  const match = states.find(s => region && (
+    String(s.name || "").toLowerCase() === region.toLowerCase() ||
+    String(s.abbr || "").toLowerCase() === region.toLowerCase()));
+
+  if (match) {
+    const local = { name: match.name, abbr: match.abbr, now: match.customers_out || 0 };
+    const locTrend = await moGet(`/trend/data?range=24h&stateFips=${encodeURIComponent(match.state_fips)}`, key)
+      .catch(e => { console.log(`grid local trend: ${e.message}`); return null; });
+    if (locTrend) applyTrend(local, locTrend);
+    payload.local = local;
+  }
+
+  return {
+    payload,
+    allStates: states.map(s => ({ name: s.name, abbr: s.abbr, out: s.customers_out || 0 })),
+  };
+}
+
+// Reduce { series:[{out}] } into the compact fields the CYD draws.
+// ~90 frames at 16 min → 30 bars, max per bucket so spikes survive; the last
+// bar is forced to the current value so the chart ends on the headline number.
+function applyTrend(dst, trend) {
+  const raw = (trend.series || []).map(p => Math.max(0, Math.round(p.out || 0)));
+  if (raw.length < 2) return;
+
+  const BUCKETS = 30;
+  const pts = [];
+  for (let i = 0; i < BUCKETS; i++) {
+    const a = Math.floor(i * raw.length / BUCKETS);
+    const b = Math.max(a + 1, Math.floor((i + 1) * raw.length / BUCKETS));
+    let m = 0;
+    for (let j = a; j < b; j++) if (raw[j] > m) m = raw[j];
+    pts.push(m);
+  }
+
+  const now = raw[raw.length - 1];
+  pts[BUCKETS - 1] = now;
+
+  // Direction vs ~1 h ago (4 frames), 2 % dead-band.
+  const ref = raw[Math.max(0, raw.length - 5)];
+  let dir = 0;
+  if (ref > 0 && now > ref * 1.02) dir = 1;
+  else if (ref > 0 && now < ref * 0.98) dir = -1;
+  else if (ref === 0 && now > 0) dir = 1;
+
+  dst.now = now;
+  dst.ago = raw[0];
+  dst.peak = Math.max(...pts);
+  dst.delta = now - raw[0];
+  dst.dir = dir;
+  dst.series = pts;
+}
+
+async function moGet(path, key) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const resp = await fetch(MO_BASE + path, {
+      headers: {
+        "User-Agent": "Quantum-Meteor/1.0",
+        "Accept": "application/json",
+        "Accept-Encoding": "identity",
+        ...(key ? { "Authorization": `Bearer ${key}` } : {}),
+      },
+      signal: ctrl.signal,
+    });
+    if (resp.status === 429) {
+      const ra = resp.headers.get("Retry-After");
+      throw new Error(`MassOutage 429 (retry ${ra || "?"}s)`);
+    }
+    if (!resp.ok) throw new Error(`MassOutage ${resp.status}`);
+    return await resp.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Keyless primary: DOE/ORNL ODIN, current county-level outages summed.
+async function buildOdin(region) {
+  const [nat, grouped] = await Promise.all([odinSum(""), odinStates()]);
+  if (!nat.total && !nat.out) throw new Error("ODIN returned no records");
+
+  const allStates = (grouped || []).map(r => ({
+    name: r.state || "",
+    abbr: STATE_ABBR[r.state] || String(r.state || "").slice(0, 2).toUpperCase(),
+    out: Math.round(r.out || 0),
+  })).sort((a, b) => b.out - a.out);
+
+  const payload = {
+    updated: new Date().toISOString(),
+    stale: false,
+    source: "ODIN",
+    national: { now: nat.out },
+    incidents: nat.total,
+    counties: 0,
+    states: allStates.slice(0, 4).map(s => ({ abbr: s.abbr, out: s.out })),
+    sources: 0,
+  };
+
+  if (region) {
+    const m = allStates.find(s => s.name &&
+      (s.name.toLowerCase() === region.toLowerCase() ||
+       s.abbr.toLowerCase() === region.toLowerCase()));
+    if (m) payload.local = { name: m.name, abbr: m.abbr, now: m.out };
+  }
+
+  return { payload, allStates };
+}
+
+async function odinSum(where) {
+  const q = "?select=" + encodeURIComponent("sum(metersaffected) as out") +
+            (where ? "&where=" + encodeURIComponent(where) : "") + "&limit=1";
+  const resp = await fetch(ODIN_BASE + q, {
+    headers: { "User-Agent": "Quantum-Meteor/1.0", "Accept-Encoding": "identity" },
+  });
+  if (!resp.ok) throw new Error(`ODIN ${resp.status}`);
+  const j = await resp.json();
+  const row = (j.results && j.results[0]) || {};
+  return { out: Math.round(row.out || 0), total: j.total_count || 0 };
+}
+
+async function odinStates() {
+  const q = "?select=" + encodeURIComponent("state, sum(metersaffected) as out") +
+            "&group_by=" + encodeURIComponent("state") +
+            "&order_by=" + encodeURIComponent("out desc") +
+            "&limit=60";
+  const resp = await fetch(ODIN_BASE + q, {
+    headers: { "User-Agent": "Quantum-Meteor/1.0", "Accept-Encoding": "identity" },
+  });
+  if (!resp.ok) throw new Error(`ODIN states ${resp.status}`);
+  const j = await resp.json();
+  return j.results || [];
+}
+
+// ── 24 h history in KV ────────────────────────────────────────────────────
+// One sample per cache miss (~10 min) plus the cron trigger. 144 points/day,
+// trimmed to a rolling 24 h. Missing binding = no history; the screen still
+// shows current totals.
+async function recordHistory(env, payload, allStates) {
+  if (!env || !env.GRID_HISTORY) return null;
+  const KV = env.GRID_HISTORY;
+  const now = Math.floor(Date.now() / 1000);
+
+  let arr = [];
+  try { arr = (await KV.get("hist:v1", "json")) || []; }
+  catch (e) { console.log(`grid hist get: ${e.message}`); }
+  if (!Array.isArray(arr)) arr = [];
+
+  const last = arr[arr.length - 1];
+  // 5-minute guard: cron fires on the 10-minute mark, but the first manual
+  // sample can land seconds after it, so a 600 s guard would skip every other
+  // cron tick. ~144 samples/day keeps the 24 h window and stays under KV's
+  // free-tier write budget (1,000/day).
+  if (!last || now - last.t >= 300) {
+    const s = {};
+    for (const st of allStates || []) if (st.abbr) s[st.abbr] = st.out;
+    arr.push({ t: now, n: payload.national.now, s });
+    while (arr.length && now - arr[0].t > 86400) arr.shift();
+    if (arr.length > 200) arr.splice(0, arr.length - 200);
+    try { await KV.put("hist:v1", JSON.stringify(arr)); }
+    catch (e) { console.log(`grid hist put: ${e.message}`); }
+  }
+  return arr;
+}
+
+function applyHistory(payload, hist) {
+  // A keyed MassOutage build already carries the provider's real series.
+  if (!Array.isArray(hist) || payload.national.series) return;
+
+  applyVals(payload.national, hist.map(h => h.n));
+  if (payload.local && payload.local.abbr) {
+    applyVals(payload.local, hist.map(h => (h.s && h.s[payload.local.abbr]) || 0));
+  }
+}
+
+function applyVals(dst, vals) {
+  const pts = vals.map(v => Math.max(0, Math.round(v || 0)));
+  if (pts.length < 4) return;
+
+  const liveNow = dst.now;
+  pts[pts.length - 1] = liveNow;
+
+  dst.ago = pts[0];
+  dst.peak = Math.max(...pts);
+  dst.delta = liveNow - pts[0];
+
+  // Direction vs ~1 h ago (6 samples at 10 min), 2 % dead-band.
+  const ref = pts[Math.max(0, pts.length - 7)];
+  let dir = 0;
+  if (ref > 0 && liveNow > ref * 1.02) dir = 1;
+  else if (ref > 0 && liveNow < ref * 0.98) dir = -1;
+  else if (ref === 0 && liveNow > 0) dir = 1;
+  dst.dir = dir;
+
+  dst.series = downsample(pts, 30);
+}
+
+function downsample(vals, buckets) {
+  if (vals.length <= buckets) return vals.slice();
+  const out = [];
+  for (let i = 0; i < buckets; i++) {
+    const a = Math.floor(i * vals.length / buckets);
+    const b = Math.max(a + 1, Math.floor((i + 1) * vals.length / buckets));
+    let m = 0;
+    for (let j = a; j < b; j++) if (vals[j] > m) m = vals[j];
+    out.push(m);
+  }
+  out[buckets - 1] = vals[vals.length - 1];
+  return out;
 }
 
 // "Thu, 13 Aug 2026 04:03:16 -0400" → "2026-08-13" (UTC date part)

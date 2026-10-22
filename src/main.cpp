@@ -26,7 +26,7 @@
 #include "ui/screens/screen_fireteam.h"
 #include "ui/screens/screen_fires.h"
 #include "ui/screens/screen_usgs.h"
-#include "ui/screens/screen_meteors.h"
+#include "ui/screens/screen_outages.h"
 #include "ui/screens/screen_volcanoes.h"
 #include "ui/screens/screen_news.h"
 #include "ui/screens/screen_ews.h"
@@ -59,7 +59,7 @@ enum RefreshBit : uint8_t {
     REFRESH_NEWS      = 1 << 2,
     REFRESH_VOLCANOES = 1 << 3,
     REFRESH_SOLAR     = 1 << 4,
-    REFRESH_METEORS   = 1 << 5,
+    REFRESH_OUTAGES   = 1 << 5,
     REFRESH_EWS       = 1 << 6,
     REFRESH_ALL_DATA  = 0x7F
 };
@@ -81,7 +81,7 @@ enum FetchCmd : uint8_t {
     FETCH_BOOT_BG,    // pre-fetch all data screens at boot
     FETCH_FIRES,
     FETCH_USGS,
-    FETCH_METEORS,
+    FETCH_OUTAGES,
     FETCH_VOLCANOES,
     FETCH_SOLAR,
     FETCH_NEWS,
@@ -99,7 +99,7 @@ static volatile bool s_firesDone = false, s_firesOk = false;
 static volatile bool s_usgsDone  = false, s_usgsOk  = false;
 static volatile bool s_solarDone = false;
 static volatile bool s_volcanoesDone = false, s_volcanoesOk = false;
-static volatile bool s_meteorsDone = false, s_meteorsOk = false;
+static volatile bool s_outagesDone = false, s_outagesOk = false;
 static volatile bool s_ewsDone = false, s_ewsOk = false;
 static volatile bool s_newsDone = false, s_newsOk = false;
 
@@ -154,7 +154,7 @@ static void fetchWorker(void *param) {
 
                 g_firesPending     = true;
                 g_usgsPending      = true;
-                g_meteorsPending   = true;
+                g_outagesPending   = true;
                 g_solarPending     = true;
                 g_newsPending      = true;
                 g_volcanoesPending = true;
@@ -175,10 +175,10 @@ static void fetchWorker(void *param) {
                     xSemaphoreGive(s_dataMutex);
                 }
                 {
-                    bool ok = meteorsFetch(s_wifiOk);
+                    bool ok = outagesFetch(s_wifiOk);
                     xSemaphoreTake(s_dataMutex, portMAX_DELAY);
-                    s_meteorsOk = ok;
-                    s_meteorsDone = true;
+                    s_outagesOk = ok;
+                    s_outagesDone = true;
                     xSemaphoreGive(s_dataMutex);
                 }
                 {
@@ -226,11 +226,11 @@ static void fetchWorker(void *param) {
                 xSemaphoreGive(s_dataMutex);
                 break;
             }
-            case FETCH_METEORS: {
-                bool ok = meteorsFetch(s_wifiOk);
+            case FETCH_OUTAGES: {
+                bool ok = outagesFetch(s_wifiOk);
                 xSemaphoreTake(s_dataMutex, portMAX_DELAY);
-                s_meteorsOk = ok;
-                s_meteorsDone = true;
+                s_outagesOk = ok;
+                s_outagesDone = true;
                 xSemaphoreGive(s_dataMutex);
                 break;
             }
@@ -305,11 +305,11 @@ bool triggerUsgsFetch() {
     return true;
 }
 
-bool triggerMeteorsFetch() {
+bool triggerOutagesFetch() {
     if (!s_fetchTask || workerBusy()) return false;
-    g_meteorsPending = true;
-    s_meteorsDone = false;
-    s_fetchCmd  = FETCH_METEORS;
+    g_outagesPending = true;
+    s_outagesDone = false;
+    s_fetchCmd  = FETCH_OUTAGES;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
     return true;
@@ -477,7 +477,7 @@ static void ensureLocation() {
     }
 }
 
-// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fireteam, 5=AEWS, 6=Fires, 7=USGS, 8=Meteors, 9=Volcanoes, 10=News, 11=Planner, 12=Settings
+// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fireteam, 5=AEWS, 6=Fires, 7=USGS, 8=Outages, 9=Volcanoes, 10=News, 11=Planner, 12=Settings
 static void gotoScreen(int n) {
     // Wrap around: 12→0 forward, 0→12 backward
     s_screen         = (n % 13 + 13) % 13;
@@ -496,7 +496,7 @@ static void redrawTo(TFT_eSPI &target) {
         case 5: screenEwsDraw(target, s_wifiOk);      break;
         case 6: screenFiresDraw(target, s_wifiOk);    break;
         case 7: screenUsgsDraw(target, s_wifiOk);     break;
-        case 8: screenMeteorsDraw(target, s_wifiOk);  break;
+        case 8: screenOutagesDraw(target, s_wifiOk);  break;
         case 9: screenVolcanoesDraw(target, s_wifiOk); break;
         case 10: screenNewsDraw(target, s_wifiOk);    break;
         case 11: screenPlannerDraw(target, s_wifiOk);  break;
@@ -859,8 +859,8 @@ void setup() {
         if (s_wifiOk) showSplash("Fetching USGS...");
         for (int i = 0; i < 60 && !s_usgsDone && s_wifiOk; i++) delay(50);
 
-        if (s_wifiOk) showSplash("Fetching meteors...");
-        for (int i = 0; i < 60 && !s_meteorsDone && s_wifiOk; i++) delay(50);
+        if (s_wifiOk) showSplash("Fetching outages...");
+        for (int i = 0; i < 60 && !s_outagesDone && s_wifiOk; i++) delay(50);
 
         if (s_wifiOk) showSplash("Fetching solar...");
         for (int i = 0; i < 60 && !s_solarDone && s_wifiOk; i++) delay(50);
@@ -966,8 +966,8 @@ void loop() {
             if (triggerFiresFetch()) s_refreshQueue &= ~REFRESH_FIRES;
         } else if (s_refreshQueue & REFRESH_USGS) {
             if (triggerUsgsFetch()) s_refreshQueue &= ~REFRESH_USGS;
-        } else if (s_refreshQueue & REFRESH_METEORS) {
-            if (triggerMeteorsFetch()) s_refreshQueue &= ~REFRESH_METEORS;
+        } else if (s_refreshQueue & REFRESH_OUTAGES) {
+            if (triggerOutagesFetch()) s_refreshQueue &= ~REFRESH_OUTAGES;
         } else if (s_refreshQueue & REFRESH_EWS) {
             if (triggerEwsFetch()) s_refreshQueue &= ~REFRESH_EWS;
         } else if (s_refreshQueue & REFRESH_NEWS) {
@@ -1009,11 +1009,11 @@ void loop() {
     }
 
     // Meteors fetch completion
-    if (s_meteorsDone) {
+    if (s_outagesDone) {
         xSemaphoreTake(s_dataMutex, portMAX_DELAY);
-        bool ok = s_meteorsOk;
-        s_meteorsDone = false;
-        g_meteorsPending = false;
+        bool ok = s_outagesOk;
+        s_outagesDone = false;
+        g_outagesPending = false;
         xSemaphoreGive(s_dataMutex);
         if (s_screen == 8) s_needsRedraw = true;
     }
@@ -1061,7 +1061,7 @@ void loop() {
     if (millis() - s_lastMinute > 60000) {
         if (s_screen <= 2 || s_screen == 4 || s_screen == 5 || s_screen >= 9) {
             char timeStr[10]; timeGetShort(timeStr);
-            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","AEWS","FIRES","USGS","METEORS","VOLCANOES","NEWS","ALMANAC","SETTINGS"};
+            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","AEWS","FIRES","USGS","OUTAGES","VOLCANOES","NEWS","ALMANAC","SETTINGS"};
             drawTopbarTime(tft, timeStr, labels[s_screen]);
         }
         s_lastMinute = millis();
@@ -1097,10 +1097,10 @@ void loop() {
         screenUsgsSwipe(-1);
         s_needsRedraw = true;
     } else if (evt.swipe == SwipeDir::Up && s_screen == 8) {
-        screenMeteorsSwipe(1);
+        screenOutagesSwipe(1);
         s_needsRedraw = true;
     } else if (evt.swipe == SwipeDir::Down && s_screen == 8) {
-        screenMeteorsSwipe(-1);
+        screenOutagesSwipe(-1);
         s_needsRedraw = true;
     } else if (evt.swipe == SwipeDir::Up && s_screen == 9) {
         screenVolcanoesSwipe(1);
@@ -1175,7 +1175,7 @@ void loop() {
             }
         } else if (s_screen == 8) {
             if (ty < TOPBAR_H && s_wifiOk) {
-                screenMeteorsTap(tft, tx, ty, s_wifiOk);
+                screenOutagesTap(tft, tx, ty, s_wifiOk);
                 s_needsRedraw = true;
             }
         } else if (s_screen == 9) {

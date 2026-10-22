@@ -163,7 +163,7 @@ static void autoRotLoad() {
 
 // ── Page rotation mask ────────────────────────────────────────────────────────
 // v3 layout (12 pages): NOW=0,HOURLY=1,5DAY=2,SOLAR=3,FIRETEAM=4,AEWS=5,
-//   FIRES=6,USGS=7,METEORS=8,VOLCANOES=9,NEWS=10,PLANNER=11
+//   FIRES=6,USGS=7,OUTAGES=8,VOLCANOES=9,NEWS=10,PLANNER=11
 // Migration from v2 (11 pages: 0-4 unchanged, 5-10 shift right by 1, AEWS at 5).
 static uint16_t s_pageMask  = 0xFFF;
 static bool     s_pageLoaded = false;
