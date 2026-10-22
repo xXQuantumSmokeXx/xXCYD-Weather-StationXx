@@ -35,6 +35,10 @@
 
 static TFT_eSPI tft;
 
+// Screenshot framebuffer — allocated once, before WiFi/TLS fragment the heap.
+static TFT_eSprite *s_capSpr = nullptr;
+static bool         s_capReady = false;
+
 bool g_spriteCapture = false;
 
 
@@ -827,6 +831,17 @@ void setup() {
     connectWifi();
     s_wifiOk = (WiFi.status() == WL_CONNECTED);
 
+#if CAPTURE_SPRITE
+    // Screenshot build only. 320×240×8bpp = 76,800 bytes; by the time the boot
+    // fetches and TLS contexts have run, the largest free block is ~65 KB, so
+    // this must be allocated now. Not in release builds — it costs 76.8 KB.
+    s_capSpr = new TFT_eSprite(&tft);
+    s_capSpr->setColorDepth(8);
+    s_capReady = s_capSpr->createSprite(SCREEN_W, SCREEN_H) != nullptr;
+    Serial.printf("[CAP] sprite=%d heap=%u max=%u\n",
+                  s_capReady, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
+
     s_dataMutex = xSemaphoreCreateMutex();
 
     if (s_wifiOk) {
@@ -1316,22 +1331,19 @@ void loop() {
             bool blWasOff = s_backlightOff;
             if (blWasOff) { s_backlightOff = false; brightnessRestore(); }
 
-            // Try full-screen sprite first (fastest — one render, one send)
-            TFT_eSprite spr(&tft);
-            spr.setColorDepth(8);
-            uint8_t *fb = (uint8_t*)spr.createSprite(SCREEN_W, SCREEN_H);
-            if (fb) {
-                bool oldCapture = g_spriteCapture;
-                g_spriteCapture = false;
-                redrawTo(spr);
-                g_spriteCapture = oldCapture;
+            // Capture diagnostics: which path ran, and whether the preallocated
+            // sprite is present. Printed before RGB332: so the capture script's
+            // marker search ignores it.
+            Serial.printf("HEAP:%u,max:%u,spr:%d\n",
+                          ESP.getFreeHeap(), ESP.getMaxAllocHeap(), s_capReady ? 1 : 0);
+
+            if (s_capReady) {
+                redrawTo(*s_capSpr);
                 Serial.print("RGB332:");
-                Serial.write(fb, SCREEN_W * SCREEN_H);
+                Serial.write((uint8_t*)s_capSpr->getPointer(), SCREEN_W * SCREEN_H);
                 Serial.flush();
-                spr.deleteSprite();
             } else {
-                // Sprite failed — render to TFT, then read back line-by-line
-                // using readRect (one SPI transaction per line vs per pixel)
+                // Sprite did not fit — render to the panel and read it back.
                 redraw();
                 uint16_t lineBuf[SCREEN_W];   // 640 bytes on stack
                 Serial.print("RGB332:");
