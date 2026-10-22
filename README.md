@@ -172,6 +172,7 @@ Flash the merged file at offset **0x00**. No extra dependencies needed — the p
 - WiFi credentials are not committed to Git.
 - The release firmware does not require an API key.
 - Open-Meteo is used for weather data, so no weather service token is baked into the build.
+- The optional MassOutage key is a **Worker secret**, never baked into the firmware. Keep it in `quantum-meteor-api/massoutage_key.txt` (gitignored) and push it with `npx wrangler secret put MO_API_KEY < quantum-meteor-api/massoutage_key.txt`.
 
 ## First-Boot Calibration (2-USB only)
 

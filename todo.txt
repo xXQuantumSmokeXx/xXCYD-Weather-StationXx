@@ -38,16 +38,35 @@ v1.4.8 — Grid Down
       history placeholder, peak value, baseline, flat delta, source tag and
       "Local state unavailable" all use the active theme color.
 
-[ ] OUTAGES — verify on device (after 2026-10-22 16:30 UTC)
-    - KV history gate is 4 samples; first points landed 15:58 / 16:10 UTC,
-      so both charts should render on the first fetch after the 16:30 sample
-    - Confirm: national + local sparklines, tap-title refresh, no dim text,
-      REPORTED OUT figure and ODIN tag in the incidents row
+[x] OUTAGES — verify on device (2026-10-22)
+    - Both charts rendered (national + New Jersey), tap-title refresh works,
+      no dim text, REPORTED OUT + ODIN tag in the incidents row
+    - Screenshots captured via the capture build and added to the README
+      gallery (AEWS / FIRETEAM / OUTAGES)
 
-[ ] OUTAGES — optional: MassOutage key upgrade
-    - Free account key → `wrangler secret put MO_API_KEY` (no code change)
-    - Restores ~76k coverage (vs ODIN's ~11k) and the provider's real 24 h
-      history; only worth it if the no-keys rule is relaxed
+[ ] OUTAGES — MassOutage key upgrade (planned)
+    - Free account: massoutage.com/account/api → copy the bearer key
+    - Key lives in a local text file, NOT the repo:
+        quantum-meteor-api/massoutage_key.txt   (gitignored — same idea as
+        wifi.txt for the CYD: creds on disk, never committed)
+    - Push it to the Worker as a secret (server-side; the CYD never sees it):
+        npx wrangler secret put MO_API_KEY < quantum-meteor-api\massoutage_key.txt
+    - No code change: buildMassOutage() activates whenever env.MO_API_KEY
+      exists; without it the Worker uses ODIN
+    - Expected result: source "MassOutage", national ~76k (vs ODIN's ~11k),
+      the provider's real 24 h series immediately, and a county count back
+      in the incidents row
+    - Verify: /grid returns source MassOutage; the header number rises
+
+[ ] OUTAGES — full 24 h gallery screenshot (after 2026-10-23 16:00 UTC)
+    - Needs the capture build:
+        $env:PLATFORMIO_BUILD_FLAGS="-DCAPTURE_SPRITE=1"
+        pio run -e cyd_weather -t upload
+    - python screenshot.py COM10 8, edit location out, then rebuild the
+      release env and reflash
+
+[ ] OUTAGES — wording: "560 incidents" → "ACTIVE REPORTS" (optional)
+    - Each count is a utility/county outage record, not a distinct event
 
 ───── Future Ideas ─────────────────────────────────────────────────────────────
 

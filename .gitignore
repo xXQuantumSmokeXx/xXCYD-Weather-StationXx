@@ -6,3 +6,4 @@ merged-firmware-*.bin
 *-upload.bin
 TODO.txt
 quantum-meteor-api/.wrangler/
+quantum-meteor-api/massoutage_key.txt
