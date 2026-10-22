@@ -51,6 +51,8 @@ v1.4.8 — Grid Down
         wifi.txt for the CYD: creds on disk, never committed)
     - Push it to the Worker as a secret (server-side; the CYD never sees it):
         npx wrangler secret put MO_API_KEY < quantum-meteor-api\massoutage_key.txt
+      Write the file with NO trailing newline (a stray \n corrupts the
+      Authorization header) — e.g. Set-Content -NoNewline.
     - No code change: buildMassOutage() activates whenever env.MO_API_KEY
       exists; without it the Worker uses ODIN
     - Expected result: source "MassOutage", national ~76k (vs ODIN's ~11k),
