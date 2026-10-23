@@ -50,9 +50,29 @@ export default {
       return await serveNews();
     }
 
+    // GET /solar — Kp history, solar wind, x-ray class, flares and CME in one
+    if (url.pathname === "/solar") {
+      return await serveSolar();
+    }
+
+    // GET /quakes — USGS M3.5+ list as compact JSON
+    if (url.pathname === "/quakes") {
+      return await serveQuakes();
+    }
+
+    // GET /fire — merged WFIGS large + active wildfire list
+    if (url.pathname === "/fire") {
+      return await serveFire();
+    }
+
+    // GET /geo — the caller's location from Cloudflare's own IP data
+    if (url.pathname === "/geo") {
+      return await serveGeo(request);
+    }
+
     // GET / — simple status
     return new Response(
-      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes", "/outbreaks", "/grid", "/news"] }),
+      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes", "/outbreaks", "/grid", "/news", "/solar", "/quakes", "/fire", "/geo"] }),
       { headers: { "Content-Type": "application/json" } }
     );
   },
@@ -1082,6 +1102,260 @@ function cleanXmlText(s) {
     .replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// ── /solar — one snapshot for the SOLAR screen ────────────────────────────
+// The screen made five separate HTTPS calls to services.swpc.noaa.gov, two of
+// them Range reads against 2.5 MB and 1.5 MB multi-day files, plus a DONKI
+// call through /cme.  Everything it draws fits in ~400 bytes here.
+const SWPC = "https://services.swpc.noaa.gov";
+
+async function fetchRange(url, range) {
+  try {
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "Quantum-Meteor/1.0", "Range": range },
+    });
+    if (!resp.ok && resp.status !== 206) return null;
+    return await resp.text();
+  } catch (e) {
+    console.log(`range ${url}: ${e.message}`);
+    return null;
+  }
+}
+
+function fluxToClass(flux) {
+  if (!(flux > 0)) return "N/A";
+  const letters = "ABCMX";
+  const bounds = [1e-8, 1e-7, 1e-6, 1e-5, 1e-4];
+  let idx = 0;
+  for (let i = 4; i >= 0; i--) if (flux >= bounds[i]) { idx = i; break; }
+  return letters[idx] + (flux / bounds[idx]).toFixed(1);
+}
+
+// "2026-10-23T12:00:00Z" -> "10-23 12:00" (the screen's format)
+function mmddhhmm(iso) {
+  if (!iso || iso.length < 16) return "";
+  return `${iso.substr(5, 5)} ${iso.substr(11, 5)}`;
+}
+
+async function serveSolar() {
+  const cache = caches.default;
+  const CACHE_KEY = "https://qsmoke-cache/solar-v1";
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
+  const [kpTxt, windTxt, magTxt, xrayTxt, flareTxt] = await Promise.all([
+    fetchUpstream(`${SWPC}/products/noaa-planetary-k-index.json`),
+    fetchRange(`${SWPC}/json/rtsw/rtsw_wind_1m.json`, "bytes=0-4095"),
+    fetchRange(`${SWPC}/json/rtsw/rtsw_mag_1m.json`, "bytes=0-4095"),
+    fetchUpstream(`${SWPC}/json/goes/primary/xrays-6-hour.json`),
+    fetchUpstream(`${SWPC}/json/goes/primary/xray-flares-latest.json`),
+  ]);
+
+  let kp = 0, hist = [];
+  try {
+    const arr = JSON.parse(kpTxt || "[]");
+    const vals = [];
+    for (let i = arr.length - 1; i >= 0 && vals.length < 8; i--) {
+      if (typeof arr[i].Kp === "number") vals.push(arr[i].Kp);
+    }
+    kp = vals[0] || 0;
+    hist = vals.reverse();                 // oldest → newest, like the bars
+  } catch (e) { console.log(`solar kp: ${e.message}`); }
+
+  // Both rtsw feeds are newest-first, so the first object is current.
+  const firstObject = (txt) => {
+    if (!txt) return null;
+    const a = txt.indexOf("{"), b = txt.indexOf("}");
+    if (a < 0 || b < a) return null;
+    try { return JSON.parse(txt.slice(a, b + 1)); } catch { return null; }
+  };
+  const wind = firstObject(windTxt) || {};
+  const mag = firstObject(magTxt) || {};
+
+  let xray = 0, xclass = "N/A", flare = "NONE", flareTime = "";
+  try {
+    const rows = JSON.parse(xrayTxt || "[]");
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (rows[i].energy === "0.1-0.8nm" && typeof rows[i].flux === "number") {
+        xray = rows[i].flux;
+        break;
+      }
+    }
+    xclass = fluxToClass(xray);
+  } catch (e) { console.log(`solar xray: ${e.message}`); }
+  try {
+    const flareRows = JSON.parse(flareTxt || "[]");
+    if (flareRows.length) {
+      flare = flareRows[0].max_class || flareRows[0].current_class || "NONE";
+      flareTime = mmddhhmm(flareRows[0].max_time || flareRows[0].time_tag || "");
+    }
+  } catch (e) { console.log(`solar flare: ${e.message}`); }
+
+  // CME comes from DONKI, already trimmed by the /cme path.
+  let cme = 0, cmeTime = "NONE";
+  let donki = await tryDonkiPrimary();
+  if (!donki) donki = await tryDonkiFallback();
+  if (donki) {
+    cme = donki.speed > 0 ? donki.speed : 0;
+    cmeTime = donki.startTime ? mmddhhmm(donki.startTime) : "NONE";
+  }
+
+  const out = json(200, {
+    kp,
+    hist,
+    wind: wind.proton_speed || 0,
+    dens: wind.proton_density || 0,
+    temp: wind.proton_temperature || 0,
+    bz: mag.bz_gsm ?? 0,
+    bt: mag.bt ?? 0,
+    xray,
+    xclass,
+    flare,
+    flareTime,
+    cme,
+    cmeTime,
+  });
+  out.headers.set("Cache-Control", "s-maxage=300");
+  await cache.put(CACHE_KEY, out.clone());
+  return out;
+}
+
+// ── /quakes — USGS M3.5+ as compact JSON ──────────────────────────────────
+// CSV is 7.6 KB for 36 events; GeoJSON was 28 KB.
+async function serveQuakes() {
+  const cache = caches.default;
+  const CACHE_KEY = "https://qsmoke-cache/quakes-v1";
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
+  const csv = await fetchUpstream(
+    "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv&minmagnitude=3.5&limit=36&orderby=time"
+  );
+  const items = [];
+  if (csv) {
+    const lines = csv.split("\n");
+    for (let i = 1; i < lines.length && items.length < 36; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const f = csvFields(line);
+      if (f.length < 14) continue;
+      const mag = parseFloat(f[4]);
+      if (isNaN(mag)) continue;
+      items.push({ m: mag, p: f[13], w: mdFromDate(f[0]) });
+    }
+  }
+
+  if (!items.length) return json(502, { items: [], error: "usgs unreachable" });
+  const out = json(200, { items });
+  out.headers.set("Cache-Control", "s-maxage=300");
+  await cache.put(CACHE_KEY, out.clone());
+  return out;
+}
+
+// Quote-aware split: `place` can contain commas ("91 km ESE of X, India").
+function csvFields(line) {
+  const out = [];
+  let cur = "", quoted = false;
+  for (const ch of line) {
+    if (ch === '"') { quoted = !quoted; continue; }
+    if (ch === "," && !quoted) { out.push(cur); cur = ""; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+// ── /fire — merged WFIGS list ─────────────────────────────────────────────
+// The device used to make both ArcGIS queries, merge, dedupe and sort; it now
+// receives one finished list.
+const WFIGS =
+  "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/" +
+  "WFIGS_Incident_Locations_Current/FeatureServer/0/query";
+const WFIGS_FIELDS =
+  "&outFields=IncidentName,FireDiscoveryDateTime,IncidentSize,FireCause," +
+  "PercentContained,POOState,IrwinID&returnGeometry=false&f=json";
+
+async function wfigsRows(where, orderBy, count) {
+  const url =
+    `${WFIGS}?where=${encodeURIComponent(where)}${WFIGS_FIELDS}` +
+    `&orderByFields=${orderBy}&resultRecordCount=${count}`;
+  const txt = await fetchUpstream(url);
+  if (!txt) return [];
+  try {
+    const doc = JSON.parse(txt);
+    return (doc.features || []).map((f) => {
+      const a = f.attributes || {};
+      return {
+        n: a.IncidentName || "Unknown Fire",
+        // POOState arrives as "US-TX"; the screen's field is two letters.
+        s: (a.POOState || "").replace(/^US-/, ""),
+        ac: a.IncidentSize || 0,
+        c: a.FireCause || "",
+        pc: a.PercentContained || 0,
+        t: a.FireDiscoveryDateTime || 0,
+        id: a.IrwinID || "",
+      };
+    });
+  } catch (e) {
+    console.log(`wfigs: ${e.message}`);
+    return [];
+  }
+}
+
+async function serveFire() {
+  const cache = caches.default;
+  const CACHE_KEY = "https://qsmoke-cache/fire-v2";
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
+  const [large, active] = await Promise.all([
+    wfigsRows("IncidentSize>=10000 AND IncidentTypeCategory<>'RX'", "IncidentSize+DESC", 30),
+    wfigsRows("ActiveFireCandidate=1 AND IncidentTypeCategory<>'RX' AND PercentContained<100",
+              "FireDiscoveryDateTime+DESC", 40),
+  ]);
+
+  const seen = new Set();
+  const merged = [];
+  for (const row of [...large, ...active]) {
+    if (row.id && seen.has(row.id)) continue;
+    if (row.id) seen.add(row.id);
+    merged.push(row);
+  }
+  merged.sort((a, b) => b.t - a.t);
+
+  if (!merged.length) return json(502, { items: [], error: "wfigs unreachable" });
+  const out = json(200, { items: merged.slice(0, 40) });
+  out.headers.set("Cache-Control", "s-maxage=600");
+  await cache.put(CACHE_KEY, out.clone());
+  return out;
+}
+
+// ── /geo — the caller's location from Cloudflare's own IP data ────────────
+async function serveGeo(request) {
+  const cf = request.cf || {};
+  const tz = cf.timezone || "UTC";
+  let offset = 0;
+  try {
+    const m = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "longOffset",
+    }).format(new Date()).match(/GMT([+-])(\d{2}):(\d{2})/);
+    if (m) offset = (m[1] === "-" ? -1 : 1) * (parseInt(m[2], 10) * 3600 + parseInt(m[3], 10) * 60);
+  } catch (e) { /* leave 0 */ }
+
+  // Cloudflare leaves cf fields empty for some connections (VPNs, a few
+  // carriers).  The device treats lat/lon of 0 as "no fix" and keeps its
+  // cached location, but a blank city still looks broken in the top bar, so
+  // fall back to the region, then the country.
+  return json(200, {
+    lat: parseFloat(cf.latitude) || 0,
+    lon: parseFloat(cf.longitude) || 0,
+    city: cf.city || cf.region || cf.country || "",
+    region: cf.region || "",
+    tz,
+    offset,
+  });
 }
 
 function json(status, body) {

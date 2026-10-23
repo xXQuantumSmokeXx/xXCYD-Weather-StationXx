@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClient.h>
+#include <StreamString.h>
 #include <ArduinoJson.h>
 #include <cstring>
 
@@ -43,27 +44,33 @@ void locationLoad() {
 }
 
 bool locationFetch() {
+    // Cloudflare already knows where the request came from (cf.latitude etc.),
+    // so the Worker answers with the caller's own coordinates — no third-party
+    // geo service involved.
     WiFiClient client;
     HTTPClient http;
-    http.begin(client, "http://ip-api.com/json/?fields=status,lat,lon,city,regionName,timezone,offset");
+    http.begin(client, "http://quantum-meteor.qsmoke.workers.dev/geo");
     http.setTimeout(10000);
     int code = http.GET();
     if (code != 200) { http.end(); return false; }
 
-    JsonDocument doc;
-    auto err = deserializeJson(doc, http.getStream());
+    StreamString ss;
+    http.writeToStream(&ss);
     http.end();
-    if (err) return false;
 
-    const char *status = doc["status"] | "fail";
-    if (strcmp(status, "success") != 0) return false;
+    JsonDocument doc;
+    if (deserializeJson(doc, ss.c_str())) return false;
 
-    g_location.lat = doc["lat"].as<float>();
-    g_location.lon = doc["lon"].as<float>();
-    strncpy(g_location.city,   doc["city"]       | "", sizeof(g_location.city)   - 1);
-    strncpy(g_location.region, doc["regionName"] | "", sizeof(g_location.region) - 1);
-    strncpy(g_location.tz,     doc["timezone"]   | "", sizeof(g_location.tz)     - 1);
-    g_location.utcOffset = doc["offset"].as<int>();
+    float lat = doc["lat"] | 0.0f;
+    float lon = doc["lon"] | 0.0f;
+    if (lat == 0.0f && lon == 0.0f) return false;
+
+    g_location.lat = lat;
+    g_location.lon = lon;
+    strncpy(g_location.city,   doc["city"]   | "", sizeof(g_location.city)   - 1);
+    strncpy(g_location.region, doc["region"] | "", sizeof(g_location.region) - 1);
+    strncpy(g_location.tz,     doc["tz"]     | "", sizeof(g_location.tz)     - 1);
+    g_location.utcOffset = doc["offset"] | 0;
     g_location.valid = true;
 
     nvsPutFloat("loc_lat",    g_location.lat);

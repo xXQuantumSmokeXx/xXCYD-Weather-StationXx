@@ -7,6 +7,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <StreamString.h>
 #include <ArduinoJson.h>
 #include <cstdio>
 #include <cstring>
@@ -95,144 +96,7 @@ static void fmtAcres(double acres, char *out, size_t len) {
         snprintf(out, len, "%ld ac", a);
 }
 
-// ── WFIGS active-fires fetch ─────────────────────────────────────────────────
-// Active, not prescribed, not fully contained. Returns count (0 on failure).
-static int fetchWfigsActive(RawFire *out, int maxOut) {
-    WiFiClientSecure client;   // fresh per attempt — a stale TLS session returns -1 forever
-    client.setInsecure();
-    client.setHandshakeTimeout(8);
-    HTTPClient http;
-    http.begin(client, "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/"
-                       "services/WFIGS_Incident_Locations_Current/FeatureServer/0/"
-                       "query?where=ActiveFireCandidate%3D1+AND+"
-                       "IncidentTypeCategory%3C%3E%27RX%27+AND+"
-                       "PercentContained%3C100"
-                       "&outFields=IncidentName,FireDiscoveryDateTime,IncidentSize,"
-                       "FireCause,PercentContained,POOState,IrwinID"
-                       "&returnGeometry=false"
-                       "&orderByFields=FireDiscoveryDateTime+DESC"
-                       "&resultRecordCount=40&f=json");
-    http.setTimeout(15000);
-    http.addHeader("User-Agent", "CYD-Weather/1.0");
-    int code = http.GET();
-    if (code != 200) { http.end(); return 0; }
-    String body = http.getString();
-    http.end();
-
-    JsonDocument filter;
-    filter["features"][0]["attributes"]["IncidentName"]           = true;
-    filter["features"][0]["attributes"]["FireDiscoveryDateTime"]  = true;
-    filter["features"][0]["attributes"]["IncidentSize"]           = true;
-    filter["features"][0]["attributes"]["FireCause"]              = true;
-    filter["features"][0]["attributes"]["PercentContained"]       = true;
-    filter["features"][0]["attributes"]["POOState"]               = true;
-    filter["features"][0]["attributes"]["IrwinID"]                = true;
-
-    JsonDocument doc;
-    if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) {
-        return 0;
-    }
-    JsonArray features = doc["features"].as<JsonArray>();
-    if (features.isNull()) return 0;
-
-    int count = 0;
-    for (JsonObject f : features) {
-        if (count >= maxOut) break;
-        JsonObject attr = f["attributes"];
-        if (attr.isNull()) continue;
-
-        const char *name    = attr["IncidentName"]          | "Unknown Fire";
-        const char *state   = attr["POOState"]              | "";
-        const char *cause   = attr["FireCause"]             | "";
-        const char *irwin   = attr["IrwinID"]               | "";
-        double size         = attr["IncidentSize"]          | 0.0;
-        double pctCont      = attr["PercentContained"]      | 0.0;
-        long long discMs    = attr["FireDiscoveryDateTime"] | 0LL;
-
-        RawFire &r = out[count];
-        copyFit(irwin, r.irwinId, sizeof(r.irwinId));
-        copyFit(name,  r.name,    sizeof(r.name));
-        copyState(state, r.state, sizeof(r.state));
-        copyFit(cause, r.cause,   sizeof(r.cause));
-        r.acres   = size;
-        r.pctCont = pctCont;
-        r.discMs  = discMs;
-        r.isLarge = false;
-        count++;
-    }
-    return count;
-}
-
-// ── WFIGS large-fire fetch ───────────────────────────────────────────────────
-// Fires >= 10k acres regardless of containment or active-candidate flag.
-// Catches big fires that the active query drops (100% contained, inactive, etc).
-// Excludes prescribed burns. Returns count (0 on failure).
-static int fetchWfigsLarge(RawFire *out, int maxOut) {
-    WiFiClientSecure client;   // fresh per attempt — a stale TLS session returns -1 forever
-    client.setInsecure();
-    client.setHandshakeTimeout(8);
-    HTTPClient http;
-    http.begin(client, "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/"
-                       "services/WFIGS_Incident_Locations_Current/FeatureServer/0/"
-                       "query?where=IncidentSize%3E%3D10000+AND+"
-                       "IncidentTypeCategory%3C%3E%27RX%27"
-                       "&outFields=IncidentName,FireDiscoveryDateTime,IncidentSize,"
-                       "FireCause,PercentContained,POOState,IrwinID"
-                       "&returnGeometry=false"
-                       "&orderByFields=IncidentSize+DESC"
-                       "&resultRecordCount=30&f=json");
-    http.setTimeout(15000);
-    http.addHeader("User-Agent", "CYD-Weather/1.0");
-    int code = http.GET();
-    if (code != 200) { http.end(); return 0; }
-    String body = http.getString();
-    http.end();
-
-    JsonDocument filter;
-    filter["features"][0]["attributes"]["IncidentName"]           = true;
-    filter["features"][0]["attributes"]["FireDiscoveryDateTime"]  = true;
-    filter["features"][0]["attributes"]["IncidentSize"]           = true;
-    filter["features"][0]["attributes"]["FireCause"]              = true;
-    filter["features"][0]["attributes"]["PercentContained"]       = true;
-    filter["features"][0]["attributes"]["POOState"]               = true;
-    filter["features"][0]["attributes"]["IrwinID"]                = true;
-
-    JsonDocument doc;
-    if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) {
-        return 0;
-    }
-    JsonArray features = doc["features"].as<JsonArray>();
-    if (features.isNull()) return 0;
-
-    int count = 0;
-    for (JsonObject f : features) {
-        if (count >= maxOut) break;
-        JsonObject attr = f["attributes"];
-        if (attr.isNull()) continue;
-
-        const char *name    = attr["IncidentName"]          | "Unknown Fire";
-        const char *state   = attr["POOState"]              | "";
-        const char *cause   = attr["FireCause"]             | "";
-        const char *irwin   = attr["IrwinID"]               | "";
-        double size         = attr["IncidentSize"]          | 0.0;
-        double pctCont      = attr["PercentContained"]      | 0.0;
-        long long discMs    = attr["FireDiscoveryDateTime"] | 0LL;
-
-        RawFire &r = out[count];
-        copyFit(irwin, r.irwinId, sizeof(r.irwinId));
-        copyFit(name,  r.name,    sizeof(r.name));
-        copyState(state, r.state, sizeof(r.state));
-        copyFit(cause, r.cause,   sizeof(r.cause));
-        r.acres   = size;
-        r.pctCont = pctCont;
-        r.discMs  = discMs;
-        r.isLarge = true;
-        count++;
-    }
-    return count;
-}
-
-// ── Format one RawFire into a FireItem title string ──────────────────────────
+// ── Main fetch — worker task entry point ─────────────────────────────────────
 static void formatFireTitle(const RawFire &r, FireItem &fi) {
     // Shorten only the excessively long "Undetermined"
     const char *cs = r.cause;
@@ -268,65 +132,51 @@ static void formatFireTitle(const RawFire &r, FireItem &fi) {
         copyFit("--", fi.when, sizeof(fi.when));
 }
 
-// ── Main fetch — worker task entry point ─────────────────────────────────────
 bool firesFetch(bool wifiOk) {
     s_lastAttempt = millis();
     if (!wifiOk || !WiFi.isConnected()) {
         return false;
     }
 
-    // Static buffers — not on FreeRTOS stack
-    static RawFire merged[MERGE_MAX];
-    static RawFire wfTemp[60];
+    // The Worker runs both ArcGIS queries, merges, dedupes by IrwinID and
+    // sorts newest-first; the device gets one finished list in ~5 KB.
+    WiFiClient client;
+    HTTPClient http;
+    http.begin(client, "http://quantum-meteor.qsmoke.workers.dev/fire");
+    http.setTimeout(15000);
+    int code = http.GET();
+    if (code != 200) { http.end(); return false; }
 
-    // 1. Fetch large fires first (they're the priority entries)
-    int largeCount = fetchWfigsLarge(merged, MERGE_MAX);
-    int total = largeCount;
+    StreamString ss;
+    http.writeToStream(&ss);
+    http.end();
 
-    // 2. Fetch active fires
-    int activeCount = fetchWfigsActive(wfTemp, 60);
+    JsonDocument doc;
+    if (deserializeJson(doc, ss.c_str())) return false;
+    JsonArray arr = doc["items"].as<JsonArray>();
+    if (arr.isNull()) return false;
 
-    // 3. Merge: dedup active fires that already exist in the large-fire list
-    for (int i = 0; i < activeCount && total < MERGE_MAX; i++) {
-        RawFire &w = wfTemp[i];
-        bool dup = false;
-        if (strlen(w.irwinId) > 0) {
-            for (int j = 0; j < largeCount; j++) {
-                if (strcmp(w.irwinId, merged[j].irwinId) == 0) {
-                    dup = true;
-                    break;
-                }
-            }
-        }
-        // Empty IrwinID: no dedup possible, include it
-        if (!dup) {
-            merged[total++] = w;
-        }
+    int count = 0;
+    for (JsonObject it : arr) {
+        if (count >= FIRE_MAX) break;
+        RawFire r = {};
+        copyFit(it["n"] | "Unknown Fire", r.name, sizeof(r.name));
+        copyFit(it["s"] | "", r.state, sizeof(r.state));
+        r.acres   = it["ac"] | 0.0;
+        copyFit(it["c"] | "", r.cause, sizeof(r.cause));
+        r.pctCont = it["pc"] | 0.0;
+        r.discMs  = it["t"]  | 0LL;
+        formatFireTitle(r, s_fires[count]);
+        count++;
     }
 
-    // 4. Sort by discovery date, newest first
-    for (int i = 0; i < total - 1; i++) {
-        for (int j = i + 1; j < total; j++) {
-            if (merged[j].discMs > merged[i].discMs) {
-                RawFire tmp = merged[i];
-                merged[i] = merged[j];
-                merged[j] = tmp;
-            }
-        }
-    }
-
-    // 5. Format top FIRE_MAX into display array
-    int count = total < FIRE_MAX ? total : FIRE_MAX;
-    for (int i = 0; i < count; i++) {
-        formatFireTitle(merged[i], s_fires[i]);
-    }
     s_fireCount = count;
     s_fetchedOnce = true;
     if (count > 0) {
         s_fetchedMs = millis();
         stampSync();
     } else {
-        s_fetchedMs = 0;  // mark stale so next visit triggers a retry
+        s_fetchedMs = 0;
     }
     return count > 0;
 }
