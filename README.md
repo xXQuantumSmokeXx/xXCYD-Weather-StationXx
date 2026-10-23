@@ -164,7 +164,7 @@ Flash the merged file at offset **0x00**. No extra dependencies needed — the p
 - WiFi credentials are not committed to Git.
 - The release firmware does not require an API key.
 - Open-Meteo is used for weather data, so no weather service token is baked into the build.
-- The optional MassOutage key is a **Worker secret**, never baked into the firmware. Keep it in `quantum-meteor-api/massoutage_key.txt` (gitignored) and push it with `npx wrangler secret put MO_API_KEY < quantum-meteor-api/massoutage_key.txt`.
+
 
 ## First-Boot Calibration (2-USB only)
 
@@ -190,24 +190,6 @@ A large asymmetric reference pattern (triangle, L-bracket, ring, crosshair, and 
 ### Step 2: Touch (digitizer orientation)
 
 After display mode is confirmed, a touch calibration screen appears. A cursor follows your finger — tap to cycle through the four XPT2046 digitizer rotations until the cursor tracks your finger without offset. Four crosshair targets in the corners let you verify alignment. Hold 2 seconds to confirm.
-
-You can re-run touch calibration anytime from **serial `T` command**.
-
-### Serial Commands
-
-Connect at 115200 baud. Single-character commands, no newline required:
-
-| Command | Effect |
-|---------|--------|
-| `R` | Responds with `READY` — useful for serial monitor sync |
-| `M` | Cycle display mode 0→1→2→3→0. Fixes wrong LCD orientation without reflashing |
-| `T` | Cycle touch digitizer rotation 0→1→2→3. Fixes offset touch |
-| `0`–`9` | Jump directly to screen 0–9 |
-| `A` | Jump to Settings screen |
-| `B` | Jump to News screen |
-| `C` | Jump to Almanac screen |
-| `S` | RGB332 screenshot capture (for `screenshot.py`) |
-| `X` + text | Set the display name for the top bar (empty line clears it). Weather and location still use the real coordinates |
 
 ## 2-USB Variant Notes
 
