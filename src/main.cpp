@@ -1319,7 +1319,8 @@ void loop() {
     if (screenshotNeedsRedraw()) s_needsRedraw = true;
 
     // Serial commands: '0'-'9' = screens 0-9, 'A' = Settings (12),
-    // 'B' = News (10), 'C' = Almanac (11), 'R' = ready, 'S' = capture
+    // 'B' = News (10), 'C' = Almanac (11), 'R' = ready, 'S' = capture,
+    // 'X' + line = display alias for the topbar city
     if (Serial.available()) {
         int cmd = Serial.read();
         if (cmd == 'R' || cmd == 'r') {
@@ -1365,6 +1366,22 @@ void loop() {
             if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
             gotoScreen(11);                     // Almanac (planner)
             redraw();
+        } else if (cmd == 'X' || cmd == 'x') {
+            // 'X' followed by a line sets the display alias for the topbar city
+            // (empty line clears it). Lat/lon and every API call stay real.
+            char alias[sizeof(g_location.city)] = {};
+            size_t n = 0;
+            unsigned long t0 = millis();
+            while (millis() - t0 < 2000) {
+                if (!Serial.available()) { delay(5); continue; }
+                char c = (char)Serial.read();
+                if (c == '\n' || c == '\r') break;
+                if (n < sizeof(alias) - 1) alias[n++] = c;
+            }
+            alias[n] = '\0';
+            locationSetAlias(alias);
+            s_needsRedraw = true;
+            Serial.printf("CITY:%s\n", g_location.city);
         }
 #if CAPTURE_SPRITE
         if (cmd == 'L' || cmd == 'l') {

@@ -45,9 +45,14 @@ export default {
       return await serveGrid(request, url, env);
     }
 
+    // GET /news — headline list (feed fetched server-side, trimmed to ~10)
+    if (url.pathname === "/news") {
+      return await serveNews();
+    }
+
     // GET / — simple status
     return new Response(
-      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes", "/outbreaks", "/grid"] }),
+      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes", "/outbreaks", "/grid", "/news"] }),
       { headers: { "Content-Type": "application/json" } }
     );
   },
@@ -990,6 +995,93 @@ function fmtDay(rfcDate) {
   if (isNaN(d)) return "";
   const p = n => String(n).padStart(2, "0");
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+
+// ── /news — headline list for the NEWS screen ─────────────────────────────
+// The CYD used to pull Reddit's /r/news RSS directly: ~25 KB, rate-limited,
+// and too big for the screenshot build's heap.  Fetch it here instead and
+// hand back just the titles and dates (~1.5 KB).  NPR is the fallback for
+// when Reddit refuses datacenter IPs.
+const NEWS_SOURCES = [
+  "https://www.reddit.com/r/news/.rss",
+  "https://feeds.npr.org/1001/rss.xml",
+];
+
+async function serveNews() {
+  const cache = caches.default;
+  const CACHE_KEY = "https://qsmoke-cache/news-v2";
+  const STALE_KEY = "https://qsmoke-cache/news-v2-stale";
+
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
+  let items = [];
+  let error = null;
+  for (const src of NEWS_SOURCES) {
+    try {
+      const resp = await fetch(src, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; Quantum-Meteor/1.0)",
+          "Accept-Encoding": "identity",
+        },
+      });
+      if (!resp.ok) { error = `${src}: HTTP ${resp.status}`; continue; }
+      items = parseFeedItems(await resp.text(), 10);
+      if (items.length) break;
+      error = `${src}: no items`;
+    } catch (e) {
+      error = `${src}: ${e.message}`;
+    }
+  }
+
+  if (items.length) {
+    const out = json(200, { items });
+    out.headers.set("Cache-Control", "s-maxage=300");
+    await cache.put(CACHE_KEY, out.clone());
+    const stale = out.clone();
+    stale.headers.set("Cache-Control", "s-maxage=3600");
+    await cache.put(STALE_KEY, stale);
+    return out;
+  }
+
+  const stale = await cache.match(STALE_KEY);
+  if (stale) return stale;
+  return json(502, { items: [], error: error || "feed unreachable" });
+}
+
+// Atom <entry> and RSS <item> both carry a <title> and one date tag.
+function parseFeedItems(xml, max) {
+  const out = [];
+  const blocks = xml.match(/<(entry|item)\b[\s\S]*?<\/\1>/g) || [];
+  for (const block of blocks) {
+    if (out.length >= max) break;
+    const t = block.match(/<title[^>]*>([\s\S]*?)<\/title>/);
+    if (!t) continue;
+    const d = block.match(/<(updated|pubDate|published)[^>]*>([\s\S]*?)<\/\1>/);
+    const title = cleanXmlText(t[1]);
+    if (!title) continue;
+    out.push({ title, when: mdFromDate(d ? cleanXmlText(d[2]) : "") });
+  }
+  return out;
+}
+
+// The screen prints "M/D" next to each headline; do the parsing here so the
+// ESP32 never has to understand RFC 822 or ISO timestamps.
+function mdFromDate(s) {
+  const t = Date.parse(s);
+  if (isNaN(t)) return "--";
+  const d = new Date(t);
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+}
+
+function cleanXmlText(s) {
+  return String(s)
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function json(status, body) {

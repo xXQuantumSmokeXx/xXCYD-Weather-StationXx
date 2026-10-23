@@ -8,6 +8,29 @@
 
 Location g_location;
 
+// ── Display alias ─────────────────────────────────────────────────────────
+// The city shows in every top bar and lands in every screenshot, so the
+// published gallery needs a name that isn't the home address. The alias
+// replaces the label only — lat/lon, timezone and API calls keep the real
+// location in NVS.
+void locationApplyAlias() {
+    char alias[sizeof(g_location.city)] = {};
+    nvsGetStr("city_alias", alias, sizeof(alias));
+    if (!alias[0]) return;
+    strncpy(g_location.city, alias, sizeof(g_location.city) - 1);
+    g_location.city[sizeof(g_location.city) - 1] = '\0';
+}
+
+void locationSetAlias(const char *alias) {
+    nvsPutStr("city_alias", alias ? alias : "");
+    if (alias && alias[0]) {
+        strncpy(g_location.city, alias, sizeof(g_location.city) - 1);
+        g_location.city[sizeof(g_location.city) - 1] = '\0';
+    } else {
+        nvsGetStr("loc_city", g_location.city, sizeof(g_location.city));
+    }
+}
+
 void locationLoad() {
     g_location.lat   = nvsGetFloat("loc_lat", 0);
     g_location.lon   = nvsGetFloat("loc_lon", 0);
@@ -16,6 +39,7 @@ void locationLoad() {
     nvsGetStr("loc_tz",     g_location.tz,     sizeof(g_location.tz));
     g_location.utcOffset = nvsGetInt("loc_offset", 0);
     g_location.valid = (g_location.lat != 0 || g_location.lon != 0);
+    locationApplyAlias();
 }
 
 bool locationFetch() {
@@ -48,5 +72,6 @@ bool locationFetch() {
     nvsPutStr("loc_region",   g_location.region);
     nvsPutStr("loc_tz",       g_location.tz);
     nvsPutInt("loc_offset",   g_location.utcOffset);
+    locationApplyAlias();      // a refresh must not undo the display name
     return true;
 }

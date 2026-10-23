@@ -1,11 +1,34 @@
 CYD-Weather TODO
 ================
-Session: 2026-10-23 (v1.4.9 Link Restored)
+Session: 2026-10-23 (v1.4.9 shipped; follow-ups below are unreleased)
 
 Release how-to: version = git tag + this file (no code constant). GitHub release
 title is thematic (may differ from the entry title here). Draft → publish via
 `gh release create vX.Y.Z --draft …` then `gh release edit vX.Y.Z --draft=false`,
 attaching both .bin. File is tracked lowercase — `git add todo.txt`, not TODO.txt.
+
+Unreleased — after v1.4.9
+------------------------------
+[x] NEWS served by the Worker (2026-10-23)
+    - The screen had pulled Reddit's /r/news RSS directly since it was written
+      (bbcf26c, 2026-05-24): ~25 KB, 429s against the device's address, and
+      impossible to fetch while the screenshot build holds its framebuffer.
+    - New /news route on Quantum-Meteor fetches the feed server-side, keeps
+      ten headlines and returns {"items":[{title, when}]} — 1,117 bytes,
+      cached 5 min, Reddit with NPR as the automatic fallback.
+    - screen_news.cpp reads that JSON; the RSS/XML helpers are gone.
+[x] Retry backoff on the data screens (2026-10-23)
+    - doFetch short-circuited on !s_fetchedOnce, so a failing fetch re-fired
+      on every redraw — NEWS opened a TLS connection roughly every 2 s and the
+      page flickered. Each of news/fires/usgs/ews/volcanoes now stamps
+      s_lastAttempt at fetch entry and waits 30 s before retrying.
+[x] Display alias for the top-bar city (2026-10-23)
+    - Serial 'X' + text sets an NVS-backed display name ('X' alone clears it);
+      lat/lon and every API call keep the real location. Removes the need to
+      paint the city out of each screenshot by hand.
+[x] NEWS gallery image (2026-10-23)
+    - Captured on the Worker feed (eight headlines, full page), top bar
+      redacted, saved as ScreenShots/NEWS.png.
 
 v1.4.9 — Link Restored
 ------------------------------
@@ -45,9 +68,9 @@ v1.4.9 — Link Restored
     - SETTINGS is a relative path now instead of the v1.2.1
       raw.githubusercontent URL; SPLASH and VOLCANOES added.
     - All screenshots retaken 2026-10-23 except NEWS.
-[ ] NEWS screenshot — Reddit /r/news/.rss returns 429 for this IP (2026-10-23)
-    and the feed is 25-40 KB, over the capture build's ~7 KB TLS budget.
-    Retake when the feed answers, or move the screen to a smaller source.
+[x] NEWS screenshot blocker — resolved above by the /news route (2026-10-23).
+    Reddit returned 429 for this IP and the 25 KB feed exceeded the capture
+    build's ~7 KB TLS budget; the Worker now trims it to ~1.1 KB.
 
 v1.4.8 — Grid Down
 ------------------------------

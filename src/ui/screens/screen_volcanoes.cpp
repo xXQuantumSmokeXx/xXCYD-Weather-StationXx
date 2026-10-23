@@ -33,6 +33,7 @@ static VolcanoItem s_volcanoes[VOLCANO_MAX];
 static int s_volcanoCount = 0;
 static bool s_fetchedOnce = false;
 static unsigned long s_fetchedMs = 0;
+static unsigned long s_lastAttempt = 0;   // retry backoff
 static bool s_forceRefresh = false;
 static int  s_scrollOff = 0;
 static char s_sync[18] = "--:--";
@@ -56,7 +57,7 @@ static String fitText(TFT_eSPI &tft, const char *src, int maxPx) {
 }
 
 static bool stale() {
-    if (!s_fetchedOnce) return true;
+    if (!s_fetchedOnce) return millis() - s_lastAttempt > 30000UL;   // retry backoff
     if (s_forceRefresh) return true;
     return millis() - s_fetchedMs > VOLCANO_CACHE_MS;
 }
@@ -277,7 +278,7 @@ void screenVolcanoesDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 9, 13);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    bool doFetch = (!s_fetchedOnce || s_forceRefresh || stale()) && wifiOk && !g_volcanoesPending;
+    bool doFetch = (s_forceRefresh || stale()) && wifiOk && !g_volcanoesPending;
     s_forceRefresh = false;
 
     if (doFetch) {

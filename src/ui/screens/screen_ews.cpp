@@ -23,13 +23,14 @@ static int     s_tracked     = 0;
 static char    s_updated[32] = "--";
 static bool    s_fetchedOnce = false;
 static unsigned long s_fetchedMs = 0;
+static unsigned long s_lastAttempt = 0;   // retry backoff
 static bool    s_forceRefresh = false;
 static char    s_sync[10]    = "--:--";
 bool g_ewsPending = false;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 static bool stale() {
-    if (!s_fetchedOnce) return true;
+    if (!s_fetchedOnce) return millis() - s_lastAttempt > 30000UL;   // retry backoff
     if (s_forceRefresh) return true;
     return millis() - s_fetchedMs > EWS_CACHE_MS;
 }
@@ -135,7 +136,7 @@ void screenEwsDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 5, 13);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    bool doFetch = (!s_fetchedOnce || s_forceRefresh || stale()) && wifiOk && !g_ewsPending;
+    bool doFetch = (s_forceRefresh || stale()) && wifiOk && !g_ewsPending;
     s_forceRefresh = false;
 
     if (doFetch) {

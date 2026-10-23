@@ -7,6 +7,8 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <StreamString.h>
+#include <ArduinoJson.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -18,7 +20,7 @@
 #define NEWS_ROW_H 24
 
 // r/news — breaking US/world incidents, crime, disasters. Strictly moderated (no fluff).
-#define NEWS_RSS_URL "https://www.reddit.com/r/news/.rss"
+#define NEWS_URL "http://quantum-meteor.qsmoke.workers.dev/news"
 
 struct NewsItem {
     char title[100];
@@ -65,76 +67,7 @@ static void stampSync() {
     snprintf(s_sync, sizeof(s_sync), "Updated %s", t);
 }
 
-static void xmlDecode(char *dst, const char *src, size_t dstLen) {
-    size_t di = 0;
-    while (*src && di < dstLen - 1) {
-        if (*src == '&') {
-            if (strncmp(src, "&amp;", 5) == 0)      { dst[di++] = '&';  src += 5; continue; }
-            if (strncmp(src, "&lt;", 4) == 0)       { dst[di++] = '<';  src += 4; continue; }
-            if (strncmp(src, "&gt;", 4) == 0)       { dst[di++] = '>';  src += 4; continue; }
-            if (strncmp(src, "&quot;", 6) == 0)     { dst[di++] = '"';  src += 6; continue; }
-            if (strncmp(src, "&apos;", 6) == 0)     { dst[di++] = '\''; src += 6; continue; }
-            if (strncmp(src, "&#39;", 5) == 0)      { dst[di++] = '\''; src += 5; continue; }
-            dst[di++] = *src++;
-        } else {
-            dst[di++] = *src++;
-        }
-    }
-    dst[di] = '\0';
-}
-
-static const char *extractTag(const char *haystack, const char *tag, char *out, size_t outLen) {
-    char open[32], close[32];
-    snprintf(open,  sizeof(open),  "<%s>", tag);
-    snprintf(close, sizeof(close), "</%s>", tag);
-
-    const char *start = strstr(haystack, open);
-    if (!start) return nullptr;
-    start += strlen(open);
-
-    if (strncmp(start, "<![CDATA[", 9) == 0) {
-        start += 9;
-        const char *cend = strstr(start, "]]>");
-        if (cend) {
-            size_t len = cend - start;
-            if (len >= outLen) len = outLen - 1;
-            memcpy(out, start, len);
-            out[len] = '\0';
-            xmlDecode(out, out, outLen);
-            return cend + 3;
-        }
-    }
-
-    const char *end = strstr(start, close);
-    if (!end) return nullptr;
-
-    size_t len = end - start;
-    if (len >= outLen) len = outLen - 1;
-    memcpy(out, start, len);
-    out[len] = '\0';
-    xmlDecode(out, out, outLen);
-    return end + strlen(close);
-}
-
-static void parsePubDate(const char *pubDate, char *out, size_t outLen) {
-    if (!pubDate || !pubDate[0]) { copyFit("--", out, outLen); return; }
-    const char *p = pubDate;
-    if (isalpha(p[0]) && isalpha(p[1]) && isalpha(p[2]) && p[3] == ',') p += 5;
-
-    int d = 0; char mon[4] = {0};
-    if (sscanf(p, "%d %3s", &d, mon) == 2 && d > 0 && d <= 31) {
-        static const char *months[] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
-        int m = 1;
-        for (; m <= 12; m++) if (strncmp(mon, months[m - 1], 3) == 0) break;
-        snprintf(out, outLen, "%d/%d", m, d); return;
-    }
-    int y, m;
-    if (sscanf(pubDate, "%d-%d-%d", &y, &m, &d) == 3 && d > 0 && d <= 31) {
-        snprintf(out, outLen, "%d/%d", m, d); return;
-    }
-    copyFit(p, out, outLen);
-}
-
+// Reddit's feed carries moderator posts that aren't news.
 static bool isMetaTitle(const char *title) {
     if (!title || !title[0]) return true;
     if (strstr(title, "/r/") || strstr(title, "/u/")) return true;
@@ -149,49 +82,35 @@ static bool isMetaTitle(const char *title) {
     return false;
 }
 
-static int fetchRSS(const char *url, NewsItem *items, int maxItems) {
-    static WiFiClientSecure client;
-    client.setInsecure();
+// The Quantum-Meteor Worker fetches the feed server-side and returns ~10
+// headlines as {"items":[{"title":"...","when":"M/D"}]} (~1.1 KB).  Pulling
+// Reddit's 25 KB RSS directly is what broke here: rate limits on the device's
+// address, and no room for it in the screenshot build's heap.
+static int fetchWorkerNews(NewsItem *items, int maxItems) {
+    WiFiClient client;
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-    http.begin(client, url);
+    http.begin(client, NEWS_URL);
     http.setTimeout(12000);
-    http.addHeader("User-Agent", "CYD-Weather/1.0");
     int code = http.GET();
     if (code != 200) { http.end(); return 0; }
-    String body = http.getString();
+
+    StreamString ss;
+    http.writeToStream(&ss);
     http.end();
-    if (body.length() < 100) return 0;
+
+    JsonDocument doc;
+    if (deserializeJson(doc, ss.c_str())) return 0;
+    JsonArray arr = doc["items"].as<JsonArray>();
+    if (arr.isNull()) return 0;
 
     int count = 0;
-    const char *ptr = body.c_str();
-    const char *bodyEnd = ptr + body.length();
-
-    while (count < maxItems) {
-        const char *itemStart = strstr(ptr, "<entry>");
-        if (!itemStart) itemStart = strstr(ptr, "<item>");
-        if (!itemStart || itemStart >= bodyEnd) break;
-        bool isEntry = (itemStart[1] == 'e');
-        const char *closeTag = isEntry ? "</entry>" : "</item>";
-        const char *cl = strstr(itemStart, closeTag);
-        if (!cl || cl >= bodyEnd) break;
-        const char *itemEnd = cl + (isEntry ? 8 : 7);
-
-        char rawTitle[256] = {};
-        if (extractTag(itemStart, "title", rawTitle, sizeof(rawTitle)) && rawTitle[0]) {
-            if (isMetaTitle(rawTitle)) { ptr = itemEnd; continue; }
-            copyFit(rawTitle, items[count].title, sizeof(items[count].title));
-
-            char pubDate[64];
-            if (extractTag(itemStart, "updated", pubDate, sizeof(pubDate)) ||
-                extractTag(itemStart, "pubDate", pubDate, sizeof(pubDate))) {
-                parsePubDate(pubDate, items[count].when, sizeof(items[count].when));
-            } else {
-                copyFit("--", items[count].when, sizeof(items[count].when));
-            }
-            count++;
-        }
-        ptr = itemEnd;
+    for (JsonObject it : arr) {
+        if (count >= maxItems) break;
+        const char *title = it["title"] | "";
+        if (!title[0] || isMetaTitle(title)) continue;
+        copyFit(title, items[count].title, sizeof(items[count].title));
+        copyFit(it["when"] | "--", items[count].when, sizeof(items[count].when));
+        count++;
     }
     return count;
 }
@@ -217,7 +136,7 @@ bool newsFetch(bool wifiOk, const char *city) {
     if (!wifiOk || !WiFi.isConnected()) return false;
     s_lastAttempt = millis();
 
-    int count = fetchRSS(NEWS_RSS_URL, s_items, NEWS_MAX);
+    int count = fetchWorkerNews(s_items, NEWS_MAX);
     if (count == 0) return false;
 
     // Sort newest-first
@@ -313,7 +232,7 @@ void screenNewsDraw(TFT_eSPI &tft, bool wifiOk) {
     drawBottombar(tft, dateStr, 10, 13);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
-    bool doFetch = (!s_fetchedOnce || s_forceRefresh || stale()) && wifiOk && !g_newsPending;
+    bool doFetch = (s_forceRefresh || stale()) && wifiOk && !g_newsPending;
     s_forceRefresh = false;
 
     if (doFetch) {

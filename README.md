@@ -204,7 +204,10 @@ Connect at 115200 baud. Single-character commands, no newline required:
 | `T` | Cycle touch digitizer rotation 0→1→2→3. Fixes offset touch |
 | `0`–`9` | Jump directly to screen 0–9 |
 | `A` | Jump to Settings screen |
+| `B` | Jump to News screen |
+| `C` | Jump to Almanac screen |
 | `S` | RGB332 screenshot capture (for `screenshot.py`) |
+| `X` + text | Set the display name for the top bar (empty line clears it). Weather and location still use the real coordinates |
 
 ## 2-USB Variant Notes
 

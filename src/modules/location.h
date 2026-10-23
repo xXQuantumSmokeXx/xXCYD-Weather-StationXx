@@ -14,3 +14,5 @@ extern Location g_location;
 
 bool locationFetch();   // hits ip-api.com, caches in NVS
 void locationLoad();    // loads NVS cache into g_location
+void locationApplyAlias();              // display-only name override
+void locationSetAlias(const char *a);   // "" clears, persists in NVS
