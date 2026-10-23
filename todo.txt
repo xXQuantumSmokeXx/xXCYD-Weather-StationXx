@@ -1,11 +1,53 @@
 CYD-Weather TODO
 ================
-Session: 2026-10-22 (v1.4.8 Grid Down)
+Session: 2026-10-23 (v1.4.9 Link Restored)
 
 Release how-to: version = git tag + this file (no code constant). GitHub release
 title is thematic (may differ from the entry title here). Draft → publish via
 `gh release create vX.Y.Z --draft …` then `gh release edit vX.Y.Z --draft=false`,
 attaching both .bin. File is tracked lowercase — `git add todo.txt`, not TODO.txt.
+
+v1.4.9 — Link Restored
+------------------------------
+[x] Fetch reliability — screens no longer stay offline (2026-10-23)
+    - s_wifiOk was sampled once in setup(); if the link dropped at that moment
+      every guarded fetch returned false and every screen read "offline" or
+      "Fetching..." for the rest of the session. It is now refreshed every 2 s
+      in loop(), with a reconnect after 15 s and a redraw when it changes.
+    - The boot prefetch waits for a stable link before starting (status was
+      observed going 3 → 5 → 3 during the first TLS call).
+    - Each fetch builds its own WiFiClientSecure. A reused client left
+      half-closed by a failed attempt made every later GET return -1.
+    - 8 s TLS handshake ceiling on Fires and USGS so a stalled connect cannot
+      wedge the fetch worker.
+    - WiFi.setSleep(false): modem sleep stalled multi-record TLS downloads
+      after the first 1460-byte segment.
+[x] USGS — rewritten to CSV (2026-10-23)
+    - GeoJSON was ~28 KB for 40 events; CSV is ~7.6 KB for the same list, and
+      the old body stopped at the first TLS record so the screen never loaded.
+    - Quote-aware splitter for place names ("91 km ESE of Tuensang, India").
+    - ISO timestamps converted with a days-from-civil helper (no timegm).
+    - Release asks for QUAKE_MAX (36), the screenshot build for 30.
+[x] Clock stamps — localtime race (2026-10-23)
+    - localtime() returns a shared static struct and both the fetch worker and
+      the draw loop call it; the "Updated" stamp could render UTC ("8:00pm"
+      against a 3:17pm topbar). time_sync.cpp and msToWhen now use localtime_r.
+[x] Serial B / C (2026-10-23)
+    - B = News (screen 10), C = Almanac (screen 11); screenshot.py and its menu
+      updated to match.
+[x] Screenshot tooling (2026-10-23)
+    - screenshot.py: correct screen→index map, a spr:0 warning instead of a
+      silently black frame, news/almanac entries.
+    - Capture-only 'L' command redraws the boot splash for the gallery.
+[x] README gallery (2026-10-23)
+    - Reordered: SPLASH / NOW / HOURLY, 5-DAY / SOLAR / FIRETEAM,
+      AEWS / FIRES / USGS, OUTAGES / VOLCANOES / NEWS, ALMANAC / SETTINGS.
+    - SETTINGS is a relative path now instead of the v1.2.1
+      raw.githubusercontent URL; SPLASH and VOLCANOES added.
+    - All screenshots retaken 2026-10-23 except NEWS.
+[ ] NEWS screenshot — Reddit /r/news/.rss returns 429 for this IP (2026-10-23)
+    and the feed is 25-40 KB, over the capture build's ~7 KB TLS budget.
+    Retake when the feed answers, or move the screen to a smaller source.
 
 v1.4.8 — Grid Down
 ------------------------------

@@ -18,28 +18,34 @@ bool timeIsValid() {
     return now > 1700000000L;
 }
 
-static struct tm* localNow() {
+// localtime() hands back a shared static struct, and the fetch worker plus the
+// draw loop both call these helpers — a clash renders a wrong clock (it showed
+// UTC "8:00pm" against a 3:17pm topbar).  localtime_r writes to our own copy.
+static void localNow(struct tm *out) {
     time_t t = time(nullptr);
-    return localtime(&t);
+    localtime_r(&t, out);
 }
 
 void timeGetHHMM(char *buf) {
-    struct tm *tm = localNow();
-    snprintf(buf, 6, "%02d:%02d", tm->tm_hour, tm->tm_min);
+    struct tm tm;
+    localNow(&tm);
+    snprintf(buf, 6, "%02d:%02d", tm.tm_hour, tm.tm_min);
 }
 
 void timeGetShort(char *buf) {
-    struct tm *tm = localNow();
-    int h = tm->tm_hour % 12;
+    struct tm tm;
+    localNow(&tm);
+    int h = tm.tm_hour % 12;
     if (h == 0) h = 12;
-    snprintf(buf, 10, "%d:%02d%s", h, tm->tm_min, tm->tm_hour < 12 ? "am" : "pm");
+    snprintf(buf, 10, "%d:%02d%s", h, tm.tm_min, tm.tm_hour < 12 ? "am" : "pm");
 }
 
 void timeGetDayName(int daysAhead, char *buf3) {
     static const char *days[] = {"SUN","MON","TUE","WED","THU","FRI","SAT"};
     time_t t = time(nullptr) + (time_t)daysAhead * 86400L;
-    struct tm *tm = localtime(&t);
-    strncpy(buf3, days[tm->tm_wday], 3);
+    struct tm tm;
+    localtime_r(&t, &tm);
+    strncpy(buf3, days[tm.tm_wday], 3);
     buf3[3] = '\0';
 }
 
@@ -51,10 +57,11 @@ void timeGetDateLong(char *buf, size_t len) {
         "Jan","Feb","Mar","Apr","May","Jun",
         "Jul","Aug","Sep","Oct","Nov","Dec"
     };
-    struct tm *tm = localNow();
+    struct tm tm;
+    localNow(&tm);
     snprintf(buf, len, "%s, %s %d, %d",
-             wdays[tm->tm_wday],
-             months[tm->tm_mon],
-             tm->tm_mday,
-             tm->tm_year + 1900);
+             wdays[tm.tm_wday],
+             months[tm.tm_mon],
+             tm.tm_mday,
+             tm.tm_year + 1900);
 }

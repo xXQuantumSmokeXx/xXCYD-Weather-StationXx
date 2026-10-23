@@ -11,8 +11,8 @@ Examples:
   python screenshot.py solar
   python screenshot.py COM11 5 ScreenShots\screen_usgs.bmp
 
-Screens: current, now/0, hourly/1, forecast/2, solar/3, fires/4, usgs/5, volcanoes/6, news/7, almanac/8, scanner/9, settings/A
-Default port: COM11
+Screens: current, now/0, hourly/1, 5-day/2, solar/3, fireteam/4, aews/5, fires/6, usgs/7, outages/8, volcanoes/9, news/B, almanac/C, settings/A
+Default port: auto-detected CH340, else COM11
 """
 
 import os
@@ -44,38 +44,48 @@ def find_port():
 DEFAULT_PORT = find_port()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Order is the firmware's screen index (src/main.cpp gotoScreen), not a guess.
 SCREENS = {
+    "current": ("current", None, "screen.bmp"),
     "0": ("now", b"0", "ScreenShots\\screen_now.bmp"),
     "now": ("now", b"0", "ScreenShots\\screen_now.bmp"),
-    "current": ("current", None, "screen.bmp"),
     "1": ("hourly", b"1", "ScreenShots\\screen_hourly.bmp"),
     "hourly": ("hourly", b"1", "ScreenShots\\screen_hourly.bmp"),
-    "2": ("forecast", b"2", "ScreenShots\\screen_forecast.bmp"),
-    "forecast": ("forecast", b"2", "ScreenShots\\screen_forecast.bmp"),
-    "5-day": ("forecast", b"2", "ScreenShots\\screen_forecast.bmp"),
-    "5day": ("forecast", b"2", "ScreenShots\\screen_forecast.bmp"),
+    "2": ("5-day", b"2", "ScreenShots\\screen_5day.bmp"),
+    "5-day": ("5-day", b"2", "ScreenShots\\screen_5day.bmp"),
+    "5day": ("5-day", b"2", "ScreenShots\\screen_5day.bmp"),
+    "forecast": ("5-day", b"2", "ScreenShots\\screen_5day.bmp"),
     "3": ("solar", b"3", "ScreenShots\\screen_solar.bmp"),
     "solar": ("solar", b"3", "ScreenShots\\screen_solar.bmp"),
-    "4": ("fires", b"4", "ScreenShots\\screen_fires.bmp"),
-    "fires": ("fires", b"4", "ScreenShots\\screen_fires.bmp"),
-    "fire": ("fires", b"4", "ScreenShots\\screen_fires.bmp"),
-    "5": ("usgs", b"5", "ScreenShots\\screen_usgs.bmp"),
-    "usgs": ("usgs", b"5", "ScreenShots\\screen_usgs.bmp"),
-    "quake": ("usgs", b"5", "ScreenShots\\screen_usgs.bmp"),
-    "quakes": ("usgs", b"5", "ScreenShots\\screen_usgs.bmp"),
-    "6": ("volcanoes", b"6", "ScreenShots\\screen_volcanoes.bmp"),
-    "volcanoes": ("volcanoes", b"6", "ScreenShots\\screen_volcanoes.bmp"),
-    "volcano": ("volcanoes", b"6", "ScreenShots\\screen_volcanoes.bmp"),
-    "7": ("news", b"7", "ScreenShots\\screen_news.bmp"),
-    "news": ("news", b"7", "ScreenShots\\screen_news.bmp"),
-    "8": ("almanac", b"8", "ScreenShots\\screen_almanac.bmp"),
-    "almanac": ("almanac", b"8", "ScreenShots\\screen_almanac.bmp"),
-    "alm": ("almanac", b"8", "ScreenShots\\screen_almanac.bmp"),
-    "9": ("scanner", b"9", "ScreenShots\\screen_scanner.bmp"),
-    "scanner": ("scanner", b"9", "ScreenShots\\screen_scanner.bmp"),
+    "4": ("fireteam", b"4", "ScreenShots\\screen_fireteam.bmp"),
+    "fireteam": ("fireteam", b"4", "ScreenShots\\screen_fireteam.bmp"),
+    "team": ("fireteam", b"4", "ScreenShots\\screen_fireteam.bmp"),
+    "5": ("aews", b"5", "ScreenShots\\screen_aews.bmp"),
+    "aews": ("aews", b"5", "ScreenShots\\screen_aews.bmp"),
+    "ews": ("aews", b"5", "ScreenShots\\screen_aews.bmp"),
+    "6": ("fires", b"6", "ScreenShots\\screen_fires.bmp"),
+    "fires": ("fires", b"6", "ScreenShots\\screen_fires.bmp"),
+    "fire": ("fires", b"6", "ScreenShots\\screen_fires.bmp"),
+    "7": ("usgs", b"7", "ScreenShots\\screen_usgs.bmp"),
+    "usgs": ("usgs", b"7", "ScreenShots\\screen_usgs.bmp"),
+    "quake": ("usgs", b"7", "ScreenShots\\screen_usgs.bmp"),
+    "quakes": ("usgs", b"7", "ScreenShots\\screen_usgs.bmp"),
+    "8": ("outages", b"8", "ScreenShots\\screen_outages.bmp"),
+    "outages": ("outages", b"8", "ScreenShots\\screen_outages.bmp"),
+    "outage": ("outages", b"8", "ScreenShots\\screen_outages.bmp"),
+    "9": ("volcanoes", b"9", "ScreenShots\\screen_volcanoes.bmp"),
+    "volcanoes": ("volcanoes", b"9", "ScreenShots\\screen_volcanoes.bmp"),
+    "volcano": ("volcanoes", b"9", "ScreenShots\\screen_volcanoes.bmp"),
     "A": ("settings", b"A", "ScreenShots\\screen_settings.bmp"),
     "a": ("settings", b"A", "ScreenShots\\screen_settings.bmp"),
     "settings": ("settings", b"A", "ScreenShots\\screen_settings.bmp"),
+    "B": ("news", b"B", "ScreenShots\\screen_news.bmp"),
+    "b": ("news", b"B", "ScreenShots\\screen_news.bmp"),
+    "news": ("news", b"B", "ScreenShots\\screen_news.bmp"),
+    "C": ("almanac", b"C", "ScreenShots\\screen_almanac.bmp"),
+    "c": ("almanac", b"C", "ScreenShots\\screen_almanac.bmp"),
+    "almanac": ("almanac", b"C", "ScreenShots\\screen_almanac.bmp"),
+    "alm": ("almanac", b"C", "ScreenShots\\screen_almanac.bmp"),
 }
 
 COM_RE = re.compile(r"^COM\d+$", re.IGNORECASE)
@@ -86,7 +96,7 @@ def normalize_screen(value):
         return SCREENS["current"]
     key = value.strip().lower()
     if key not in SCREENS:
-        valid = "current, now, hourly, forecast, solar, fires, usgs, volcanoes, news, almanac, scanner, settings"
+        valid = "current, now, hourly, 5-day, solar, fireteam, aews, fires, usgs, outages, volcanoes, news, almanac, settings"
         raise ValueError(f"Unknown screen '{value}'. Valid screens: {valid}")
     return SCREENS[key]
 
@@ -133,12 +143,14 @@ def ask_interactive():
     print("  1 = HOURLY")
     print("  2 = 5-DAY")
     print("  3 = SOLAR")
-    print("  4 = FIRES")
-    print("  5 = USGS")
-    print("  6 = VOLCANOES")
-    print("  7 = NEWS")
-    print("  8 = ALMANAC")
-    print("  9 = SCANNER")
+    print("  4 = FIRETEAM")
+    print("  5 = AEWS")
+    print("  6 = FIRES")
+    print("  7 = USGS")
+    print("  8 = OUTAGES")
+    print("  9 = VOLCANOES")
+    print("  B = NEWS")
+    print("  C = ALMANAC")
     print("  A = SETTINGS")
     screen_arg = input("Screen to capture [current]: ").strip() or "current"
     screen_name, screen_cmd, default_out = normalize_screen(screen_arg)
@@ -244,10 +256,16 @@ def capture(port, screen_name, screen_cmd, outfile):
 
         ser.write(b"S")
         ser.flush()
-        marker, _ = wait_for_marker(ser, [b"RGB332:", b"OOM:"], timeout=20)
+        marker, prelude = wait_for_marker(ser, [b"RGB332:", b"OOM:"], timeout=20)
 
         if marker is None:
             raise RuntimeError("No screenshot response from device.")
+
+        # "HEAP:free,max,spr:0" precedes the image. spr:0 means the firmware has
+        # no capture framebuffer (a release build) and is reading the panel back
+        # over SPI, which returns black on CYD boards.
+        spr = re.search(rb"spr:(\d)", prelude)
+        no_framebuffer = spr is not None and spr.group(1) == b"0"
 
         if marker == b"OOM:":
             info = ser.readline().decode("ascii", errors="replace").strip()
@@ -278,6 +296,14 @@ def capture(port, screen_name, screen_cmd, outfile):
 
     write_bmp(outfile, pixels)
     print(f"Saved {outfile}")
+
+    if no_framebuffer:
+        print("Warning: device has no capture framebuffer (spr:0) — it is running")
+        print("a release build, so the panel read-back comes out black. Flash the")
+        print("capture build first:")
+        print('  $env:PLATFORMIO_BUILD_FLAGS="-DCAPTURE_SPRITE=1"; pio run -e cyd_weather -t upload')
+    elif not any(data):
+        print("Warning: captured frame is completely black.")
 
 
 def main():

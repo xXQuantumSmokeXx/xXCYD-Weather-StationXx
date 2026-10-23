@@ -6,21 +6,13 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 
 ## Screens
 
-| NOW | ALMANAC | SETTINGS |
-|-----|---------|----------|
-| ![NOW](ScreenShots/NOW.png) | ![ALMANAC](ScreenShots/ALMANAC.png) | ![SETTINGS](https://raw.githubusercontent.com/xXQuantumSmokeXx/xXCYD-Weather-StationXx/v1.2.1/ScreenShots/SETTINGS.png) |
-
-| HOURLY | 5-DAY | SOLAR |
-|--------|-------|-------|
-| ![HOURLY](ScreenShots/HOURLY.png) | ![5-DAY](ScreenShots/5-DAY.png) | ![SOLAR](ScreenShots/SOLAR.png) |
-
-| FIRES | USGS | NEWS |
-|-------|------|------|
-| ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) | ![NEWS](ScreenShots/NEWS.png) |
-
-| OUTAGES | AEWS | FIRETEAM |
-|---------|------|----------|
-| ![OUTAGES](ScreenShots/OUTAGES.png) | ![AEWS](ScreenShots/AEWS.png) | ![FIRETEAM](ScreenShots/FIRETEAM.png) |
+| | | |
+|---|---|---|
+| ![SPLASH](ScreenShots/SPLASH.png) | ![NOW](ScreenShots/NOW.png) | ![HOURLY](ScreenShots/HOURLY.png) |
+| ![5-DAY](ScreenShots/5-DAY.png) | ![SOLAR](ScreenShots/SOLAR.png) | ![FIRETEAM](ScreenShots/FIRETEAM.png) |
+| ![AEWS](ScreenShots/AEWS.png) | ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) |
+| ![OUTAGES](ScreenShots/OUTAGES.png) | ![VOLCANOES](ScreenShots/VOLCANOES.png) | ![NEWS](ScreenShots/NEWS.png) |
+| ![ALMANAC](ScreenShots/ALMANAC.png) | ![SETTINGS](ScreenShots/SETTINGS.png) | |
 
 ### Features
 

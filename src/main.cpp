@@ -156,6 +156,14 @@ static void fetchWorker(void *param) {
                     xSemaphoreGive(s_dataMutex);
                 }
 
+                // The link can drop and re-associate during the first TLS call
+                // (seen as status 3 -> 5 -> 3). Fetches that guard on
+                // WiFi.isConnected() would bail out instantly and leave their
+                // screens stuck on "Fetching..." until visited again, so wait
+                // for the link to settle before the prefetch.
+                for (int i = 0; i < 150 && WiFi.status() != WL_CONNECTED; i++) delay(100);
+                delay(1000);
+
                 g_firesPending     = true;
                 g_usgsPending      = true;
                 g_outagesPending   = true;
@@ -421,37 +429,40 @@ static void drawSplashArt(TFT_eSPI &tft) {
 }
 
 // ── Splash screen ─────────────────────────────────────────────────────────
-static void showSplash(const char *msg) {
-    tft.fillScreen(COL_BG);
-    drawSplashArt(tft);
+// Takes a target so the capture build can redraw the splash into its sprite.
+static void showSplashTo(TFT_eSPI &g, const char *msg) {
+    g.fillScreen(COL_BG);
+    drawSplashArt(g);
 
     int tw;
 
-    tft.setTextFont(FONT_LG);
-    tft.setTextColor(g_themeColor, COL_BG);
-    tw = tft.textWidth("xXMayDayXx");
-    tft.setCursor((SCREEN_W - tw) / 2, 118);
-    tft.print("xXMayDayXx");
+    g.setTextFont(FONT_LG);
+    g.setTextColor(g_themeColor, COL_BG);
+    tw = g.textWidth("xXMayDayXx");
+    g.setCursor((SCREEN_W - tw) / 2, 118);
+    g.print("xXMayDayXx");
 
-    tft.setTextFont(FONT_MD);
-    tft.setTextColor(COL_WHITE, COL_BG);
-    tw = tft.textWidth("xXCYD-Weather-StationXx");
-    tft.setCursor((SCREEN_W - tw) / 2, 152);
-    tft.print("xXCYD-Weather-StationXx");
+    g.setTextFont(FONT_MD);
+    g.setTextColor(COL_WHITE, COL_BG);
+    tw = g.textWidth("xXCYD-Weather-StationXx");
+    g.setCursor((SCREEN_W - tw) / 2, 152);
+    g.print("xXCYD-Weather-StationXx");
 
-    tft.setTextColor(g_themeColor, COL_BG);
-    tw = tft.textWidth("xXQuantum-SmokeXx");
-    tft.setCursor((SCREEN_W - tw) / 2, 177);
-    tft.print("xXQuantum-SmokeXx");
+    g.setTextColor(g_themeColor, COL_BG);
+    tw = g.textWidth("xXQuantum-SmokeXx");
+    g.setCursor((SCREEN_W - tw) / 2, 177);
+    g.print("xXQuantum-SmokeXx");
 
     if (msg && msg[0]) {
-        tft.setTextFont(FONT_SM);
-        tft.setTextColor(COL_DIM, COL_BG);
-        tw = tft.textWidth(msg);
-        tft.setCursor((SCREEN_W - tw) / 2, 210);
-        tft.print(msg);
+        g.setTextFont(FONT_SM);
+        g.setTextColor(COL_DIM, COL_BG);
+        tw = g.textWidth(msg);
+        g.setCursor((SCREEN_W - tw) / 2, 210);
+        g.print(msg);
     }
 }
+
+static void showSplash(const char *msg) { showSplashTo(tft, msg); }
 
 // ── WiFi ──────────────────────────────────────────────────────────────────
 static void connectWifi() {
@@ -463,6 +474,9 @@ static void connectWifi() {
     WiFi.begin(ssid, pass);
     unsigned long t = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t < 12000) delay(100);
+    // Modem sleep stalls multi-record TLS downloads: the USGS quake list (28 KB)
+    // reads one record then times out.  The display is mains/USB powered.
+    WiFi.setSleep(false);
     s_wifiOk = (WiFi.status() == WL_CONNECTED);
     if (!s_wifiOk) showSplash("WiFi failed!");
 }
@@ -898,6 +912,23 @@ void setup() {
 
 // ─────────────────────────────────────────────────────────────────────────
 void loop() {
+    // Live WiFi state. s_wifiOk used to be sampled once during boot, so a drop
+    // at that instant left every screen and guarded fetch reporting offline for
+    // the whole session even though the link came back seconds later.
+    static unsigned long lastWifiCheck = 0, lastWifiRetry = 0;
+    if (millis() - lastWifiCheck > 2000) {
+        lastWifiCheck = millis();
+        bool connected = (WiFi.status() == WL_CONNECTED);
+        if (connected != s_wifiOk) {
+            s_wifiOk = connected;
+            s_needsRedraw = true;
+        }
+        if (!connected && millis() - lastWifiRetry > 15000) {
+            lastWifiRetry = millis();
+            WiFi.reconnect();
+        }
+    }
+
     // Brightness update (auto=LDR, fixed=no-op)
     static unsigned long lastLdr = 0;
     if (millis() - lastLdr > 5000) {
@@ -1287,7 +1318,8 @@ void loop() {
     screenshotLoop();
     if (screenshotNeedsRedraw()) s_needsRedraw = true;
 
-    // Serial commands: '0'-'9' = screens 0-9, 'A' = Settings (screen 11), 'R' = ready, 'S' = capture
+    // Serial commands: '0'-'9' = screens 0-9, 'A' = Settings (12),
+    // 'B' = News (10), 'C' = Almanac (11), 'R' = ready, 'S' = capture
     if (Serial.available()) {
         int cmd = Serial.read();
         if (cmd == 'R' || cmd == 'r') {
@@ -1325,7 +1357,30 @@ void loop() {
             if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
             gotoScreen(12);
             redraw();
+        } else if (cmd == 'B' || cmd == 'b') {
+            if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
+            gotoScreen(10);                     // News
+            redraw();
+        } else if (cmd == 'C' || cmd == 'c') {
+            if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
+            gotoScreen(11);                     // Almanac (planner)
+            redraw();
         }
+#if CAPTURE_SPRITE
+        if (cmd == 'L' || cmd == 'l') {
+            // Splash art for the screenshot gallery. The panel has already
+            // finished booting by the time a capture can run, so redraw the
+            // splash into the capture sprite and dump it like 'S'.
+            if (s_capReady) {
+                showSplashTo(*s_capSpr, "");
+                Serial.print("RGB332:");
+                Serial.write((uint8_t*)s_capSpr->getPointer(), SCREEN_W * SCREEN_H);
+                Serial.flush();
+            } else {
+                Serial.println("OOM:no sprite");
+            }
+        }
+#endif
         if (cmd == 'S' || cmd == 's') {
             // Force backlight on and redraw so GRAM is fresh for capture
             bool blWasOff = s_backlightOff;

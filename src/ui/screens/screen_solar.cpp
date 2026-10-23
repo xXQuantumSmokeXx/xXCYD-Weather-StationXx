@@ -106,7 +106,7 @@ static void fluxToClass(float flux, char *out, size_t len) {
 }
 
 static bool fetchKp() {
-    static WiFiClientSecure client;
+    WiFiClientSecure client;   // fresh per attempt — a stale TLS session returns -1 forever
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json");
@@ -141,13 +141,15 @@ static bool fetchPlasma() {
     // only the first ~2 KB — newest data is prepended — and parse the first
     // JSON object.  Field mapping: density→proton_density, speed→proton_speed,
     // temperature→proton_temperature.
-    static WiFiClientSecure client;
+    WiFiClientSecure client;   // fresh per attempt — a stale TLS session returns -1 forever
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json");
     http.setTimeout(12000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
-    if (http.GET() != 200) { http.end(); return false; }
+    http.addHeader("Range", "bytes=0-2047");   // don't stream the full 2.5 MB
+    int code = http.GET();
+    if (code != 200 && code != 206) { http.end(); return false; }
 
     static const int BUF_SZ = 2048;
     char buf[BUF_SZ + 1];
@@ -192,13 +194,15 @@ static bool fetchMag() {
     // multi-satellite), far too large for ESP32 JsonDocument.  Stream-read
     // only the first ~2 KB — newest data is prepended — and parse the first
     // JSON object.  Field names bz_gsm and bt are unchanged.
-    static WiFiClientSecure client;
+    WiFiClientSecure client;   // fresh per attempt — a stale TLS session returns -1 forever
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json");
     http.setTimeout(12000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
-    if (http.GET() != 200) { http.end(); return false; }
+    http.addHeader("Range", "bytes=0-2047");   // don't stream the full 1.5 MB
+    int code = http.GET();
+    if (code != 200 && code != 206) { http.end(); return false; }
 
     static const int BUF_SZ = 2048;
     char buf[BUF_SZ + 1];
@@ -237,13 +241,17 @@ static bool fetchMag() {
 }
 
 static bool fetchXray() {
-    static WiFiClientSecure client;
+    WiFiClientSecure client;   // fresh per attempt — a stale TLS session returns -1 forever
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json");
     http.setTimeout(12000);
     http.addHeader("User-Agent", "CYD-Weather/1.0");
-    if (http.GET() != 200) { http.end(); return false; }
+    // Newest reading is the last record; pull only the tail instead of
+    // streaming all 163 KB just to keep the final 500 bytes.
+    http.addHeader("Range", "bytes=-900");
+    int code = http.GET();
+    if (code != 200 && code != 206) { http.end(); return false; }
 
     static const int TAIL_MAX = 500;
     char tail[TAIL_MAX + 1];
@@ -293,7 +301,7 @@ static bool fetchXray() {
 }
 
 static bool fetchFlare() {
-    static WiFiClientSecure client;
+    WiFiClientSecure client;   // fresh per attempt — a stale TLS session returns -1 forever
     client.setInsecure();
     HTTPClient http;
     http.begin(client, "https://services.swpc.noaa.gov/json/goes/primary/xray-flares-latest.json");

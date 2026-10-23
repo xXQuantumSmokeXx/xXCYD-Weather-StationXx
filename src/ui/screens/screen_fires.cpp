@@ -97,8 +97,9 @@ static void fmtAcres(double acres, char *out, size_t len) {
 // ── WFIGS active-fires fetch ─────────────────────────────────────────────────
 // Active, not prescribed, not fully contained. Returns count (0 on failure).
 static int fetchWfigsActive(RawFire *out, int maxOut) {
-    static WiFiClientSecure client;
+    WiFiClientSecure client;   // fresh per attempt — a stale TLS session returns -1 forever
     client.setInsecure();
+    client.setHandshakeTimeout(8);
     HTTPClient http;
     http.begin(client, "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/"
                        "services/WFIGS_Incident_Locations_Current/FeatureServer/0/"
@@ -166,8 +167,9 @@ static int fetchWfigsActive(RawFire *out, int maxOut) {
 // Catches big fires that the active query drops (100% contained, inactive, etc).
 // Excludes prescribed burns. Returns count (0 on failure).
 static int fetchWfigsLarge(RawFire *out, int maxOut) {
-    static WiFiClientSecure client;
+    WiFiClientSecure client;   // fresh per attempt — a stale TLS session returns -1 forever
     client.setInsecure();
+    client.setHandshakeTimeout(8);
     HTTPClient http;
     http.begin(client, "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/"
                        "services/WFIGS_Incident_Locations_Current/FeatureServer/0/"
