@@ -1,11 +1,118 @@
 CYD-Weather TODO
 ================
-Session: 2026-10-23 (v1.5.1 shipped)
+Session: 2026-10-23 (v1.5.1 One Call, v1.5.0 Wire Service)
+    - NEWS moved to the Quantum-Meteor Worker (~1.1 KB instead of a 25 KB
+      RSS pull); NPR is the fallback.
+    - 30 s retry backoff on the data screens — stops the fetch hammering.
+    - Serial 'X' display alias for the top-bar city.
+    - SOLAR, USGS, FIRES and geolocation moved behind the Worker; weather
+      left direct (plain HTTP, no rate limits).
+    - Both variants rebuilt and released for v1.5.0 and v1.5.1.
 
 Release how-to: version = git tag + this file (no code constant). GitHub release
 title is thematic (may differ from the entry title here). Draft → publish via
 `gh release create vX.Y.Z --draft …` then `gh release edit vX.Y.Z --draft=false`,
 attaching both .bin. File is tracked lowercase — `git add todo.txt`, not TODO.txt.
+
+───── Future Ideas ──────────────────────────────────────────────────────────
+[ ] Water / Hydrology — 2 screens (HYDRO + TIDES) — PLANNING (2026-09-27)
+    - Convention: add features in pairs (2 screens) so the settings page grid
+      stays even — 12 rotatable → 14 (2 rows × 7 cols); Settings shifts 12 → 14
+    - Screen 12 HYDRO (freshwater): drought status (US Drought Monitor) +
+      river gages (USGS WaterServices IV + Site bbox query) + flood warnings
+      (filtered from the existing NWS alert feed)
+    - Screen 13 TIDES (marine): tsunami status line + tide table (NOAA CO-OPS
+      predictions, nearest station) + surf/rip risk (NWS surf-zone forecast)
+    - Worker endpoints /hydro + /tides (Quantum-Meteor)
+    - OPEN QUESTION: TIDES is coastal-only — the first screen not universal.
+      Inland users would uncheck page 14 in rotation, or restructure (fold
+      tides into HYDRO? separate "coastal" section?). Pondering 2026-09-27.
+
+[ ] Lightning Strike Tracker — Blitzortung.org (RESEARCH DONE)
+    - Worldwide community network, ~100 strikes/min, free non-commercial w/ attribution
+    - No official REST API — WebSocket: wss://ws1.blitzortung.org/ (mirrors: ws2, ws7, ws8)
+    - Handshake: {"a": 111} (value rotates server-side)
+    - Each frame: single strike, LZW-compressed string (not binary). Decode starts at code 256.
+      First char literal; subsequent: codepoint < 256 → literal; ≥ 256 → dict lookup
+    - Strike shape: {"lat", "lon", "time", "pol", "region", "e": intensity proxy (0.15–1.0)}
+    - Worker approach: Durable Object → persistent WebSocket → rolling 30-min buffer
+    - Reference: fltman/lightings/server/blitzortung.js
+    - ESP32 payload: {"strikes":47,"closest":3.2,"direction":"SW","minutes":5}
+    - Alternative: Xweather (Vaisala) REST API, 15K free calls/mo, strike type/intensity
+
+[x] Power Grid Status — DROPPED (2026-10-22, folded into OUTAGES)
+    - Kardashev keyless load verified working (7/7 ISOs, 283 GW total), but
+      fuel mix was unusable: PJM absent, CAISO timestamps +16 h, and the
+      aggregate came out 24.6% solar / 6.3% wind. ISO load block was cut.
+    - EIA Grid Monitor needs an API key — excluded by the no-keys rule.
+    - Remaining idea: true national load/mix if a key-free source appears.
+
+[x] Power Outage Tracking — SHIPPED as OUTAGES (2026-10-22)
+    - Keyless nationwide summary found: DOE/ORNL ODIN via openenergyhub.ornl.gov
+      (OpenDataSoft API, no key, county incidents, sum/group_by aggregations).
+      The earlier "no single free nationwide API exists" note is obsolete.
+    - FEMA EAGLE-I FeatureServer still requires a token; EAGLE-I historic
+      dataset is access-restricted.
+    - MassOutage (massoutage.com) has better coverage + true history but its
+      keyless tier is 5 req / 5 min per IP — unusable from a Worker's shared
+      egress IPs. Kept as an optional keyed upgrade in the Worker.
+
+[ ] Internet Outage Monitor — BGP route monitoring, carrier status
+    - Sources: Cloudflare Radar, ThousandEyes, DownDetector
+    - Answers "is it just me, or is the internet down?"
+
+[ ] GPS / GNSS Status — WAAS/DGPS corrections, satellite count, dilution of precision
+    - Tactical: knowing whether GPS is degraded before relying on it
+
+[ ] Cell Tower Status — nearby tower proximity, carrier signal context
+    - Sources: OpenCelliD, carrier APIs
+
+[ ] NWS Watches & Warnings (Expanded) — flood, tsunami, tornado, hurricane watches
+    - Already pulling active alerts; expand to pre-event watches
+
+[ ] Disaster Declarations — FEMA, state of emergency, evacuation zones
+    - Sources: FEMA API, state emergency management feeds
+
+[ ] Aviation — NOTAMs & TFRs near location
+    - TFRs often precede news: VIP movement, wildfire air ops, disaster response
+    - Sources: FAA NOTAM API, SkyVector
+
+[ ] Aviation — ADS-B Traffic Density
+    - Pattern disruption as signal: sudden silence (ground stop) or unusual clustering
+    - Sources: ADS-B Exchange API, OpenSky Network
+
+[ ] ISS Pass Predictor — api.open-notify.org (free, no key)
+    - Upcoming visible ISS passes: time, duration, elevation, direction for next 3-5
+
+[ ] Starlink Trains — visible satellite train predictions
+    - Satellite tracking APIs or TLE-based orbital prediction
+
+[ ] Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
+    - Dropping "CYD" for future ports (larger screens, other boards)
+    - Both names hardware-agnostic, one-word, honest about what the device does
+
+───── Completed ─────────────────────────────────────────────────────────────
+
+[x] OUTAGES — MassOutage key upgrade — passed on (2026-10-23)
+    - ODIN stays the shipped source; the key route is kept
+      below for reference if that decision ever changes.
+    - Free account: massoutage.com/account/api → copy the bearer key
+    - Key lives in a local text file, NOT the repo:
+        quantum-meteor-api/massoutage_key.txt   (gitignored — same idea as
+        wifi.txt for the CYD: creds on disk, never committed)
+    - Push it to the Worker as a secret (server-side; the CYD never sees it):
+        npx wrangler secret put MO_API_KEY < quantum-meteor-api\massoutage_key.txt
+      Write the file with NO trailing newline (a stray \n corrupts the
+      Authorization header) — e.g. Set-Content -NoNewline.
+    - No code change: buildMassOutage() activates whenever env.MO_API_KEY
+      exists; without it the Worker uses ODIN
+    - Expected result: source "MassOutage", national ~76k (vs ODIN's ~11k),
+      the provider's real 24 h series immediately, and a county count back
+      in the incidents row
+    - Verify: /grid returns source MassOutage; the header number rises
+
+[x] OUTAGES — wording: "560 incidents" → "ACTIVE REPORTS" — passed on (2026-10-23)
+    - Each count is a utility/county outage record, not a distinct event
 
 v1.5.1 — One Call
 ------------------------------
@@ -122,116 +229,14 @@ v1.4.8 — Grid Down
       "Local state unavailable" all use the active theme color.
 
 [x] OUTAGES — verify on device (2026-10-22)
-    - Both charts rendered (national + New Jersey), tap-title refresh works,
+    - Both charts rendered (national + Local), tap-title refresh works,
       no dim text, REPORTED OUT + ODIN tag in the incidents row
     - Screenshots captured via the capture build and added to the README
       gallery (AEWS / FIRETEAM / OUTAGES)
 
-[ ] OUTAGES — MassOutage key upgrade (planned)
-    - Free account: massoutage.com/account/api → copy the bearer key
-    - Key lives in a local text file, NOT the repo:
-        quantum-meteor-api/massoutage_key.txt   (gitignored — same idea as
-        wifi.txt for the CYD: creds on disk, never committed)
-    - Push it to the Worker as a secret (server-side; the CYD never sees it):
-        npx wrangler secret put MO_API_KEY < quantum-meteor-api\massoutage_key.txt
-      Write the file with NO trailing newline (a stray \n corrupts the
-      Authorization header) — e.g. Set-Content -NoNewline.
-    - No code change: buildMassOutage() activates whenever env.MO_API_KEY
-      exists; without it the Worker uses ODIN
-    - Expected result: source "MassOutage", national ~76k (vs ODIN's ~11k),
-      the provider's real 24 h series immediately, and a county count back
-      in the incidents row
-    - Verify: /grid returns source MassOutage; the header number rises
-
-[ ] OUTAGES — full 24 h gallery screenshot (after 2026-10-23 16:00 UTC)
-    - Needs the capture build:
-        $env:PLATFORMIO_BUILD_FLAGS="-DCAPTURE_SPRITE=1"
-        pio run -e cyd_weather -t upload
-    - python screenshot.py COM10 8, edit location out, then rebuild the
-      release env and reflash
-
-[ ] OUTAGES — wording: "560 incidents" → "ACTIVE REPORTS" (optional)
-    - Each count is a utility/county outage record, not a distinct event
-
-───── Future Ideas ─────────────────────────────────────────────────────────────
-
-[ ] Water / Hydrology — 2 screens (HYDRO + TIDES) — PLANNING (2026-09-27)
-    - Convention: add features in pairs (2 screens) so the settings page grid
-      stays even — 12 rotatable → 14 (2 rows × 7 cols); Settings shifts 12 → 14
-    - Screen 12 HYDRO (freshwater): drought status (US Drought Monitor) +
-      river gages (USGS WaterServices IV + Site bbox query) + flood warnings
-      (filtered from the existing NWS alert feed)
-    - Screen 13 TIDES (marine): tsunami status line + tide table (NOAA CO-OPS
-      predictions, nearest station) + surf/rip risk (NWS surf-zone forecast)
-    - Worker endpoints /hydro + /tides (Quantum-Meteor)
-    - OPEN QUESTION: TIDES is coastal-only — the first screen not universal.
-      Inland users would uncheck page 14 in rotation, or restructure (fold
-      tides into HYDRO? separate "coastal" section?). Pondering 2026-09-27.
-
-[ ] Lightning Strike Tracker — Blitzortung.org (RESEARCH DONE)
-    - Worldwide community network, ~100 strikes/min, free non-commercial w/ attribution
-    - No official REST API — WebSocket: wss://ws1.blitzortung.org/ (mirrors: ws2, ws7, ws8)
-    - Handshake: {"a": 111} (value rotates server-side)
-    - Each frame: single strike, LZW-compressed string (not binary). Decode starts at code 256.
-      First char literal; subsequent: codepoint < 256 → literal; ≥ 256 → dict lookup
-    - Strike shape: {"lat", "lon", "time", "pol", "region", "e": intensity proxy (0.15–1.0)}
-    - Worker approach: Durable Object → persistent WebSocket → rolling 30-min buffer
-    - Reference: fltman/lightings/server/blitzortung.js
-    - ESP32 payload: {"strikes":47,"closest":3.2,"direction":"SW","minutes":5}
-    - Alternative: Xweather (Vaisala) REST API, 15K free calls/mo, strike type/intensity
-
-[x] Power Grid Status — DROPPED (2026-10-22, folded into OUTAGES)
-    - Kardashev keyless load verified working (7/7 ISOs, 283 GW total), but
-      fuel mix was unusable: PJM absent, CAISO timestamps +16 h, and the
-      aggregate came out 24.6% solar / 6.3% wind. ISO load block was cut.
-    - EIA Grid Monitor needs an API key — excluded by the no-keys rule.
-    - Remaining idea: true national load/mix if a key-free source appears.
-
-[x] Power Outage Tracking — SHIPPED as OUTAGES (2026-10-22)
-    - Keyless nationwide summary found: DOE/ORNL ODIN via openenergyhub.ornl.gov
-      (OpenDataSoft API, no key, county incidents, sum/group_by aggregations).
-      The earlier "no single free nationwide API exists" note is obsolete.
-    - FEMA EAGLE-I FeatureServer still requires a token; EAGLE-I historic
-      dataset is access-restricted.
-    - MassOutage (massoutage.com) has better coverage + true history but its
-      keyless tier is 5 req / 5 min per IP — unusable from a Worker's shared
-      egress IPs. Kept as an optional keyed upgrade in the Worker.
-
-[ ] Internet Outage Monitor — BGP route monitoring, carrier status
-    - Sources: Cloudflare Radar, ThousandEyes, DownDetector
-    - Answers "is it just me, or is the internet down?"
-
-[ ] GPS / GNSS Status — WAAS/DGPS corrections, satellite count, dilution of precision
-    - Tactical: knowing whether GPS is degraded before relying on it
-
-[ ] Cell Tower Status — nearby tower proximity, carrier signal context
-    - Sources: OpenCelliD, carrier APIs
-
-[ ] NWS Watches & Warnings (Expanded) — flood, tsunami, tornado, hurricane watches
-    - Already pulling active alerts; expand to pre-event watches
-
-[ ] Disaster Declarations — FEMA, state of emergency, evacuation zones
-    - Sources: FEMA API, state emergency management feeds
-
-[ ] Aviation — NOTAMs & TFRs near location
-    - TFRs often precede news: VIP movement, wildfire air ops, disaster response
-    - Sources: FAA NOTAM API, SkyVector
-
-[ ] Aviation — ADS-B Traffic Density
-    - Pattern disruption as signal: sudden silence (ground stop) or unusual clustering
-    - Sources: ADS-B Exchange API, OpenSky Network
-
-[ ] ISS Pass Predictor — api.open-notify.org (free, no key)
-    - Upcoming visible ISS passes: time, duration, elevation, direction for next 3-5
-
-[ ] Starlink Trains — visible satellite train predictions
-    - Satellite tracking APIs or TLE-based orbital prediction
-
-[ ] Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
-    - Dropping "CYD" for future ports (larger screens, other boards)
-    - Both names hardware-agnostic, one-word, honest about what the device does
-
-───── Completed ────────────────────────────────────────────────────────────────
+[x] OUTAGES — full 24 h gallery screenshot (2026-10-23)
+    - Gallery image accepted as-is; the 24 h sparkline was not
+      re-captured. Closed by the Commander, 2026-10-23.
 
 v1.4.7 — Under Watch (2026-10-08)
 [x] Volcanoes screen — USGS elevated statuses merged with new-activity feeds
@@ -472,3 +477,4 @@ v1.2.9
 [x] Improve battery percentage accuracy (partial — Layer 1 done in v1.3.1)
     - Added EMA filter (alpha=0.12), 50-sample ADC averaging
     - Added BATT_SAG_OFFSET_MV, configurable BATT_DIVIDER_RATIO
+
