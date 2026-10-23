@@ -1,13 +1,31 @@
 CYD-Weather TODO
 ================
-Session: 2026-10-23 (v1.4.9 shipped; follow-ups below are unreleased)
+Session: 2026-10-23 (v1.5.1 shipped)
 
 Release how-to: version = git tag + this file (no code constant). GitHub release
 title is thematic (may differ from the entry title here). Draft → publish via
 `gh release create vX.Y.Z --draft …` then `gh release edit vX.Y.Z --draft=false`,
 attaching both .bin. File is tracked lowercase — `git add todo.txt`, not TODO.txt.
 
-Unreleased — after v1.4.9
+v1.5.1 — One Call
+------------------------------
+[x] Remaining direct sources moved behind the Worker (2026-10-23)
+    - /solar — one request replaces five SWPC calls (Kp, wind, mag, x-rays,
+      flares) plus the DONKI CME lookup; two of those were Range reads against
+      2.5 MB and 1.5 MB files. Payload: 239 bytes.
+    - /quakes — USGS CSV (7.6 KB) parsed server-side into 2.1 KB of JSON.
+    - /fire — both ArcGIS queries merged, deduped by IrwinID and sorted in the
+      Worker; device gets one 5.1 KB list (POOState trimmed to a 2-letter code).
+    - /geo — Cloudflare's own cf.latitude/longitude/city/timezone replaces the
+      ip-api.com call, with a region/country fallback when no city is given.
+      City granularity can differ from ip-api; coordinates and timezone agree
+      closely enough for the weather grids.
+    - Weather (Open-Meteo + NWS) deliberately left direct: plain HTTP, no rate
+      limits, and the parsing is the most intricate on the device.
+    - Verified on the panel: SOLAR (Kp 4.3 ACTIVE, wind 431, Bz -2.0), FIRES
+      (30 fires, 2-letter states), USGS (36 quakes).
+
+v1.5.0 — Wire Service
 ------------------------------
 [x] NEWS served by the Worker (2026-10-23)
     - The screen had pulled Reddit's /r/news RSS directly since it was written
@@ -26,20 +44,6 @@ Unreleased — after v1.4.9
     - Serial 'X' + text sets an NVS-backed display name ('X' alone clears it);
       lat/lon and every API call keep the real location. Removes the need to
       paint the city out of each screenshot by hand.
-[x] Remaining direct sources moved behind the Worker (2026-10-23)
-    - /solar — one request replaces five SWPC calls (Kp, wind, mag, x-rays,
-      flares) plus the DONKI CME lookup; two of those were Range reads against
-      2.5 MB and 1.5 MB files. Payload: 239 bytes.
-    - /quakes — USGS CSV (7.6 KB) parsed server-side into 2.1 KB of JSON.
-    - /fire — both ArcGIS queries merged, deduped by IrwinID and sorted in the
-      Worker; device gets one 5.1 KB list (POOState trimmed to a 2-letter code).
-    - /geo — Cloudflare's own cf.latitude/longitude/city/timezone replaces the
-      ip-api.com call. Note: city granularity can differ from ip-api.
-    - Weather (Open-Meteo + NWS) deliberately left direct: plain HTTP, no rate
-      limits, and the parsing is the most intricate on the device.
-    - Verified on the panel: SOLAR (Kp 4.3 ACTIVE, wind 431, Bz -2.0), FIRES
-      (30 fires, 2-letter states), USGS (36 quakes).
-
 [x] NEWS gallery image (2026-10-23)
     - Captured on the Worker feed (eight headlines, full page), top bar
       redacted, saved as ScreenShots/NEWS.png.
