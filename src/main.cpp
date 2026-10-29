@@ -1103,13 +1103,15 @@ void loop() {
         if (s_screen == 10) s_needsRedraw = true;
     }
 
-    // Clock tick — only update the time text, not a full redraw
+    // Clock tick — only update the time text, not a full redraw.  Every page
+    // calls drawTopbar with this same label array and none paint above
+    // CONTENT_Y, so no page needs excluding.  SOLAR, FIRES, USGS and OUTAGES
+    // used to be skipped here, which left their top-bar clock frozen between
+    // full redraws (up to an hour on a page nobody navigates away from).
     if (millis() - s_lastMinute > 60000) {
-        if (s_screen <= 2 || s_screen == 4 || s_screen == 5 || s_screen >= 9) {
-            char timeStr[10]; timeGetShort(timeStr);
-            static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","AEWS","FIRES","USGS","OUTAGES","VOLCANOES","NEWS","ALMANAC","SETTINGS"};
-            drawTopbarTime(tft, timeStr, labels[s_screen]);
-        }
+        char timeStr[10]; timeGetShort(timeStr);
+        static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","AEWS","FIRES","USGS","OUTAGES","VOLCANOES","NEWS","ALMANAC","SETTINGS"};
+        drawTopbarTime(tft, timeStr, labels[s_screen]);
         s_lastMinute = millis();
     }
 

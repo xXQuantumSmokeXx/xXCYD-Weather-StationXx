@@ -1,13 +1,14 @@
 CYD-Weather TODO
 ================
-Session: 2026-10-23 (v1.5.1 One Call, v1.5.0 Wire Service)
-    - NEWS moved to the Quantum-Meteor Worker (~1.1 KB instead of a 25 KB
-      RSS pull); NPR is the fallback.
-    - 30 s retry backoff on the data screens — stops the fetch hammering.
-    - Serial 'X' display alias for the top-bar city.
-    - SOLAR, USGS, FIRES and geolocation moved behind the Worker; weather
-      left direct (plain HTTP, no rate limits).
-    - Both variants rebuilt and released for v1.5.0 and v1.5.1.
+Session: 2026-10-29 (v1.5.2 Time Check)
+    - SOLAR shows SYNC MM-DD HH:MM at the right end of the 24H Kp History
+      row — the last successful fetch, with the date so a screen that missed
+      a night of fetches can't pass for current data.
+    - The Worker was verified live against SWPC (payload matched the source
+      rows); the page simply had no way to show its age.
+    - Top-bar clock now ticks every minute on all pages; SOLAR, FIRES, USGS
+      and OUTAGES used to freeze until the next full redraw.
+    - Both variants rebuilt for v1.5.2.
 
 Release how-to: version = git tag + this file (no code constant). GitHub release
 title is thematic (may differ from the entry title here). Draft → publish via
@@ -39,23 +40,6 @@ attaching both .bin. File is tracked lowercase — `git add todo.txt`, not TODO.
     - Reference: fltman/lightings/server/blitzortung.js
     - ESP32 payload: {"strikes":47,"closest":3.2,"direction":"SW","minutes":5}
     - Alternative: Xweather (Vaisala) REST API, 15K free calls/mo, strike type/intensity
-
-[x] Power Grid Status — DROPPED (2026-10-22, folded into OUTAGES)
-    - Kardashev keyless load verified working (7/7 ISOs, 283 GW total), but
-      fuel mix was unusable: PJM absent, CAISO timestamps +16 h, and the
-      aggregate came out 24.6% solar / 6.3% wind. ISO load block was cut.
-    - EIA Grid Monitor needs an API key — excluded by the no-keys rule.
-    - Remaining idea: true national load/mix if a key-free source appears.
-
-[x] Power Outage Tracking — SHIPPED as OUTAGES (2026-10-22)
-    - Keyless nationwide summary found: DOE/ORNL ODIN via openenergyhub.ornl.gov
-      (OpenDataSoft API, no key, county incidents, sum/group_by aggregations).
-      The earlier "no single free nationwide API exists" note is obsolete.
-    - FEMA EAGLE-I FeatureServer still requires a token; EAGLE-I historic
-      dataset is access-restricted.
-    - MassOutage (massoutage.com) has better coverage + true history but its
-      keyless tier is 5 req / 5 min per IP — unusable from a Worker's shared
-      egress IPs. Kept as an optional keyed upgrade in the Worker.
 
 [ ] Internet Outage Monitor — BGP route monitoring, carrier status
     - Sources: Cloudflare Radar, ThousandEyes, DownDetector
@@ -113,6 +97,34 @@ attaching both .bin. File is tracked lowercase — `git add todo.txt`, not TODO.
 
 [x] OUTAGES — wording: "560 incidents" → "ACTIVE REPORTS" — passed on (2026-10-23)
     - Each count is a utility/county outage record, not a distinct event
+
+[x] Power Outage Tracking — SHIPPED as OUTAGES (2026-10-22)
+    - Keyless nationwide summary found: DOE/ORNL ODIN via openenergyhub.ornl.gov
+      (OpenDataSoft API, no key, county incidents, sum/group_by aggregations).
+      The earlier "no single free nationwide API exists" note is obsolete.
+    - FEMA EAGLE-I FeatureServer still requires a token; EAGLE-I historic
+      dataset is access-restricted.
+    - MassOutage (massoutage.com) has better coverage + true history but its
+      keyless tier is 5 req / 5 min per IP — unusable from a Worker's shared
+      egress IPs. Kept as an optional keyed upgrade in the Worker.
+
+[x] Power Grid Status — DROPPED (2026-10-22, folded into OUTAGES)
+    - Kardashev keyless load verified working (7/7 ISOs, 283 GW total), but
+      fuel mix was unusable: PJM absent, CAISO timestamps +16 h, and the
+      aggregate came out 24.6% solar / 6.3% wind. ISO load block was cut.
+    - EIA Grid Monitor needs an API key — excluded by the no-keys rule.
+    - Remaining idea: true national load/mix if a key-free source appears.
+
+v1.5.2 — Time Check
+------------------------------
+[x] SOLAR timestamp and top-bar clock fix (2026-10-29)
+    - SYNC MM-DD HH:MM drawn at the right end of the 24H Kp History row, in
+      the theme colour. s_solar.sync existed but was never rendered, and the
+      flare/CME fields are last-event values, so a quiet sun read as stale.
+    - Kp history row and bars moved down for spacing.
+    - Minute clock tick no longer filters by screen index: every page calls
+      drawTopbar with the same label array and nothing paints above CONTENT_Y.
+    - Both variants rebuilt and released for v1.5.2.
 
 v1.5.1 — One Call
 ------------------------------

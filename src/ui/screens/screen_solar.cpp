@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <time.h>
 
 #define SOLAR_CACHE_MS (15UL * 60UL * 1000UL)
 
@@ -35,7 +36,7 @@ struct SolarState {
     char flareClass[8] = "NONE";
     char flareTime[14] = "---";
     char cmeTime[14] = "NONE";
-    char sync[10] = "--:--";
+    char sync[16] = "--:--";
 };
 
 static SolarState s_solar;
@@ -66,10 +67,18 @@ static const char *auroraLabel(float kp) {
     return "LIKELY";
 }
 
+// "MM-DD HH:MM" rather than just HH:MM: if the screen went a day without a
+// successful fetch, the time alone would look current against a 9:31 clock.
 static void stampSync() {
-    char t[10];
-    timeGetShort(t);
-    snprintf(s_solar.sync, sizeof(s_solar.sync), "%s", t);
+    time_t now = time(nullptr);
+    if (now < 1700000000L) {
+        snprintf(s_solar.sync, sizeof(s_solar.sync), "--:--");
+        return;
+    }
+    struct tm tm;
+    localtime_r(&now, &tm);
+    snprintf(s_solar.sync, sizeof(s_solar.sync), "%02d-%02d %02d:%02d",
+             tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min);
 }
 
 static bool stale() {
@@ -240,17 +249,27 @@ static void drawSolarContent(TFT_eSPI &tft) {
     tft.print(al);
 
     int chartY = CONTENT_Y + 104;
-    tft.drawFastHLine(0, chartY - 8, SCREEN_W, g_themeColor);
+    tft.drawFastHLine(0, chartY - 2, SCREEN_W, g_themeColor);
     tft.setTextFont(FONT_SM);
     tft.setTextColor(g_themeColor, COL_BG);
-    tft.setCursor(8, chartY - 5);
+    tft.setCursor(8, chartY + 1);
     tft.print("24H Kp HISTORY");
+
+    // Last successful fetch, right-aligned on the same row — the only free
+    // strip on this page (the bars start at chartY + 17).  Same colour as the
+    // label: COL_DIM was too faint to spot on the panel.
+    char stamp[24];
+    snprintf(stamp, sizeof(stamp), "SYNC %s", s_solar.sync);
+    tft.setTextColor(g_themeColor, COL_BG);
+    int sw = tft.textWidth(stamp);
+    tft.setCursor(SCREEN_W - 8 - sw, chartY + 1);
+    tft.print(stamp);
 
     const int barW = 30;
     const int gap = 8;
     const int maxH = 56;
     const int startX = (SCREEN_W - (8 * barW + 7 * gap)) / 2;
-    const int baseY = chartY + 68;
+    const int baseY = chartY + 73;
     for (int i = 0; i < 8; ++i) {
         float kp = s_solar.kpHist[i];
         int h = (int)(kp / 9.0f * maxH);
