@@ -28,6 +28,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # checkout fetches the tagged commit; if it also materialises
+      # refs/tags/$TAG it can be a lightweight ref pointing at that commit,
+      # whose %(contents:subject) is the commit subject - not the tag message.
+      # Fetch the real tag object and overwrite whatever is there.
+      - name: Fetch tag annotation
+        run: |
+          git fetch --force origin \
+            "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          test "$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")" = tag
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -36,6 +46,12 @@ jobs:
           TITLE="$(git for-each-ref --format='%(contents:subject)' "refs/tags/$TAG")"
           BODY="$(git for-each-ref --format='%(contents:body)' "refs/tags/$TAG" | sed '/^Co-Authored-By:/d')"
           FILES="CYD-Weather-1usb.bin CYD-Weather-2usb.bin"
+
+          # Fail loudly rather than publish the commit subject as the title.
+          if [ "$(git cat-file -t "refs/tags/$TAG")" != "tag" ]; then
+            echo "::error::$TAG is not an annotated tag in this checkout"
+            exit 1
+          fi
 
           [ -n "$TITLE" ] || TITLE="$TAG"
           [ -n "$BODY" ] || BODY="$TITLE"
