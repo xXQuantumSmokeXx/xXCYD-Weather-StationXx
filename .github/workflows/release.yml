@@ -1,0 +1,54 @@
+name: Release
+
+# A tag push is the whole release:
+#   1. python -m platformio run -e cyd_weather -e cyd_weather_2usb
+#   2. git add -A && git commit -m "..."
+#   3. git tag -a vX.Y.Z -m "vX.Y.Z - Title" -m "- notes..."
+#   4. git push origin master && git push origin vX.Y.Z
+#
+# The annotated tag message becomes the release: first line = title, rest =
+# notes. Both images are attached from the tagged commit. No local gh, no
+# PAT, no token files - the runner's built-in token does the API call.
+# Re-running a tag (delete + push, or a new tag) refreshes the release.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          TITLE="$(git for-each-ref --format='%(contents:subject)' "refs/tags/$TAG")"
+          BODY="$(git for-each-ref --format='%(contents:body)' "refs/tags/$TAG" | sed '/^Co-Authored-By:/d')"
+          FILES="CYD-Weather-1usb.bin CYD-Weather-2usb.bin"
+
+          [ -n "$TITLE" ] || TITLE="$TAG"
+          [ -n "$BODY" ] || BODY="$TITLE"
+
+          # Both images must be in the tagged commit.
+          for f in $FILES; do
+            test -f "$f" || { echo "::error::missing $f in $TAG"; exit 1; }
+          done
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists - refreshing title, notes and assets."
+            gh release edit "$TAG" --title "$TITLE" --notes "$BODY"
+            gh release upload "$TAG" --clobber $FILES
+          else
+            gh release create "$TAG" --title "$TITLE" --notes "$BODY" $FILES
+          fi
