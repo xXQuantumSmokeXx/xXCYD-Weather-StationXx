@@ -16,32 +16,21 @@ title is thematic (may differ from the entry title here). Draft → publish via
 attaching both .bin. File is tracked lowercase — `git add todo.txt`, not TODO.txt.
 
 ───── 2026-10-29 — future list pruned ───────────────────────────────────────
-Three candidates. The rest sit under Not planned with a reason. Constraints:
+Two candidates. The rest sit under Not planned with a reason. Constraints:
 the SETTINGS grid caps at 16 pages (12 today → 14 at 2×7 → 16 at 2×8, no third
 row), and the Worker is shared with MayDay — /outbreaks, /cme, /fireballs,
 /ews and /volcanoes are Nova/portal contracts, not CYD-only.
 
-Sequence: Phase 0 FIRES stamp → ICE (page 13). Lightning needs a Worker-only
-prototype first; slots 14-16 stay open. Rename is v2.0, no page slot. Water and
-ORBIT were dropped 2026-10-29.
+Sequence: Phase 0 FIRES stamp → Lightning (Worker-only prototype first; slots
+13-16 stay open) → rename at v2.0, no page slot. Water, ORBIT and ICE were
+dropped 2026-10-29.
 
 Phase 0: an empty FIRES result sets s_fetchedMs = 0 while s_fetchedOnce stays
 true, so stale() never clears and the draw loop re-fetches on every free tick
 (the v1.5.0 backoff only covers !s_fetchedOnce); tap-refresh has the same shape.
 
-───── Future Ideas — three final candidates ─────────────────────────────────
-[ ] 1. ICE — freeze/thaw + black-ice window — 1 screen — NEXT
-    - Computed page, not a feed: black-ice window, refreeze after daytime melt,
-      pipe-freeze hours, bridge/shade risk, NWS winter alert line.
-    - Data: add dewpoint_2m, snowfall, snow_depth to the existing Open-Meteo
-      hourly call (weather.cpp ~177). Keyless, no Worker change.
-    - Estimate road-surface temp (air temp minus calm/clear-night offset), flag
-      hours where surface <= 32F and (dewpoint >= 30F or precip). Show the
-      window plus a HIGH/MED/LOW band, labeled as an estimate.
-    - Page 13 (2×7, one empty cell). Why winter: 34F and clear still glazes
-      bridges at 5 a.m., and refreeze after melt is invisible in forecasts.
-
-[ ] 2. Lightning — Blitzortung.org (RESEARCH DONE)
+───── Future Ideas ──────────────────────────────────────────────────────────
+[ ] 1. Lightning — Blitzortung.org (RESEARCH DONE)
     - Community network, ~100 strikes/min, free non-commercial w/ attribution.
     - WebSocket wss://ws1.blitzortung.org/ (mirrors ws2/ws7/ws8); handshake
       {"a":111}; frames are LZW-compressed strings (dict starts at 256); strike
@@ -50,18 +39,19 @@ true, so stale() never clears and the draw loop re-fetches on every free tick
       buffer. Reference fltman/lightings/server/blitzortung.js.
     - ESP32 payload: {"strikes":47,"closest":3.2,"direction":"SW","minutes":5}
     - Alternative: Xweather/Vaisala REST, 15K free calls/mo.
-    - Needs a Worker-only prototype for a week before firmware; slots 14-16
+    - Needs a Worker-only prototype for a week before firmware; slots 13-16
       are open.
 
-[ ] 3. Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
+[ ] 2. Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
     - Drop "CYD" for future ports (larger screens, other boards, T-Deck). Both
       names hardware-agnostic, one-word, honest.
     - Do it at v2.0 with the directory/URL change; no page slot.
 
 ───── Not planned / folded (kept so they don't resurface) ───────────────────
-[-] Water / Hydrology (HYDRO + TIDES) — dropped 2026-10-29 in favour of the
-    winter ICE screen. Sources and the /hydro + /tides names stay valid if it
-    ever returns.
+[-] Water / Hydrology (HYDRO + TIDES) — dropped 2026-10-29. Sources and the
+    /hydro + /tides names stay valid if it ever returns.
+[-] ICE — freeze/thaw + black-ice window — dropped 2026-10-29. The road-surface
+    estimate was too speculative for a display slot.
 [-] ORBIT — ISS passes + Starlink trains — dropped 2026-10-29 to keep the list
     winter-focused. Celestrak TLEs + SGP4 in the Worker is the route if it
     returns; it needs one page.
