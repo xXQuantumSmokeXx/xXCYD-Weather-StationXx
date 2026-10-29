@@ -61,10 +61,13 @@ jobs:
             test -f "$f" || { echo "::error::missing $f in $TAG"; exit 1; }
           done
 
+          # Deleting and re-pushing a tag leaves its release as a draft, so
+          # --draft=false on edit is what makes a re-run public again.
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists - refreshing title, notes and assets."
-            gh release edit "$TAG" --title "$TITLE" --notes "$BODY"
+            gh release edit "$TAG" --title "$TITLE" --notes "$BODY" --draft=false
             gh release upload "$TAG" --clobber $FILES
           else
-            gh release create "$TAG" --title "$TITLE" --notes "$BODY" $FILES
+            gh release create "$TAG" --title "$TITLE" --notes "$BODY" \
+              --draft=false $FILES
           fi
