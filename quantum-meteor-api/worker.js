@@ -55,9 +55,9 @@ export default {
       return await serveSolar();
     }
 
-    // GET /quakes — USGS M3.5+ list as compact JSON
+    // GET /quakes — USGS list as compact JSON (global, or ?us=1 for the MAP)
     if (url.pathname === "/quakes") {
-      return await serveQuakes();
+      return await serveQuakes(url);
     }
 
     // GET /fire — merged WFIGS large + active wildfire list
@@ -1221,28 +1221,87 @@ async function serveSolar() {
   return out;
 }
 
-// ── /quakes — USGS M3.5+ as compact JSON ──────────────────────────────────
+// ── /quakes — USGS as compact JSON ────────────────────────────────────────
+// Default: global M3.5+ (the USGS screen).  ?us=1 returns CONUS events over
+// ?days=30 for the MAP page, with lat/lon on every item and a state-name /
+// abbreviation filter so border slivers of Canada/Mexico don't appear.
 // CSV is 7.6 KB for 36 events; GeoJSON was 28 KB.
-async function serveQuakes() {
+const CONUS_STATES = [
+  "Alabama", "Arizona", "Arkansas", "California", "Colorado", "Connecticut",
+  "Delaware", "Florida", "Georgia", "Idaho", "Illinois", "Indiana", "Iowa",
+  "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts",
+  "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska",
+  "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York",
+  "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon",
+  "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
+  "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
+  "West Virginia", "Wisconsin", "Wyoming", "District of Columbia",
+];
+
+// USGS place strings mix full names ("Whites City, New Mexico") and
+// abbreviations ("Lake Pillsbury, CA") depending on the contributing network.
+const CONUS_ABBR = [
+  "AL", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "ID", "IL", "IN",
+  "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT",
+  "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA",
+  "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+  "DC",
+];
+
+function isConusPlace(place) {
+  return CONUS_STATES.some((s) => place.includes(`, ${s}`)) ||
+         CONUS_ABBR.some((s) => place.includes(`, ${s}`));
+}
+
+async function serveQuakes(url) {
   const cache = caches.default;
-  const CACHE_KEY = "https://qsmoke-cache/quakes-v1";
+  const us = url.searchParams.get("us") === "1";
+  const minMag = Math.min(9, Math.max(0, parseFloat(url.searchParams.get("min")) || 3.5));
+  const days = Math.min(30, Math.max(1, parseInt(url.searchParams.get("days"), 10) || 7));
+  // Constants are compile-time, so the cache key only needs the parameters.
+  const CACHE_KEY = us
+    ? `https://qsmoke-cache/quakes-us-v1-${minMag}-${days}`
+    : "https://qsmoke-cache/quakes-v2";
   const fresh = await cache.match(CACHE_KEY);
   if (fresh) return fresh;
 
-  const csv = await fetchUpstream(
-    "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv&minmagnitude=3.5&limit=36&orderby=time"
-  );
+  let query;
+  if (us) {
+    const start = new Date(Date.now() - days * 86400000)
+      .toISOString().slice(0, 19);
+    query =
+      "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv" +
+      `&starttime=${start}&minlatitude=24.4&maxlatitude=49.6` +
+      `&minlongitude=-125&maxlongitude=-66&minmagnitude=${minMag}` +
+      `&limit=100&orderby=time`;
+  } else {
+    query =
+      "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv" +
+      `&minmagnitude=${minMag}&limit=36&orderby=time`;
+  }
+
+  const csv = await fetchUpstream(query);
   const items = [];
   if (csv) {
     const lines = csv.split("\n");
-    for (let i = 1; i < lines.length && items.length < 36; i++) {
+    for (let i = 1; i < lines.length && items.length < 60; i++) {
       const line = lines[i].trim();
       if (!line) continue;
       const f = csvFields(line);
       if (f.length < 14) continue;
       const mag = parseFloat(f[4]);
       if (isNaN(mag)) continue;
-      items.push({ m: mag, p: f[13], w: mdFromDate(f[0]) });
+      const place = f[13];
+      if (us && !isConusPlace(place)) continue;
+      const lat = parseFloat(f[1]);
+      const lon = parseFloat(f[2]);
+      items.push({
+        m: mag,
+        p: place,
+        w: mdFromDate(f[0]),
+        la: isNaN(lat) ? null : Math.round(lat * 100) / 100,
+        lo: isNaN(lon) ? null : Math.round(lon * 100) / 100,
+      });
     }
   }
 
@@ -1272,9 +1331,12 @@ function csvFields(line) {
 const WFIGS =
   "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/" +
   "WFIGS_Incident_Locations_Current/FeatureServer/0/query";
+// returnGeometry is only the fallback: brand-new incidents often have null
+// InitialLatitude/InitialLongitude but do have a point geometry.
 const WFIGS_FIELDS =
   "&outFields=IncidentName,FireDiscoveryDateTime,IncidentSize,FireCause," +
-  "PercentContained,POOState,IrwinID&returnGeometry=false&f=json";
+  "PercentContained,POOState,IrwinID,InitialLatitude,InitialLongitude" +
+  "&returnGeometry=true&outSR=4326&f=json";
 
 async function wfigsRows(where, orderBy, count) {
   const url =
@@ -1286,6 +1348,7 @@ async function wfigsRows(where, orderBy, count) {
     const doc = JSON.parse(txt);
     return (doc.features || []).map((f) => {
       const a = f.attributes || {};
+      const g = f.geometry || {};
       return {
         n: a.IncidentName || "Unknown Fire",
         // POOState arrives as "US-TX"; the screen's field is two letters.
@@ -1295,6 +1358,10 @@ async function wfigsRows(where, orderBy, count) {
         pc: a.PercentContained || 0,
         t: a.FireDiscoveryDateTime || 0,
         id: a.IrwinID || "",
+        la: Number.isFinite(a.InitialLatitude) ? a.InitialLatitude
+            : Number.isFinite(g.y) ? g.y : null,
+        lo: Number.isFinite(a.InitialLongitude) ? a.InitialLongitude
+            : Number.isFinite(g.x) ? g.x : null,
       };
     });
   } catch (e) {
@@ -1305,7 +1372,7 @@ async function wfigsRows(where, orderBy, count) {
 
 async function serveFire() {
   const cache = caches.default;
-  const CACHE_KEY = "https://qsmoke-cache/fire-v2";
+  const CACHE_KEY = "https://qsmoke-cache/fire-v4";
   const fresh = await cache.match(CACHE_KEY);
   if (fresh) return fresh;
 
