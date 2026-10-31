@@ -69,16 +69,19 @@ static int s_schedX3 = 0, s_wakeW  = 0;
 #define ROT_BTN_COUNT 5
 #define ROT_BTN_W    ((SEC2_W - (ROT_BTN_COUNT - 1) * 3) / ROT_BTN_COUNT)  // 58
 
-// Page rotation — 2 rows × 6 columns
+// Page rotation — 2 rows × 7 columns.  PAGE_COUNT is the number of real
+// rotation pages (0-12, MAP last); PAGE_GRID draws one spare cell for the
+// next screen.
 #define PAGE_LABEL_Y (ROT_BTN_Y0 + ROT_BTN_H + 4)    // 131
 #define PAGE_BTN_Y0  (PAGE_LABEL_Y + 8)               // 139
 #define PAGE_BTN_H   18
 #define PAGE_GAP     2
-#define PAGE_COUNT   12
-#define PAGE_COLS    6
+#define PAGE_COUNT   13
+#define PAGE_GRID    14
+#define PAGE_COLS    7
 #define PAGE_ROWS    2
 #define PAGE_ROW_GAP 2
-#define PAGE_BTN_W   ((SEC2_W - (PAGE_COLS - 1) * PAGE_GAP) / PAGE_COLS)  // 49
+#define PAGE_BTN_W   ((SEC2_W - (PAGE_COLS - 1) * PAGE_GAP) / PAGE_COLS)  // 41
 
 // Section 3 — Theme Color (bottom)
 #define THEME_LABEL_Y (PAGE_BTN_Y0 + PAGE_ROWS * PAGE_BTN_H + (PAGE_ROWS - 1) * PAGE_ROW_GAP + 4)  // 181
@@ -162,38 +165,44 @@ static void autoRotLoad() {
 }
 
 // ── Page rotation mask ────────────────────────────────────────────────────────
-// v3 layout (12 pages): NOW=0,HOURLY=1,5DAY=2,SOLAR=3,FIRETEAM=4,AEWS=5,
-//   FIRES=6,USGS=7,OUTAGES=8,VOLCANOES=9,NEWS=10,PLANNER=11
+// v4 layout (13 pages): NOW=0,HOURLY=1,5DAY=2,SOLAR=3,FIRETEAM=4,AEWS=5,
+//   FIRES=6,USGS=7,OUTAGES=8,VOLCANOES=9,NEWS=10,PLANNER=11,MAP=12
 // Migration from v2 (11 pages: 0-4 unchanged, 5-10 shift right by 1, AEWS at 5).
-static uint16_t s_pageMask  = 0xFFF;
+static uint16_t s_pageMask  = 0x1FFF;
 static bool     s_pageLoaded = false;
 
 static void pageMaskLoad() {
     if (s_pageLoaded) return;
-    int v3 = nvsGetInt("page_mask_v3", -1);
-    if (v3 >= 0) {
-        s_pageMask = (uint16_t)v3;
+    int v4 = nvsGetInt("page_mask_v4", -1);
+    if (v4 >= 0) {
+        s_pageMask = (uint16_t)v4;
     } else {
-        // Migrate from v2 or from the original single-byte page_mask
-        int v2 = nvsGetInt("page_mask_v2", -1);
-        uint16_t old;
-        if (v2 >= 0) {
-            old = (uint16_t)v2;
+        int v3 = nvsGetInt("page_mask_v3", -1);
+        if (v3 >= 0) {
+            s_pageMask = (uint16_t)v3;
         } else {
-            uint16_t pm = (uint16_t)nvsGetInt("page_mask", 0x3FF);
-            old = (pm & 0x000F) | 0x0010 | ((pm & 0x03F0) << 1);
+            // Migrate from v2 or from the original single-byte page_mask
+            int v2 = nvsGetInt("page_mask_v2", -1);
+            uint16_t old;
+            if (v2 >= 0) {
+                old = (uint16_t)v2;
+            } else {
+                uint16_t pm = (uint16_t)nvsGetInt("page_mask", 0x3FF);
+                old = (pm & 0x000F) | 0x0010 | ((pm & 0x03F0) << 1);
+            }
+            // Bits 0-4 unchanged, bit 5 (AEWS) = ON, old bits 5-10 → new bits 6-11
+            s_pageMask = (old & 0x1F) | (1u << 5) | ((old & 0x7E0u) << 1);
         }
-        // Bits 0-4 unchanged, bit 5 (AEWS) = ON, old bits 5-10 → new bits 6-11
-        s_pageMask = (old & 0x1F) | (1u << 5) | ((old & 0x7E0u) << 1);
-        if (s_pageMask == 0) s_pageMask = 0xFFF;
-        nvsPutInt("page_mask_v3", s_pageMask);
+        s_pageMask |= (1u << 12);   // MAP defaults ON
+        if (s_pageMask == 0) s_pageMask = 0x1FFF;
+        nvsPutInt("page_mask_v4", s_pageMask);
     }
-    if (s_pageMask == 0) s_pageMask = 0xFFF;
+    if (s_pageMask == 0) s_pageMask = 0x1FFF;
     s_pageLoaded = true;
 }
 
 static void pageMaskSave() {
-    nvsPutInt("page_mask_v3", s_pageMask);
+    nvsPutInt("page_mask_v4", s_pageMask);
 }
 
 // ── Favorite mask ────────────────────────────────────────────────────────────
@@ -288,7 +297,7 @@ int screenSettingsGetNextRotatePage(int current) {
 void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SETTINGS", timeStr, wifiOk);
-    drawBottombar(tft, "", 12, 13);
+    drawBottombar(tft, "", 13, 14);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     slpCacheLoad();
@@ -492,7 +501,7 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
         tft.print(s_rotLabels[i]);
     }
 
-    // ── Section 2: Page Rotation checkboxes (single row) ──────────────────────
+    // ── Section 2: Page Rotation checkboxes (2 rows × 7, last cell reserved) ──
     pageMaskLoad();
     favMaskLoad();
     tft.setTextFont(FONT_SM);
@@ -500,13 +509,13 @@ void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     tft.setCursor(SEC2_X, PAGE_LABEL_Y);
     tft.print("PAGE ROTATION");
 
-    for (int i = 0; i < PAGE_COUNT; i++) {
+    for (int i = 0; i < PAGE_GRID; i++) {
         int col = i % PAGE_COLS;
         int row = i / PAGE_COLS;
         int bx  = SEC2_X + col * (PAGE_BTN_W + PAGE_GAP);
         int by  = PAGE_BTN_Y0 + row * (PAGE_BTN_H + PAGE_ROW_GAP);
         int bw  = PAGE_BTN_W;
-        bool enabled = (s_pageMask >> i) & 1;
+        bool enabled = i < PAGE_COUNT && ((s_pageMask >> i) & 1);
         bool favorite = enabled && ((s_favMask >> i) & 1);
 
         tft.fillRect(bx, by, bw, PAGE_BTN_H, COL_INPUTBG);

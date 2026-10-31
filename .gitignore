@@ -8,3 +8,5 @@ TODO.txt
 RELEASING.md
 quantum-meteor-api/.wrangler/
 quantum-meteor-api/massoutage_key.txt
+scripts/.cache/
+scripts/us_map_preview.png

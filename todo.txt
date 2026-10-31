@@ -1,5 +1,81 @@
 CYD-Weather TODO
 ================
+Session: 2026-10-31 (MAP page — COMPLETE)
+    - [x] MAP at page 12; SETTINGS -> 13.  CONUS-only wildfire + M3.5+
+      quake layers on a 320x170 equirectangular map (lon -125..-66, lat
+      24.5..49.5, cos37°).  Natural Earth 110m boundary lines + US outline
+      + lakes in PROGMEM (117 polylines, 4 KB) via scripts/gen_us_map.py.
+      Fires bright orange, quakes neon green (size = magnitude), white
+      home crosshair, distance declutter.
+    - [x] Borderless auto-width ocean legend toggles with icons + counts
+      (fire bottom-left, quake bottom-right); map at CONTENT_Y+15.
+    - [x] Worker /fire returns la/lo (geometry fallback); additive
+      /quakes?us=1&min=3.5&days=30 CONUS mode with la/lo and a state-name
+      filter.  Map quakes prefetched in FETCH_BOOT_BG.  SETTINGS grid 2x7
+      with a reserved 14th cell.
+    - [x] Both variants build clean; flashed and verified on the panel.
+      Worker deployed (ee43fda2).  ScreenShots/MAP.png still to capture.
+
+Session: 2026-10-30 (Battery gauge rebuild — REVERTED; CLOSED 2026-10-31)
+    - CLOSED 2026-10-31: the v1.5.2 battery implementation is working
+      accurately on the panel; no further action.  Both .bin files are the
+      v1.5.2-based images.
+    - REVERTED 2026-10-31 ~06:50 EDT. All gauge-rebuild source changes are
+      gone from the working tree (reverted to v1.5.2, commit 329f226);
+      everything described below is superseded and kept only as a record of
+      what was tried. Both .bin files were restored to the v1.5.2 images.
+      Reason: the old build added 100mV to the pin BEFORE the x2 divider
+      (= 200mV at the cell), which read high at the bottom of the curve and
+      is why it never sat at 0%. The rebuild removed that as a unit bug; the
+      discharge run showed the removal was wrong for this board. CAL and the
+      NVS discharge logger went with the revert.
+    - The rebuilt firmware was flashed 2026-10-30 19:30; later MAP builds
+      restored the v1.5.2 gauge code.
+    - HARD RULE: never suggest a multimeter again. The user's is shorted and
+      they refused (2026-10-31). Use on-device logging / runtime instead.
+    - Regression found in git: v1.3.1's BATT_SAG_OFFSET_MV (100mV) was added
+      to the pin voltage before the x2 divider, doubling it to 200mV at the
+      cell. Reverted to 0 and moved the offset after the divider so its units
+      are cell mV (pre-v1.3.1 behaviour restored).
+    - Sampling: trimmed mean -> upper-envelope mean (70th-90th percentile of
+      50 sorted samples); the least-loaded samples are closest to the true
+      cell voltage. Top 10% still discarded as spikes.
+    - Meter-free gain calibration: detect a full-charge plateau (requires an
+      earlier pin rise >=80mV, then >=15min within 8mV of the peak), derive
+      ratio = 4200/pinMv, move 50% per event, clamp 1.8-2.4, persist NVS key
+      "batt_ratio". Measured on this board: 1.9802 (CAL at 2121mV pin).
+    - Manual CAL replaces the REFRESH button slot in SETTINGS (bottom-left of
+      the 2x2 grid). Refuses below 4.05V, applies the ratio immediately, shows
+      CAL OK / NOT FULL. REFRESH moved to a SETTINGS title-bar tap (full
+      weather + data refresh, same queue the button used).
+    - Load-sag filter: displayed voltage rises instantly; falls at most
+      8mV/min normally, 40mV/min below 3.6V (endgame). Rejects WiFi/backlight
+      sag without lagging a real ~3mV/min discharge.
+    - batteryPct() cached 20s; loop() samples every 30s so the plateau
+      detector is fed even when the screen isn't redrawn.
+    - SETTINGS sleep-timer buttons 28 -> 30px; the row now ends at x=166,
+      aligned with the WAKE button's right edge (was 10px short).
+    - README updated (CAL button, title-bar refresh, any-screen refresh note).
+    - TEST START: 2026-10-30 19:30 EDT (both .bin rebuilt 19:29:59, flashed,
+      pack charged full, CAL ratio 1.9802).
+    - Test log 2026-10-30: 60% @19:49, 54% @20:03, 39% @21:14, 33% @21:43
+      (~0.2%/min). The 97%->64% drop in the first 10min was post-charge
+      settling. Pack looks like a healthy 2000mAh.
+    - Conditions: schedule sleep OFF for this run; screen and auto-rotation
+      stayed on the whole time, so the load was roughly constant overnight.
+      AUTO RST defaults ON -> the 5 h timer rebooted it at ~00:30 and ~05:30.
+      Each reboot re-seeds the gauge from a fresh sample, so the 0% seen since
+      then is not a stuck display value; the ADC really is reading <=3.5V.
+    - Test log 2026-10-31: 06:00 - still running, showing 0%. It has sat at
+      the 3.5V floor for hours; 0% was reached overnight (exact crossing not
+      logged). No brownout yet. Hours at 0% is far more tail than the model
+      allows for a ~2Ah pack. No multimeter on hand (user's is shorted), so
+      the discriminator is the brownout time: dies ~2-3h after 0% = floor is
+      just conservative; survives to noon/later = voltage estimate reads low.
+      Then time a full recharge as a capacity cross-check.
+    - Closed: the gauge reads accurately on this board; no curve refit or
+      debug-voltage line is needed.
+
 Session: 2026-10-29 (v1.5.2 Time Check)
     - SOLAR shows SYNC MM-DD HH:MM at the right end of the 24H Kp History
       row — the last successful fetch, with the date so a screen that missed

@@ -31,6 +31,7 @@
 #include "ui/screens/screen_news.h"
 #include "ui/screens/screen_ews.h"
 #include "ui/screens/screen_planner.h"
+#include "ui/screens/screen_map.h"
 #include "modules/screenshot.h"
 
 static TFT_eSPI tft;
@@ -65,7 +66,8 @@ enum RefreshBit : uint8_t {
     REFRESH_SOLAR     = 1 << 4,
     REFRESH_OUTAGES   = 1 << 5,
     REFRESH_EWS       = 1 << 6,
-    REFRESH_ALL_DATA  = 0x7F
+    REFRESH_MAPQ      = 1 << 7,
+    REFRESH_ALL_DATA  = 0xFF
 };
 static uint8_t s_refreshQueue = 0;
 static bool    s_refreshAllWeather = false;
@@ -89,7 +91,8 @@ enum FetchCmd : uint8_t {
     FETCH_VOLCANOES,
     FETCH_SOLAR,
     FETCH_NEWS,
-    FETCH_EWS
+    FETCH_EWS,
+    FETCH_MAPQ
 };
 
 static TaskHandle_t      s_fetchTask    = nullptr;
@@ -101,6 +104,7 @@ static volatile bool     s_fetchOk      = false;
 // Per-screen completion (worker writes, main loop reads+clears)
 static volatile bool s_firesDone = false, s_firesOk = false;
 static volatile bool s_usgsDone  = false, s_usgsOk  = false;
+static volatile bool s_mapQDone  = false, s_mapQOk  = false;
 static volatile bool s_solarDone = false;
 static volatile bool s_volcanoesDone = false, s_volcanoesOk = false;
 static volatile bool s_outagesDone = false, s_outagesOk = false;
@@ -171,6 +175,7 @@ static void fetchWorker(void *param) {
                 g_newsPending      = true;
                 g_volcanoesPending = true;
                 g_ewsPending      = true;
+                g_mapQuakesPending = true;
 
                 {
                     bool ok = firesFetch(s_wifiOk);
@@ -184,6 +189,14 @@ static void fetchWorker(void *param) {
                     xSemaphoreTake(s_dataMutex, portMAX_DELAY);
                     s_usgsOk = ok;
                     s_usgsDone = true;
+                    xSemaphoreGive(s_dataMutex);
+                }
+                {
+                    // CONUS quake layer — prefetched so opening MAP is instant.
+                    bool ok = mapQuakesFetch(s_wifiOk);
+                    xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                    s_mapQOk = ok;
+                    s_mapQDone = true;
                     xSemaphoreGive(s_dataMutex);
                 }
                 {
@@ -235,6 +248,14 @@ static void fetchWorker(void *param) {
                 xSemaphoreTake(s_dataMutex, portMAX_DELAY);
                 s_usgsOk = ok;
                 s_usgsDone = true;
+                xSemaphoreGive(s_dataMutex);
+                break;
+            }
+            case FETCH_MAPQ: {
+                bool ok = mapQuakesFetch(s_wifiOk);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                s_mapQOk = ok;
+                s_mapQDone = true;
                 xSemaphoreGive(s_dataMutex);
                 break;
             }
@@ -312,6 +333,16 @@ bool triggerUsgsFetch() {
     g_usgsPending = true;
     s_usgsDone = false;
     s_fetchCmd  = FETCH_USGS;
+    ledSet(false, false, true);
+    xTaskNotifyGive(s_fetchTask);
+    return true;
+}
+
+bool triggerMapQuakesFetch() {
+    if (!s_fetchTask || workerBusy()) return false;
+    g_mapQuakesPending = true;
+    s_mapQDone = false;
+    s_fetchCmd = FETCH_MAPQ;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
     return true;
@@ -495,10 +526,10 @@ static void ensureLocation() {
     }
 }
 
-// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fireteam, 5=AEWS, 6=Fires, 7=USGS, 8=Outages, 9=Volcanoes, 10=News, 11=Planner, 12=Settings
+// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fireteam, 5=AEWS, 6=Fires, 7=USGS, 8=Outages, 9=Volcanoes, 10=News, 11=Planner, 12=Map, 13=Settings
 static void gotoScreen(int n) {
-    // Wrap around: 12→0 forward, 0→12 backward
-    s_screen         = (n % 13 + 13) % 13;
+    // Wrap around: 13→0 forward, 0→13 backward
+    s_screen         = (n % 14 + 14) % 14;
     s_lastAutoRotate = millis();
     s_needsRedraw    = true;
     s_ttCount        = 0;   // a screen change breaks any triple-tap sequence
@@ -518,7 +549,8 @@ static void redrawTo(TFT_eSPI &target) {
         case 9: screenVolcanoesDraw(target, s_wifiOk); break;
         case 10: screenNewsDraw(target, s_wifiOk);    break;
         case 11: screenPlannerDraw(target, s_wifiOk);  break;
-        case 12: screenSettingsDraw(target, s_wifiOk); break;
+        case 12: screenMapDraw(target, s_wifiOk);      break;
+        case 13: screenSettingsDraw(target, s_wifiOk); break;
     }
 }
 
@@ -888,6 +920,9 @@ void setup() {
         if (s_wifiOk) showSplash("Fetching USGS...");
         for (int i = 0; i < 60 && !s_usgsDone && s_wifiOk; i++) delay(50);
 
+        if (s_wifiOk) showSplash("Fetching map...");
+        for (int i = 0; i < 60 && !s_mapQDone && s_wifiOk; i++) delay(50);
+
         if (s_wifiOk) showSplash("Fetching outages...");
         for (int i = 0; i < 60 && !s_outagesDone && s_wifiOk; i++) delay(50);
 
@@ -1022,6 +1057,8 @@ void loop() {
             if (triggerVolcanoesFetch()) s_refreshQueue &= ~REFRESH_VOLCANOES;
         } else if (s_refreshQueue & REFRESH_SOLAR) {
             if (triggerSolarFetch()) s_refreshQueue &= ~REFRESH_SOLAR;
+        } else if (s_refreshQueue & REFRESH_MAPQ) {
+            if (triggerMapQuakesFetch()) s_refreshQueue &= ~REFRESH_MAPQ;
         }
     }
     // Weather fetch completion
@@ -1041,7 +1078,7 @@ void loop() {
         s_firesDone = false;
         g_firesPending = false;
         xSemaphoreGive(s_dataMutex);
-        if (s_screen == 6) s_needsRedraw = true;
+        if (s_screen == 6 || s_screen == 12) s_needsRedraw = true;
     }
 
     // USGS fetch completion
@@ -1052,6 +1089,17 @@ void loop() {
         g_usgsPending = false;
         xSemaphoreGive(s_dataMutex);
         if (s_screen == 7) s_needsRedraw = true;
+    }
+
+    // MAP quake fetch completion
+    if (s_mapQDone) {
+        xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        bool ok = s_mapQOk;
+        s_mapQDone = false;
+        g_mapQuakesPending = false;
+        xSemaphoreGive(s_dataMutex);
+        (void)ok;
+        if (s_screen == 12) s_needsRedraw = true;
     }
 
     // Meteors fetch completion
@@ -1110,7 +1158,7 @@ void loop() {
     // full redraws (up to an hour on a page nobody navigates away from).
     if (millis() - s_lastMinute > 60000) {
         char timeStr[10]; timeGetShort(timeStr);
-        static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","AEWS","FIRES","USGS","OUTAGES","VOLCANOES","NEWS","ALMANAC","SETTINGS"};
+        static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","AEWS","FIRES","USGS","OUTAGES","VOLCANOES","NEWS","ALMANAC","MAP","SETTINGS"};
         drawTopbarTime(tft, timeStr, labels[s_screen]);
         s_lastMinute = millis();
     }
@@ -1118,7 +1166,7 @@ void loop() {
     // Auto-rotate through enabled pages
     if (screenSettingsGetAutoRotate() &&
         millis() - s_lastAutoRotate > screenSettingsGetAutoRotateMs()) {
-        int start = (s_screen == 12) ? 11 : s_screen;
+        int start = (s_screen == 13) ? 12 : s_screen;
         int next = screenSettingsGetNextRotatePage(start);
         if (next >= 0) gotoScreen(next);
     }
@@ -1169,7 +1217,7 @@ void loop() {
         // Three quick taps in the content area (between the top and bottom bars)
         // on screens 0-10 restart the firmware.  Content-area taps on those
         // screens are otherwise inert, so this can't collide with navigation
-        // (bottom bar), refresh (top bar), or settings buttons (screen 12).
+        // (bottom bar), refresh (top bar), or settings buttons (screen 13).
         {
             bool contentTap = (ty >= TOPBAR_H && ty < SCREEN_H - BOTBAR_H) &&
                               (s_screen >= 0 && s_screen <= 10);
@@ -1240,6 +1288,8 @@ void loop() {
             screenPlannerTap(tft, tx, ty, s_wifiOk);
             s_needsRedraw = true;
         } else if (s_screen == 12) {
+            if (screenMapTap(tft, tx, ty, s_wifiOk)) s_needsRedraw = true;
+        } else if (s_screen == 13) {
             bool changed = screenSettingsTap(tft, tx, ty);
             if (changed) s_needsRedraw = true;
             if (screenSettingsRefreshTapped()) {
@@ -1320,9 +1370,9 @@ void loop() {
     screenshotLoop();
     if (screenshotNeedsRedraw()) s_needsRedraw = true;
 
-    // Serial commands: '0'-'9' = screens 0-9, 'A' = Settings (12),
-    // 'B' = News (10), 'C' = Almanac (11), 'R' = ready, 'S' = capture,
-    // 'X' + line = display alias for the topbar city
+    // Serial commands: '0'-'9' = screens 0-9, 'A' = Settings (13),
+    // 'B' = News (10), 'C' = Almanac (11), 'D' = Map (12),
+    // 'R' = ready, 'S' = capture, 'X' + line = display alias for the topbar city
     if (Serial.available()) {
         int cmd = Serial.read();
         if (cmd == 'R' || cmd == 'r') {
@@ -1358,7 +1408,11 @@ void loop() {
             redraw();
         } else if (cmd == 'A' || cmd == 'a') {
             if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
-            gotoScreen(12);
+            gotoScreen(13);
+            redraw();
+        } else if (cmd == 'D' || cmd == 'd') {
+            if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
+            gotoScreen(12);                     // Map
             redraw();
         } else if (cmd == 'B' || cmd == 'b') {
             if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }

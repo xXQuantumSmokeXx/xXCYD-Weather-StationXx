@@ -1,6 +1,6 @@
 # xXCYD-Weather-StationXx
 
-CYD tactical monitoring station — real-time weather, space weather, solar day almanac, US power outage tracking, volcano activity tracking, wildfire & earthquake tracking, breaking news, Apocalypse Early Warning System (business-jet anomaly detection), customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
+CYD tactical monitoring station — real-time weather, space weather, solar day almanac, US power outage tracking, volcano activity tracking, wildfire & earthquake tracking, a CONUS situational map, breaking news, Apocalypse Early Warning System (business-jet anomaly detection), customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
 
 [![Support on Patreon](https://img.shields.io/badge/Support-Patreon-orange)](https://www.patreon.com/c/xXQuantumSmokeXx)
 
@@ -13,6 +13,8 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 | ![AEWS](ScreenShots/AEWS.png) | ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) |
 | ![OUTAGES](ScreenShots/OUTAGES.png) | ![VOLCANOES](ScreenShots/VOLCANOES.png) | ![NEWS](ScreenShots/NEWS.png) |
 | ![ALMANAC](ScreenShots/ALMANAC.png?v=2) | ![SETTINGS](ScreenShots/SETTINGS.png) | |
+
+MAP screenshot pending capture.
 
 ### Features
 
@@ -60,7 +62,7 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Dual-query WFIGS active wildfire events — fire name, state, acreage, cause, and containment %
 - Primary query: active uncontained fires (newest 40). Secondary query: all fires ≥10k acres regardless of containment status (largest 30)
 - Merged & deduplicated by IRWIN ID — catches large contained fires the active-only query would miss
-- 30 entries, scrollable via swipe up/down (12 per page, 2.5 pages)
+- 40 entries, scrollable via swipe up/down (12 per page, 3.3 pages)
 - Sorted newest-first; tap title bar to force a refresh
 - Prescribed burns automatically filtered out; auto-refreshes hourly
 
@@ -69,6 +71,16 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - 36 entries, scrollable via swipe up/down (12 per page, exactly 3 pages)
 - Sorted newest-first (API-native ordering); tap title bar to force a refresh
 - Auto-refreshes every 15 minutes
+
+**MAP screen:**
+- CONUS situational map — active wildfires and US M3.5+ earthquakes from the last 30 days, placed at their real coordinates
+- State outlines are embedded Natural Earth boundaries in PROGMEM — no tile server, no basemap download
+- Fire markers in bright orange; earthquake rings in neon green, sized by magnitude
+- Floating legend buttons in the ocean corners (icon + count): tap the fire or quake legend to show/hide that layer; both are on by default and the choice survives reboots
+- A white crosshair marks the device's location
+- Near-overlapping markers are decluttered so the map stays readable at 320 × 240
+- Tap the title bar to force both layers to refresh
+- The quake layer uses a dedicated CONUS query; the USGS screen keeps its global M3.5+ feed untouched
 
 **OUTAGES screen:**
 - US power outages — national reported total, active incidents, and the top four states by customers out
@@ -105,7 +117,7 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - **Scheduled Sleep & Wake Timer** — daily schedule to turn the backlight off during configured sleep hours (e.g. 10PM–7AM), every day. Toggle on with SCHED, then tap SLEEP and WAKE to cycle through preset hours. ESP32 stays running so NTP time and all data fetches continue normally. Backlight off saves display life without losing connectivity. Tap anywhere during the sleep window for a 30-second wake grace period before the schedule re-enforces. Independent of the inactivity timer — both can be active simultaneously, with the schedule acting as the daily default and the quick timers as one-off overrides.
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
 - Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
-- 12 per-page rotation checkboxes (2 rows × 6) — toggle which screens are included in auto-rotate
+- 13 per-page rotation checkboxes (2 rows × 7, plus one spare cell reserved for the next screen) — toggle which screens are included in auto-rotate
 - **Favorite screens** — double-tap any page checkbox to mark it as a favorite (amber highlight). Favorites are interspersed between regular screens during rotation (e.g. Fav, 2, Fav, 3, Fav, 4…), so your most-used screens appear twice as often. Multiple favorites cycle round-robin. Double-tap again to un-favorite; disabling a page auto-clears its favorite
 - E-Ink mode — inverts display to white-background / black-foreground, toggled from the settings screen
 - 9 theme accent colors, saved across reboots
@@ -116,9 +128,9 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Auto-detects location via IP geolocation; no config needed beyond WiFi credentials
 - Weather data via Open-Meteo; no API key required
 - Refreshes at the top of each hour
-- Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, OUTAGES, NEWS)
+- Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, OUTAGES, NEWS, MAP)
 - FIRES and USGS headline text uses the active theme color
-- 13 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, AEWS, FIRES, USGS, OUTAGES, VOLCANOES, NEWS, ALMANAC, SETTINGS
+- 14 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, AEWS, FIRES, USGS, OUTAGES, VOLCANOES, NEWS, ALMANAC, MAP, SETTINGS
 
 ### Setup
 

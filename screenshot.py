@@ -11,7 +11,7 @@ Examples:
   python screenshot.py solar
   python screenshot.py COM11 5 ScreenShots\screen_usgs.bmp
 
-Screens: current, now/0, hourly/1, 5-day/2, solar/3, fireteam/4, aews/5, fires/6, usgs/7, outages/8, volcanoes/9, news/B, almanac/C, settings/A
+Screens: current, now/0, hourly/1, 5-day/2, solar/3, fireteam/4, aews/5, fires/6, usgs/7, outages/8, volcanoes/9, news/B, almanac/C, map/D, settings/A
 Default port: auto-detected CH340, else COM11
 """
 
@@ -86,6 +86,9 @@ SCREENS = {
     "c": ("almanac", b"C", "ScreenShots\\screen_almanac.bmp"),
     "almanac": ("almanac", b"C", "ScreenShots\\screen_almanac.bmp"),
     "alm": ("almanac", b"C", "ScreenShots\\screen_almanac.bmp"),
+    "D": ("map", b"D", "ScreenShots\\screen_map.bmp"),
+    "d": ("map", b"D", "ScreenShots\\screen_map.bmp"),
+    "map": ("map", b"D", "ScreenShots\\screen_map.bmp"),
 }
 
 COM_RE = re.compile(r"^COM\d+$", re.IGNORECASE)
@@ -96,7 +99,7 @@ def normalize_screen(value):
         return SCREENS["current"]
     key = value.strip().lower()
     if key not in SCREENS:
-        valid = "current, now, hourly, 5-day, solar, fireteam, aews, fires, usgs, outages, volcanoes, news, almanac, settings"
+        valid = "current, now, hourly, 5-day, solar, fireteam, aews, fires, usgs, outages, volcanoes, news, almanac, map, settings"
         raise ValueError(f"Unknown screen '{value}'. Valid screens: {valid}")
     return SCREENS[key]
 
@@ -151,6 +154,7 @@ def ask_interactive():
     print("  9 = VOLCANOES")
     print("  B = NEWS")
     print("  C = ALMANAC")
+    print("  D = MAP")
     print("  A = SETTINGS")
     screen_arg = input("Screen to capture [current]: ").strip() or "current"
     screen_name, screen_cmd, default_out = normalize_screen(screen_arg)

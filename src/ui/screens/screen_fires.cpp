@@ -14,9 +14,8 @@
 #include <ctime>
 
 #define FIRE_CACHE_MS (15UL * 60UL * 1000UL)
-#define FIRE_MAX 30
+#define FIRE_MAX 40
 #define FIRE_ROW_H 14
-#define MERGE_MAX 80
 
 // ── Raw merge struct (temporary, used during fetch + merge only) ─────────────
 struct RawFire {
@@ -28,12 +27,18 @@ struct RawFire {
     double pctCont;
     long long discMs;
     bool isLarge;    // >= 10k acres — sorted first
+    bool hasGeo;
+    float lat;
+    float lon;
 };
 
 // ── Display struct (populated after merge, used by draw) ─────────────────────
 struct FireItem {
     char title[70];
     char when[8];
+    int16_t lat100;
+    int16_t lon100;
+    uint16_t acresK;
 };
 
 static FireItem s_fires[FIRE_MAX];
@@ -166,18 +171,30 @@ bool firesFetch(bool wifiOk) {
         copyFit(it["c"] | "", r.cause, sizeof(r.cause));
         r.pctCont = it["pc"] | 0.0;
         r.discMs  = it["t"]  | 0LL;
-        formatFireTitle(r, s_fires[count]);
+        r.hasGeo  = !it["la"].isNull() && !it["lo"].isNull();
+        if (r.hasGeo) {
+            r.lat = it["la"] | 0.0f;
+            r.lon = it["lo"] | 0.0f;
+        }
+        FireItem &fi = s_fires[count];
+        formatFireTitle(r, fi);
+        if (r.hasGeo) {
+            fi.lat100 = (int16_t)(r.lat * 100.0f + (r.lat >= 0 ? 0.5f : -0.5f));
+            fi.lon100 = (int16_t)(r.lon * 100.0f + (r.lon >= 0 ? 0.5f : -0.5f));
+        } else {
+            fi.lat100 = fi.lon100 = 0;
+        }
+        double ak = r.acres / 1000.0;
+        fi.acresK = ak > 65535.0 ? 65535 : (uint16_t)(ak + 0.5);
         count++;
     }
 
     s_fireCount = count;
     s_fetchedOnce = true;
-    if (count > 0) {
-        s_fetchedMs = millis();
-        stampSync();
-    } else {
-        s_fetchedMs = 0;
-    }
+    // An empty result is still an attempt: stamp it so stale() backs off for
+    // the cache window instead of re-fetching on every redraw (Phase 0).
+    s_fetchedMs = millis();
+    if (count > 0) stampSync();
     return count > 0;
 }
 
@@ -220,7 +237,7 @@ void screenFiresDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "FIRES", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 6, 13);
+    drawBottombar(tft, dateStr, 6, 14);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     bool doFetch = (s_forceRefresh || stale()) && wifiOk && !g_firesPending;
@@ -267,3 +284,19 @@ void screenFiresSwipe(int dir) {
         if (s_scrollOff < 0) s_scrollOff = 0;
     }
 }
+
+// ── MAP page accessors ───────────────────────────────────────────────────────
+int firesGetMapPoints(FireMapPoint *out, int max) {
+    int n = 0;
+    for (int i = 0; i < s_fireCount && n < max; i++) {
+        if (s_fires[i].lat100 == 0 && s_fires[i].lon100 == 0) continue;
+        out[n].lat100 = s_fires[i].lat100;
+        out[n].lon100 = s_fires[i].lon100;
+        out[n].acresK = s_fires[i].acresK;
+        n++;
+    }
+    return n;
+}
+
+bool firesMapStale()    { return stale(); }
+void firesMapForceRefresh() { s_fetchedMs = 0; s_lastAttempt = 0; }
