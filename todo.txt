@@ -14,7 +14,16 @@ Session: 2026-10-31 (MAP page — COMPLETE)
       filter.  Map quakes prefetched in FETCH_BOOT_BG.  SETTINGS grid 2x7
       with a reserved 14th cell.
     - [x] Both variants build clean; flashed and verified on the panel.
-      Worker deployed (ee43fda2).  ScreenShots/MAP.png still to capture.
+      Worker deployed (ee43fda2).  ScreenShots/MAP.png captured and added
+      to the gallery between ALMANAC and SETTINGS.
+
+v1.5.3 — Situational Map
+------------------------------
+[x] MAP screen and release (2026-10-31)
+    - New CONUS MAP page at slot 12 (SETTINGS -> 13): wildfires + US
+      M3.5+ quakes over 30 days, Natural Earth basemap, ocean legends,
+      boot-time quake prefetch.  Worker /fire and /quakes carry
+      coordinates.  Both variants rebuilt and attached to the release.
 
 Session: 2026-10-30 (Battery gauge rebuild — REVERTED; CLOSED 2026-10-31)
     - CLOSED 2026-10-31: the v1.5.2 battery implementation is working
