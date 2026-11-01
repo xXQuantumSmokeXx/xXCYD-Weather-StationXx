@@ -69,6 +69,8 @@ export default {
 
     // GET /quakes — USGS list as compact JSON (global, or ?us=1 for the MAP)
     if (url.pathname === "/quakes") {
+      // ?src=emsc — the EMSC catalogue as a second seismic source (2026-11-01)
+      if (url.searchParams.get("src") === "emsc") return await serveEmsc(url);
       return await serveQuakes(url);
     }
 
@@ -1322,6 +1324,54 @@ async function serveQuakes(url) {
   out.headers.set("Cache-Control", "s-maxage=300");
   await cache.put(CACHE_KEY, out.clone());
   return out;
+}
+
+// ── /quakes?src=emsc — the EMSC catalogue, a second seismic source ────────
+// USGS and EMSC are independent catalogues. The crew use the pair as a cross-check: an
+// event both carry is confirmed, while a magnitude disagreement or an event only one of
+// them lists is worth saying aloud. Same item shape as /quakes, so a client can read
+// either without knowing which answered.
+async function serveEmsc(url) {
+  const cache = caches.default;
+  const minMag = Math.min(9, Math.max(0, parseFloat(url.searchParams.get("min")) || 4.5));
+  const days = Math.min(30, Math.max(1, parseInt(url.searchParams.get("days"), 10) || 7));
+  const CACHE_KEY = `https://qsmoke-cache/emsc-v1-${minMag}-${days}`;
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
+  const start = new Date(Date.now() - days * 86400000).toISOString().slice(0, 19);
+  const query =
+    "https://www.seismicportal.eu/fdsnws/event/1/query?format=json" +
+    `&minmagnitude=${minMag}&starttime=${start}&limit=60&orderby=time`;
+
+  try {
+    const resp = await fetch(query, {
+      headers: { "User-Agent": "Quantum-Meteor/1.0", "Accept-Encoding": "identity" }
+    });
+    if (!resp.ok) throw new Error(`EMSC returned ${resp.status}`);
+    const data = await resp.json();
+    const items = (data.features || []).map((f) => {
+      const p = f.properties || {};
+      const mag = parseFloat(p.mag);
+      return {
+        m: isNaN(mag) ? null : mag,
+        p: p.flynn_region || "Unknown region",
+        w: mdFromDate(p.time || ""),
+        la: typeof p.lat === "number" ? Math.round(p.lat * 100) / 100 : null,
+        lo: typeof p.lon === "number" ? Math.round(p.lon * 100) / 100 : null,
+        t: p.time || null,
+        src: "emsc",
+      };
+    }).filter((i) => i.m !== null);
+    if (!items.length) throw new Error("no events parsed");
+    const out = json(200, { items, count: items.length, source: "EMSC" });
+    out.headers.set("Cache-Control", "s-maxage=300");
+    await cache.put(CACHE_KEY, out.clone());
+    return out;
+  } catch (e) {
+    console.log(`EMSC: ${e.message}`);
+    return json(502, { items: [], error: e.message, source: "EMSC" });
+  }
 }
 
 // Quote-aware split: `place` can contain commas ("91 km ESE of X, India").
