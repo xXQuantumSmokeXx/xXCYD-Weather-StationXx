@@ -1,5 +1,23 @@
 CYD-Weather TODO
 ================
+Session: 2026-11-01 (cloudworker change — CYD integration TBD)
+    - [ ] Worker /quakes?src=emsc was added to quantum-meteor (deployed c2944595,
+      committed 20b3c25). It returns the EMSC catalogue, a second seismic source
+      beside USGS. Same compact item shape as /quakes (m, p, w, la, lo) plus
+      t (full ISO time) and src:"emsc".
+    - [ ] NOTHING ON THE DEVICE IS BROKEN: the default /quakes is byte-identical and
+      still USGS, and the existing JSON parser ignores fields it does not know. No
+      rebuild is required unless the screen is changed.
+    - [ ] Decide whether the CYD should surface it: leave the QUAKE layer USGS-only,
+      or fetch both and show an agreement / "EMSC only" cue per event. If tried, the
+      extra fields make the two sources distinguishable without a second payload shape.
+    - [ ] Integration detail: the MAP's QUAKE layer is CONUS-only and uses ?us=1; the
+      EMSC path has no us=1 filter and returns the global catalogue, so a device trial
+      would filter by la/lo bounds on the device (or add a us=1 equivalent to the
+      worker's EMSC path). min= and days= are supported on both.
+    - [ ] Cosmetic, optional: the worker's "/" status list still names only /quakes;
+      add "?src=emsc" there if the endpoint list should advertise the variant.
+
 Session: 2026-11-01 (MAP four layers — COMPLETE)
     - [x] Recon first, as asked: RAD (EPA RadNet) was dropped after it
       turned out there is no national feed — only 132 per-station
