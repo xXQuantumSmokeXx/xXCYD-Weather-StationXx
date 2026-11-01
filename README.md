@@ -12,7 +12,7 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 | ![5-DAY](ScreenShots/5-DAY.png) | ![SOLAR](ScreenShots/SOLAR.png) | ![FIRETEAM](ScreenShots/FIRETEAM.png) |
 | ![AEWS](ScreenShots/AEWS.png) | ![FIRES](ScreenShots/FIRES.png) | ![USGS](ScreenShots/USGS.png) |
 | ![OUTAGES](ScreenShots/OUTAGES.png) | ![VOLCANOES](ScreenShots/VOLCANOES.png) | ![NEWS](ScreenShots/NEWS.png) |
-| ![ALMANAC](ScreenShots/ALMANAC.png?v=2) | ![MAP](ScreenShots/MAP.png) | ![SETTINGS](ScreenShots/SETTINGS.png) |
+| ![ALMANAC](ScreenShots/ALMANAC.png?v=2) | ![MAP](ScreenShots/MAP.png?v=2) | ![SETTINGS](ScreenShots/SETTINGS.png) |
 
 ### Features
 
@@ -71,14 +71,17 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Auto-refreshes every 15 minutes
 
 **MAP screen:**
-- CONUS situational map — active wildfires and US M3.5+ earthquakes from the last 30 days, placed at their real coordinates
+- CONUS situational map — four independently toggleable layers, placed at their real coordinates: active wildfires, US M3.5+ earthquakes from the last 30 days, significant county power outages, and active severe-weather warnings
 - State outlines are embedded Natural Earth boundaries in PROGMEM — no tile server, no basemap download
-- Fire markers in bright orange; earthquake rings in neon green, sized by magnitude
-- Floating legend buttons in the ocean corners (icon + count): tap the fire or quake legend to show/hide that layer; both are on by default and the choice survives reboots
+- Fire markers in bright orange; earthquake rings in neon green, sized by magnitude; outages as amber bolts (a ring marks counties over 10,000 customers); storm warnings as red hazard triangles, sized and filled by severity — filled for a tornado warning, outlined with a core pixel for a severe thunderstorm, the smaller outline for a flash flood
+- One horizontal layer bar under the map, four evenly spaced touch cells in FIRE / QUAKE / GRID / STORM order, each with its icon and count: tap a cell to show/hide that layer. All four are on by default and the choice survives reboots
 - A white crosshair marks the device's location
-- Near-overlapping markers are decluttered so the map stays readable at 320 × 240
-- Tap the title bar to force both layers to refresh
+- Near-overlapping markers are decluttered so the map stays readable at 320 × 240; storm warnings are laid down first, so they win the space
+- Tap the title bar to force every layer to refresh
 - The quake layer uses a dedicated CONUS query; the USGS screen keeps its global M3.5+ feed untouched
+- GRID shows only counties at or above the Worker's threshold (default 1,000 customers out, `?min=` overrides it) — a quiet day is meant to look quiet, not to be padded with five-customer dots
+- STORM covers tornado, severe thunderstorm and flash flood **warnings** only; watches and advisories stay off the map. Re-issued and overlapping copies are collapsed in the Worker
+- GRID and STORM are summarized server-side by Quantum-Meteor (`/gridmap`, `/storms`): county FIPS is resolved to a centroid from a bundled Census table, and NWS zone-issued alerts — which carry no polygon — are placed by their SAME county code
 
 **OUTAGES screen:**
 - US power outages — national reported total, active incidents, and the top four states by customers out

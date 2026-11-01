@@ -8,6 +8,8 @@
  * Deploy: npx wrangler deploy
  */
 
+import { countyCentroid } from "./county_centroids.js";
+
 // ── EWS R2 dashboard URL ──────────────────────────────────────────────────
 const EWS_R2 = "https://pub-49bb6a6f314c47be9b481c25e5f6ca9e.r2.dev/dashboard.json";
 
@@ -45,6 +47,16 @@ export default {
       return await serveGrid(request, url, env);
     }
 
+    // GET /gridmap — outage markers for the MAP, one per qualifying county
+    if (url.pathname === "/gridmap") {
+      return await serveGridMap(url);
+    }
+
+    // GET /storms — active tornado / severe thunderstorm / flash flood warnings
+    if (url.pathname === "/storms") {
+      return await serveStorms();
+    }
+
     // GET /news — headline list (feed fetched server-side, trimmed to ~10)
     if (url.pathname === "/news") {
       return await serveNews();
@@ -72,7 +84,7 @@ export default {
 
     // GET / — simple status
     return new Response(
-      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes", "/outbreaks", "/grid", "/news", "/solar", "/quakes", "/fire", "/geo"] }),
+      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes", "/outbreaks", "/grid", "/gridmap", "/storms", "/news", "/solar", "/quakes", "/fire", "/geo"] }),
       { headers: { "Content-Type": "application/json" } }
     );
   },
@@ -1396,6 +1408,204 @@ async function serveFire() {
   out.headers.set("Cache-Control", "s-maxage=600");
   await cache.put(CACHE_KEY, out.clone());
   return out;
+}
+
+// ── /gridmap — outage markers for the MAP, one per county ────────────────
+// Same ODIN source as /grid, different shape: ODIN has no coordinates, so
+// each county FIPS is resolved against the bundled Census centroid table.
+// Only counties at or above `min` customers appear — an unremarkable day
+// would otherwise paint the map with dots of five customers each.
+// ?min=N overrides the threshold (default 1000); the default is not cached
+// twice, the parameter is part of the key.
+const GRIDMAP_MIN = 1000;
+const GRIDMAP_MAX = 80;
+
+async function serveGridMap(url) {
+  const cache = caches.default;
+  const min = Math.max(0, parseInt(url.searchParams.get("min"), 10) || GRIDMAP_MIN);
+  const CACHE_KEY = `https://qsmoke-cache/gridmap-v1?min=${min}`;
+  const STALE_KEY = `https://qsmoke-cache/gridmap-v1-stale?min=${min}`;
+
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
+  try {
+    const q = "?select=" + encodeURIComponent(
+      "state,county,communitydescriptor,sum(metersaffected) as out") +
+      "&group_by=" + encodeURIComponent("state,county,communitydescriptor") +
+      "&order_by=" + encodeURIComponent("out desc") +
+      "&limit=400";
+    const resp = await fetch(ODIN_BASE + q, {
+      headers: { "User-Agent": "Quantum-Meteor/1.0", "Accept-Encoding": "identity" },
+    });
+    if (!resp.ok) throw new Error(`ODIN ${resp.status}`);
+    const doc = await resp.json();
+
+    let national = 0;
+    const items = [];
+    for (const row of doc.results || []) {
+      const out = Math.round(row.out || 0);
+      national += out;
+      if (out < min || items.length >= GRIDMAP_MAX) continue;
+      const pt = countyCentroid(row.communitydescriptor);
+      if (!pt) continue;                        // territory outside the table
+      items.push({
+        f: String(row.communitydescriptor).padStart(5, "0"),
+        la: pt[0],
+        lo: pt[1],
+        o: out,
+      });
+    }
+
+    if (!items.length && !national) throw new Error("ODIN returned no records");
+    const payload = {
+      updated: new Date().toISOString(),
+      src: "ODIN",
+      min,
+      total: national,
+      items,
+    };
+    const out = json(200, payload);
+    out.headers.set("Cache-Control", "s-maxage=600");     // 10 min, like /grid
+    await cache.put(CACHE_KEY, out.clone());
+
+    const stale = json(200, { ...payload, stale: true });
+    stale.headers.set("Cache-Control", "s-maxage=21600");
+    await cache.put(STALE_KEY, stale);
+    return out;
+  } catch (e) {
+    console.log(`gridmap: ${e.message}`);
+    const stale = await cache.match(STALE_KEY);
+    if (stale) return stale;
+    return json(502, { items: [], error: e.message });
+  }
+}
+
+// ── /storms — active tornado, severe thunderstorm and flash flood warnings ─
+// NWS publishes no compact feed: /alerts/active returns full CAP documents
+// (~1 MB with every advisory in the country).  Filtering happens upstream via
+// ?event=, then each warning is reduced to one representative point:
+//   • polygon centroid when the alert carries geometry (most warnings do not —
+//     they are issued by zone, and 255 of 273 active alerts had none), or
+//   • the centroid of the first county in its SAME geocode.
+// Duplicates are common: a warning is re-issued as it is extended, and two
+// adjacent offices can cover the same storm.  Same event within ~25 km, or a
+// shared first SAME code, collapses to the most severe copy.
+const NWS_ALERTS = "https://api.weather.gov/alerts/active";
+const NWS_UA = "Quantum-Meteor/1.0 (qsmoke workers)";
+const STORM_EVENTS = [
+  { name: "Tornado Warning", sev: 3 },
+  { name: "Severe Thunderstorm Warning", sev: 2 },
+  { name: "Flash Flood Warning", sev: 1 },
+];
+const STORM_MAX = 48;
+const STORM_DEDUPE_KM = 25;
+
+function kmBetween(a, b) {
+  const R = 6371, rad = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * rad, dLon = (b[1] - a[1]) * rad;
+  const s = Math.sin(dLat / 2) ** 2 +
+    Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+// Vertex average of the largest ring.  Good to a few km on a warning polygon,
+// which is finer than the 320-px map can show.
+function polygonPoint(geom) {
+  if (!geom) return null;
+  let rings = [];
+  if (geom.type === "Polygon") rings = [geom.coordinates[0]];
+  else if (geom.type === "MultiPolygon") rings = geom.coordinates.map((p) => p[0]);
+  let best = null;
+  for (const ring of rings) {
+    if (!Array.isArray(ring) || ring.length < 3) continue;
+    if (!best || ring.length > best.length) best = ring;
+  }
+  if (!best) return null;
+  let la = 0, lo = 0, n = 0;
+  for (const [x, y] of best) {
+    if (typeof x !== "number" || typeof y !== "number") continue;
+    lo += x; la += y; n++;
+  }
+  return n ? [la / n, lo / n] : null;
+}
+
+function alertPoint(props, geom) {
+  const poly = polygonPoint(geom);
+  if (poly) return poly;
+  for (const same of (props.geocode && props.geocode.SAME) || []) {
+    // SAME is a 6-digit code (state + 3-digit county); the table is keyed by
+    // the 5-digit county GEOID, which drops the leading state digit.
+    const pt = countyCentroid(String(same).padStart(6, "0").slice(-5));
+    if (pt) return pt;
+  }
+  return null;
+}
+
+async function serveStorms() {
+  const cache = caches.default;
+  const CACHE_KEY = "https://qsmoke-cache/storms-v1";
+  const STALE_KEY = "https://qsmoke-cache/storms-v1-stale";
+
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
+  try {
+    const events = STORM_EVENTS.map((e) => e.name).join(",");
+    const resp = await fetch(
+      `${NWS_ALERTS}?status=actual&message_type=alert&event=${encodeURIComponent(events)}`,
+      { headers: { "User-Agent": NWS_UA, "Accept": "application/geo+json" } });
+    if (!resp.ok) throw new Error(`NWS ${resp.status}`);
+    const doc = await resp.json();
+
+    const sevOf = new Map(STORM_EVENTS.map((e) => [e.name, e.sev]));
+    const picked = [];
+    for (const f of doc.features || []) {
+      const props = f.properties || {};
+      const sev = sevOf.get(props.event);
+      if (!sev) continue;                       // other advisories (SAME is shared)
+      const pt = alertPoint(props, f.geometry);
+      if (!pt) continue;
+
+      const same = (props.geocode && props.geocode.SAME) || [];
+      const dup = picked.some((p) =>
+        p.s === sev && (
+          (same.length && p.same === same[0]) ||
+          kmBetween([p.la, p.lo], pt) < STORM_DEDUPE_KM));
+      if (dup) continue;
+
+      picked.push({ la: pt[0], lo: pt[1], s: sev, same: same[0] || "",
+                    end: props.ends || props.expires || "" });
+    }
+
+    // Most severe first so the device's declutter ring drops flood warnings
+    // before tornado warnings when the map is busy.
+    picked.sort((a, b) => b.s - a.s);
+    const items = picked.slice(0, STORM_MAX)
+      .map((p) => ({ la: Math.round(p.la * 100) / 100,
+                     lo: Math.round(p.lo * 100) / 100,
+                     s: p.s }));
+
+    const payload = {
+      updated: new Date().toISOString(),
+      n: items.length,
+      byType: [3, 2, 1].map((s) => items.filter((i) => i.s === s).length),
+      items,
+    };
+    const out = json(200, payload);
+    out.headers.set("Cache-Control", "s-maxage=120");    // warnings move fast
+    await cache.put(CACHE_KEY, out.clone());
+
+    const stale = json(200, { ...payload, stale: true });
+    stale.headers.set("Cache-Control", "s-maxage=1800");
+    await cache.put(STALE_KEY, stale);
+    return out;
+  } catch (e) {
+    console.log(`storms: ${e.message}`);
+    const stale = await cache.match(STALE_KEY);
+    if (stale) return stale;
+    return json(502, { items: [], error: e.message });
+  }
 }
 
 // ── /geo — the caller's location from Cloudflare's own IP data ────────────

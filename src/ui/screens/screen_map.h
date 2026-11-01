@@ -5,7 +5,15 @@
 void screenMapDraw(TFT_eSPI &tft, bool wifiOk);
 bool screenMapTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk);
 
-// Async fetch — called from Core 0 worker
+// Async fetches — called from Core 0 worker
 bool mapQuakesFetch(bool wifiOk);
 extern bool g_mapQuakesPending;
 bool triggerMapQuakesFetch();
+
+bool mapGridFetch(bool wifiOk);
+extern bool g_mapGridPending;
+bool triggerMapGridFetch();
+
+bool mapStormsFetch(bool wifiOk);
+extern bool g_mapStormsPending;
+bool triggerMapStormsFetch();

@@ -18,14 +18,16 @@
 // ── Map geometry — must match scripts/gen_us_map.py ─────────────────────────
 // The bbox is 59° of longitude by 25° of latitude; 320×170 is its
 // equirectangular aspect (59·cos37° / 25 ≈ 1.885).  The cos factor belongs in
-// the *aspect*, not in the x scale.  The map owns the full content width; the
-// layer buttons float over the ocean corners instead of taking a strip.
+// the *aspect*, not in the x scale.  The map owns the full content width and
+// the last 14 px of the content column are the layer bar, so the map starts
+// 10 px under the top bar instead of 15 to make that column add up exactly:
+// 33 + 170 = 203, bar 203..216, bottom bar at 218.
 #define MAP_LON_MIN  (-125.0f)
 #define MAP_LON_MAX   (-66.0f)
 #define MAP_LAT_MIN    (24.5f)
 #define MAP_LAT_MAX    (49.5f)
 #define MAP_X0         0
-#define MAP_Y0         (CONTENT_Y + 15)         // breathing room under the top bar
+#define MAP_Y0         (CONTENT_Y + 10)
 #define MAP_W          320
 #define MAP_H          170
 #define MAP_X_SCALE    (MAP_W / (MAP_LON_MAX - MAP_LON_MIN))
@@ -34,15 +36,12 @@
 // Must match FIRE_MAX in screen_fires.cpp.
 #define FIRE_MAP_MAX   40
 
-// Floating legend buttons in the ocean, auto-sized to icon + text.  Their Y
-// is anchored to the content area, not MAP_Y0, so shifting the map leaves
-// them where they are.
-#define LEGEND_Y        (CONTENT_Y + MAP_H - 11)   // 182
-#define LEGEND_H        14
-#define LEGEND_PAD      4
-#define LEGEND_ICON     8
-#define LEGEND_GAP      3
-#define LEGEND_MARGIN   4
+// ── Layer bar — four equal touch cells in one line under the map ───────────
+#define LEGEND_Y       (MAP_Y0 + MAP_H)          // 203
+#define LEGEND_H       14
+#define LEGEND_CELL    (SCREEN_W / 4)            // 80 px, evenly spaced
+#define LEGEND_ICON    8
+#define LEGEND_GAP     3
 
 // ── Map quake data (CONUS, /quakes?us=1) ────────────────────────────────────
 #define MAPQ_MAX       60
@@ -62,25 +61,71 @@ static unsigned long s_mqLastAttempt = 0;
 static bool s_mqForce = false;
 bool g_mapQuakesPending = false;
 
-// ── Layer toggles (NVS-backed, both on by default) ─────────────────────────
+// ── Map outage data (/gridmap — counties at or above the Worker's threshold) ─
+#define MAPG_MAX       80
+#define MAPG_CACHE_MS  (10UL * 60UL * 1000UL)
+
+struct MapOutage {
+    int16_t  lat100;
+    int16_t  lon100;
+    uint16_t customers;      // saturated to uint16; only the 10k class is drawn
+};
+
+static MapOutage s_mg[MAPG_MAX];
+static int s_mgCount = 0;
+static bool s_mgFetchedOnce = false;
+static unsigned long s_mgFetchedMs = 0;
+static unsigned long s_mgLastAttempt = 0;
+bool g_mapGridPending = false;
+
+// ── Map storm data (/storms — warnings only) ────────────────────────────────
+#define MAPS_MAX       48
+#define MAPS_CACHE_MS  (5UL * 60UL * 1000UL)
+
+struct MapStorm {
+    int16_t lat100;
+    int16_t lon100;
+    uint8_t sev;             // 3 tornado, 2 severe thunderstorm, 1 flash flood
+};
+
+static MapStorm s_ms[MAPS_MAX];
+static int s_msCount = 0;
+static bool s_msFetchedOnce = false;
+static unsigned long s_msFetchedMs = 0;
+static unsigned long s_msLastAttempt = 0;
+bool g_mapStormsPending = false;
+
+// ── Layer toggles (NVS-backed, all four on by default) ─────────────────────
 static bool s_showFires = true;
 static bool s_showQuakes = true;
+static bool s_showGrid = true;
+static bool s_showStorms = true;
 static bool s_layersLoaded = false;
 
-// Legend geometry, computed during draw so taps use the same hitboxes.
-static int s_fireLegendX = 0, s_fireLegendW = 0;
-static int s_quakeLegendX = 0, s_quakeLegendW = 0;
+#define LAYER_FIRE   1
+#define LAYER_QUAKE  2
+#define LAYER_GRID   4
+#define LAYER_STORM  8
+#define LAYER_ALL    (LAYER_FIRE | LAYER_QUAKE | LAYER_GRID | LAYER_STORM)
 
 static void layersLoad() {
     if (s_layersLoaded) return;
-    int v = nvsGetInt("map_lay", 3);
-    s_showFires = (v & 1) != 0;
-    s_showQuakes = (v & 2) != 0;
+    // -1 means "never saved": an upgrade from the two-layer MAP must start
+    // with all four on rather than inheriting a stored 0..3 mask.
+    int v = nvsGetInt("map_lay", -1);
+    if (v < 0) v = LAYER_ALL;
+    s_showFires  = (v & LAYER_FIRE) != 0;
+    s_showQuakes = (v & LAYER_QUAKE) != 0;
+    s_showGrid   = (v & LAYER_GRID) != 0;
+    s_showStorms = (v & LAYER_STORM) != 0;
     s_layersLoaded = true;
 }
 
 static void layersSave() {
-    nvsPutInt("map_lay", (s_showFires ? 1 : 0) | (s_showQuakes ? 2 : 0));
+    nvsPutInt("map_lay", (s_showFires  ? LAYER_FIRE  : 0) |
+                         (s_showQuakes ? LAYER_QUAKE : 0) |
+                         (s_showGrid   ? LAYER_GRID  : 0) |
+                         (s_showStorms ? LAYER_STORM : 0));
 }
 
 // ── Projection ──────────────────────────────────────────────────────────────
@@ -129,14 +174,18 @@ static void drawBasemap(TFT_eSPI &tft) {
 }
 
 // ── Icons ───────────────────────────────────────────────────────────────────
-// 8×8 flame, drawn as horizontal runs (one fillRect per run, not per pixel).
+// 8×8 glyphs, drawn as horizontal runs (one fillRect per run, not per pixel).
+// Bit 7 is the leftmost pixel.
 static const uint8_t FLAME[8] = {
     0x08, 0x18, 0x38, 0x7C, 0x7C, 0x7C, 0x38, 0x00
 };
-
-static void drawFlame(TFT_eSPI &tft, int cx, int cy, uint16_t col) {
+static const uint8_t BOLT[8] = {          // GRID — power outage
+    0x18, 0x30, 0x60, 0x7E, 0x0C, 0x18, 0x30, 0x00
+};
+static void drawGlyph(TFT_eSPI &tft, const uint8_t *rows, int cx, int cy,
+                      uint16_t col) {
     for (int row = 0; row < 8; row++) {
-        uint8_t bits = FLAME[row];
+        uint8_t bits = rows[row];
         int c = 0;
         while (c < 8) {
             if (bits & (0x80 >> c)) {
@@ -150,15 +199,43 @@ static void drawFlame(TFT_eSPI &tft, int cx, int cy, uint16_t col) {
     }
 }
 
+static void drawFlame(TFT_eSPI &tft, int cx, int cy, uint16_t col) {
+    drawGlyph(tft, FLAME, cx, cy, col);
+}
+
 // Semantic marker colors — fixed, not theme-derived, so the layers stay
 // distinct on every theme and in e-ink invert.
-#define COL_FIRE   0xFD20u   // bright orange
-#define COL_QUAKE  0x3FE2u   // neon green
+#define MAP_COL_FIRE   0xFD20u   // bright orange
+#define MAP_COL_QUAKE  0x3FE2u   // neon green
+#define MAP_COL_GRID   0xFFE0u   // amber — power
+#define MAP_COL_STORM  0xF800u   // red — warnings
 
 static void drawQuake(TFT_eSPI &tft, int cx, int cy, float mag) {
     int r = mag >= 6.0f ? 6 : mag >= 5.0f ? 5 : mag >= 4.0f ? 4 : 3;
-    tft.drawCircle(cx, cy, r, COL_QUAKE);
-    if (mag >= 5.0f) tft.drawPixel(cx, cy, COL_QUAKE);
+    tft.drawCircle(cx, cy, r, MAP_COL_QUAKE);
+    if (mag >= 5.0f) tft.drawPixel(cx, cy, MAP_COL_QUAKE);
+}
+
+// One county outage.  Every marker is the same glyph so the layer reads as a
+// single symbol; a ring marks the ones big enough to matter at national scale.
+static void drawOutage(TFT_eSPI &tft, int cx, int cy, uint16_t customers) {
+    drawGlyph(tft, BOLT, cx, cy, MAP_COL_GRID);
+    if (customers >= 10000) tft.drawCircle(cx, cy, 5, MAP_COL_GRID);
+}
+
+// A triangle, not a ring: rings already mean earthquakes, and a hazard sign
+// reads as a warning at a glance.  Severity is fill then size — a tornado
+// warning is filled, a severe thunderstorm is outlined with a core pixel, a
+// flash flood warning is the small outline alone.
+static void drawStorm(TFT_eSPI &tft, int cx, int cy, int sev) {
+    int r = sev >= 3 ? 5 : sev == 2 ? 4 : 3;
+    int top = cy - r, bot = cy + r;
+    if (sev >= 3) {
+        tft.fillTriangle(cx, top, cx - r, bot, cx + r, bot, MAP_COL_STORM);
+    } else {
+        tft.drawTriangle(cx, top, cx - r, bot, cx + r, bot, MAP_COL_STORM);
+        if (sev == 2) tft.drawPixel(cx, cy, MAP_COL_STORM);
+    }
 }
 
 static void drawHome(TFT_eSPI &tft, int cx, int cy) {
@@ -170,7 +247,7 @@ static void drawHome(TFT_eSPI &tft, int cx, int cy) {
 }
 
 // ── Declutter: skip a mark that would sit on one already drawn ─────────────
-#define MAX_MARKS 96
+#define MAX_MARKS 128
 static int16_t s_mx[MAX_MARKS];
 static int16_t s_my[MAX_MARKS];
 static int s_mn = 0;
@@ -187,28 +264,49 @@ static void place(int x, int y) {
     if (s_mn < MAX_MARKS) { s_mx[s_mn] = x; s_my[s_mn] = y; s_mn++; }
 }
 
-// ── Chips ───────────────────────────────────────────────────────────────────
-static int legendWidth(TFT_eSPI &tft, const char *label) {
+// ── Layer bar ───────────────────────────────────────────────────────────────
+// Borderless black cells: the text always stays theme-colored; the icon is
+// semantic when the layer is on and dim when it is off.  kind: 0 fire,
+// 1 quake, 2 grid, 3 storm — each icon matches the marker it stands for.
+static void drawLegendCell(TFT_eSPI &tft, int idx, const char *label,
+                           const char *count, bool on, int kind) {
+    int x = idx * LEGEND_CELL;
+    tft.fillRect(x, LEGEND_Y, LEGEND_CELL, LEGEND_H, COL_BG);
+
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%s %s", label, count);
     tft.setTextFont(FONT_SM);
-    return LEGEND_PAD + LEGEND_ICON + LEGEND_GAP + tft.textWidth(label) + LEGEND_PAD;
+    int total = LEGEND_ICON + LEGEND_GAP + tft.textWidth(buf);
+    int bx = x + (LEGEND_CELL - total) / 2;      // evenly spaced within the cell
+    int cy = LEGEND_Y + LEGEND_H / 2;
+
+    uint16_t iconCol = !on ? COL_DIM
+                    : kind == 0 ? MAP_COL_FIRE
+                    : kind == 1 ? MAP_COL_QUAKE
+                    : kind == 2 ? MAP_COL_GRID
+                                : MAP_COL_STORM;
+    int icx = bx + LEGEND_ICON / 2;
+    switch (kind) {
+        case 0: drawFlame(tft, icx, cy, iconCol); break;
+        case 1: tft.drawCircle(icx, cy, 3, iconCol); break;
+        case 2: drawGlyph(tft, BOLT, icx, cy, iconCol); break;
+        default: tft.drawTriangle(icx, cy - 4, icx - 4, cy + 4, icx + 4, cy + 4,
+                                  iconCol); break;
+    }
+
+    tft.setTextColor(g_themeColor, COL_BG);
+    tft.setCursor(bx + LEGEND_ICON + LEGEND_GAP, LEGEND_Y + (LEGEND_H - 8) / 2);
+    tft.print(buf);
 }
 
-// kind: 0 = fire glyph, 1 = quake ring.  Borderless black legend: the text
-// always stays theme-colored; the icon is semantic when on and dim when off.
-static void drawLegend(TFT_eSPI &tft, int x, int y, int w,
-                       const char *label, bool on, int kind) {
-    tft.fillRect(x, y, w, LEGEND_H, COL_BG);
-
-    int icx = x + LEGEND_PAD + LEGEND_ICON / 2;
-    int icy = y + LEGEND_H / 2;
-    if (kind == 0) drawFlame(tft, icx, icy, on ? COL_FIRE : COL_DIM);
-    else           tft.drawCircle(icx, icy, 3, on ? COL_QUAKE : COL_DIM);
-
-    tft.setTextFont(FONT_SM);
-    tft.setTextColor(g_themeColor, COL_BG);
-    tft.setCursor(x + LEGEND_PAD + LEGEND_ICON + LEGEND_GAP,
-                  y + (LEGEND_H - 8) / 2);
-    tft.print(label);
+// Hairline between cells so four labels read as four buttons, and a rule
+// along the top so the bar is not mistaken for map content.
+static void drawLegendFrame(TFT_eSPI &tft) {
+    tft.drawFastHLine(0, LEGEND_Y - 1, SCREEN_W, COL_DIM);
+    for (int i = 1; i < 4; i++) {
+        int x = i * LEGEND_CELL - 1;
+        tft.drawFastVLine(x, LEGEND_Y + 2, LEGEND_H - 4, COL_DIM);
+    }
 }
 
 static void drawStatus(TFT_eSPI &tft, const char *msg) {
@@ -220,19 +318,14 @@ static void drawStatus(TFT_eSPI &tft, const char *msg) {
 }
 
 // ── Fetch ───────────────────────────────────────────────────────────────────
-static bool mapQStale() {
-    if (s_mqForce) return true;
-    if (!s_mqFetchedOnce) return millis() - s_mqLastAttempt > 30000UL;
-    return millis() - s_mqFetchedMs > MAPQ_CACHE_MS;
-}
-
-bool mapQuakesFetch(bool wifiOk) {
-    s_mqLastAttempt = millis();
-    if (!wifiOk || !WiFi.isConnected()) return false;
+// One GET + JSON parse shared by all three map feeds.  Chunked replies must be
+// read through writeToStream (HTTPClient::getString reserves _size+1 == 1).
+static bool httpGetJson(const char *url, JsonDocument &doc) {
+    if (!WiFi.isConnected()) return false;
 
     WiFiClient client;
     HTTPClient http;
-    http.begin(client, "http://quantum-meteor.qsmoke.workers.dev/quakes?us=1&min=3.5&days=30");
+    http.begin(client, url);
     http.setTimeout(15000);
     int code = http.GET();
     if (code != 200) { http.end(); return false; }
@@ -241,8 +334,36 @@ bool mapQuakesFetch(bool wifiOk) {
     http.writeToStream(&ss);
     http.end();
 
+    return deserializeJson(doc, ss.c_str()) == DeserializationError::Ok;
+}
+
+static int16_t to100(float v) {
+    return (int16_t)(v * 100.0f + (v >= 0 ? 0.5f : -0.5f));
+}
+
+static bool mapQStale() {
+    if (s_mqForce) return true;
+    if (!s_mqFetchedOnce) return millis() - s_mqLastAttempt > 30000UL;
+    return millis() - s_mqFetchedMs > MAPQ_CACHE_MS;
+}
+
+static bool mapGridStale() {
+    if (!s_mgFetchedOnce) return millis() - s_mgLastAttempt > 30000UL;
+    return millis() - s_mgFetchedMs > MAPG_CACHE_MS;
+}
+
+static bool mapStormsStale() {
+    if (!s_msFetchedOnce) return millis() - s_msLastAttempt > 20000UL;
+    return millis() - s_msFetchedMs > MAPS_CACHE_MS;
+}
+
+bool mapQuakesFetch(bool wifiOk) {
+    s_mqLastAttempt = millis();
+    if (!wifiOk || !WiFi.isConnected()) return false;
+
     JsonDocument doc;
-    if (deserializeJson(doc, ss.c_str())) return false;
+    if (!httpGetJson("http://quantum-meteor.qsmoke.workers.dev/quakes?us=1&min=3.5&days=30",
+                     doc)) return false;
     JsonArray arr = doc["items"].as<JsonArray>();
     if (arr.isNull()) return false;
 
@@ -250,12 +371,9 @@ bool mapQuakesFetch(bool wifiOk) {
     for (JsonObject it : arr) {
         if (count >= MAPQ_MAX) break;
         if (it["la"].isNull() || it["lo"].isNull()) continue;
-        float la = it["la"] | 0.0f;
-        float lo = it["lo"] | 0.0f;
-        float m  = it["m"]  | 0.0f;
-        s_mq[count].lat100 = (int16_t)(la * 100.0f + (la >= 0 ? 0.5f : -0.5f));
-        s_mq[count].lon100 = (int16_t)(lo * 100.0f + (lo >= 0 ? 0.5f : -0.5f));
-        s_mq[count].mag10  = (uint8_t)(m * 10.0f + 0.5f);
+        s_mq[count].lat100 = to100(it["la"] | 0.0f);
+        s_mq[count].lon100 = to100(it["lo"] | 0.0f);
+        s_mq[count].mag10  = (uint8_t)((it["m"] | 0.0f) * 10.0f + 0.5f);
         count++;
     }
     if (count == 0) return false;
@@ -263,6 +381,60 @@ bool mapQuakesFetch(bool wifiOk) {
     s_mqCount = count;
     s_mqFetchedOnce = true;
     s_mqFetchedMs = millis();
+    return true;
+}
+
+// An empty list is a valid answer here: no county is over the threshold.  The
+// Worker already filtered and aggregated, so the device stores nothing extra.
+bool mapGridFetch(bool wifiOk) {
+    s_mgLastAttempt = millis();
+    if (!wifiOk || !WiFi.isConnected()) return false;
+
+    JsonDocument doc;
+    if (!httpGetJson("http://quantum-meteor.qsmoke.workers.dev/gridmap", doc)) return false;
+    JsonArray arr = doc["items"].as<JsonArray>();
+    if (arr.isNull()) return false;
+
+    int count = 0;
+    for (JsonObject it : arr) {
+        if (count >= MAPG_MAX) break;
+        if (it["la"].isNull() || it["lo"].isNull()) continue;
+        s_mg[count].lat100 = to100(it["la"] | 0.0f);
+        s_mg[count].lon100 = to100(it["lo"] | 0.0f);
+        long o = it["o"] | 0L;
+        s_mg[count].customers = (uint16_t)(o > 65535 ? 65535 : (o < 0 ? 0 : o));
+        count++;
+    }
+
+    s_mgCount = count;
+    s_mgFetchedOnce = true;
+    s_mgFetchedMs = millis();
+    return true;
+}
+
+bool mapStormsFetch(bool wifiOk) {
+    s_msLastAttempt = millis();
+    if (!wifiOk || !WiFi.isConnected()) return false;
+
+    JsonDocument doc;
+    if (!httpGetJson("http://quantum-meteor.qsmoke.workers.dev/storms", doc)) return false;
+    JsonArray arr = doc["items"].as<JsonArray>();
+    if (arr.isNull()) return false;
+
+    int count = 0;
+    for (JsonObject it : arr) {
+        if (count >= MAPS_MAX) break;
+        if (it["la"].isNull() || it["lo"].isNull()) continue;
+        s_ms[count].lat100 = to100(it["la"] | 0.0f);
+        s_ms[count].lon100 = to100(it["lo"] | 0.0f);
+        int sev = it["s"] | 1;
+        s_ms[count].sev = (uint8_t)(sev < 1 ? 1 : sev > 3 ? 3 : sev);
+        count++;
+    }
+
+    s_msCount = count;
+    s_msFetchedOnce = true;
+    s_msFetchedMs = millis();
     return true;
 }
 
@@ -291,6 +463,8 @@ void screenMapDraw(TFT_eSPI &tft, bool wifiOk) {
     if (wifiOk && !g_mapQuakesPending && mapQStale()) {
         if (triggerMapQuakesFetch()) s_mqForce = false;
     }
+    if (wifiOk && !g_mapGridPending && mapGridStale())   triggerMapGridFetch();
+    if (wifiOk && !g_mapStormsPending && mapStormsStale()) triggerMapStormsFetch();
 
     drawBasemap(tft);
 
@@ -321,8 +495,39 @@ void screenMapDraw(TFT_eSPI &tft, bool wifiOk) {
     }
     sortDesc(qMarks, nQuake);
 
-    // ── Marks (quakes first so fires yield to them) ───────────────────────
+    Mark gMarks[MAPG_MAX];
+    int nGrid = 0;
+    for (int i = 0; i < s_mgCount; i++) {
+        int x, y;
+        if (!projectIn(s_mg[i].lon100 / 100.0f, s_mg[i].lat100 / 100.0f, x, y)) continue;
+        gMarks[nGrid].x = x;
+        gMarks[nGrid].y = y;
+        gMarks[nGrid].sev = s_mg[i].customers;
+        nGrid++;
+    }
+    sortDesc(gMarks, nGrid);
+
+    Mark sMarks[MAPS_MAX];
+    int nStorm = 0;
+    for (int i = 0; i < s_msCount; i++) {
+        int x, y;
+        if (!projectIn(s_ms[i].lon100 / 100.0f, s_ms[i].lat100 / 100.0f, x, y)) continue;
+        sMarks[nStorm].x = x;
+        sMarks[nStorm].y = y;
+        sMarks[nStorm].sev = s_ms[i].sev;
+        nStorm++;
+    }
+    sortDesc(sMarks, nStorm);
+
+    // ── Marks, most acute layer first so it wins the declutter ring ───────
     s_mn = 0;
+    if (s_showStorms) {
+        for (int i = 0; i < nStorm; i++) {
+            if (!canPlace(sMarks[i].x, sMarks[i].y, 12)) continue;
+            drawStorm(tft, sMarks[i].x, sMarks[i].y, sMarks[i].sev);
+            place(sMarks[i].x, sMarks[i].y);
+        }
+    }
     if (s_showQuakes) {
         for (int i = 0; i < nQuake; i++) {
             if (!canPlace(qMarks[i].x, qMarks[i].y, 11)) continue;
@@ -330,10 +535,17 @@ void screenMapDraw(TFT_eSPI &tft, bool wifiOk) {
             place(qMarks[i].x, qMarks[i].y);
         }
     }
+    if (s_showGrid) {
+        for (int i = 0; i < nGrid; i++) {
+            if (!canPlace(gMarks[i].x, gMarks[i].y, 9)) continue;
+            drawOutage(tft, gMarks[i].x, gMarks[i].y, gMarks[i].sev);
+            place(gMarks[i].x, gMarks[i].y);
+        }
+    }
     if (s_showFires) {
         for (int i = 0; i < nFire; i++) {
             if (!canPlace(fMarks[i].x, fMarks[i].y, 7)) continue;
-            drawFlame(tft, fMarks[i].x, fMarks[i].y, COL_FIRE);
+            drawFlame(tft, fMarks[i].x, fMarks[i].y, MAP_COL_FIRE);
             place(fMarks[i].x, fMarks[i].y);
         }
     }
@@ -345,27 +557,31 @@ void screenMapDraw(TFT_eSPI &tft, bool wifiOk) {
     }
 
     // ── Status when the visible map is empty ──────────────────────────────
-    int visible = (s_showFires ? nFire : 0) + (s_showQuakes ? nQuake : 0);
-    if (visible == 0 && (s_showFires || s_showQuakes)) {
-        if (g_firesPending || g_mapQuakesPending) drawStatus(tft, "FETCHING...");
+    int visible = (s_showFires  ? nFire  : 0) + (s_showQuakes ? nQuake : 0) +
+                  (s_showGrid   ? nGrid  : 0) + (s_showStorms ? nStorm : 0);
+    if (visible == 0 && (s_showFires || s_showQuakes || s_showGrid || s_showStorms)) {
+        if (g_firesPending || g_mapQuakesPending || g_mapGridPending ||
+            g_mapStormsPending)                    drawStatus(tft, "FETCHING...");
         else if (!wifiOk)                          drawStatus(tft, "OFFLINE");
         else                                       drawStatus(tft, "NO DATA");
     }
 
-    // ── Floating legend buttons (ocean corners, same line) ────────────────
-    char fBuf[16], qBuf[16];
-    if (nFire == 0 && g_firesPending) snprintf(fBuf, sizeof(fBuf), "FIRE --");
-    else                              snprintf(fBuf, sizeof(fBuf), "FIRE %d", nFire);
-    if (nQuake == 0 && g_mapQuakesPending) snprintf(qBuf, sizeof(qBuf), "QUAKE --");
-    else                                   snprintf(qBuf, sizeof(qBuf), "QUAKE %d", nQuake);
+    // ── Layer bar ─────────────────────────────────────────────────────────
+    char fBuf[8], qBuf[8], gBuf[8], sBuf[8];
+    if (nFire  == 0 && g_firesPending)      snprintf(fBuf, sizeof(fBuf), "--");
+    else                                    snprintf(fBuf, sizeof(fBuf), "%d", nFire);
+    if (nQuake == 0 && g_mapQuakesPending)  snprintf(qBuf, sizeof(qBuf), "--");
+    else                                    snprintf(qBuf, sizeof(qBuf), "%d", nQuake);
+    if (nGrid  == 0 && g_mapGridPending)    snprintf(gBuf, sizeof(gBuf), "--");
+    else                                    snprintf(gBuf, sizeof(gBuf), "%d", nGrid);
+    if (nStorm == 0 && g_mapStormsPending)  snprintf(sBuf, sizeof(sBuf), "--");
+    else                                    snprintf(sBuf, sizeof(sBuf), "%d", nStorm);
 
-    s_fireLegendW  = legendWidth(tft, fBuf);
-    s_quakeLegendW = legendWidth(tft, qBuf);
-    s_fireLegendX  = LEGEND_MARGIN;
-    s_quakeLegendX = SCREEN_W - LEGEND_MARGIN - s_quakeLegendW;
-
-    drawLegend(tft, s_fireLegendX, LEGEND_Y, s_fireLegendW, fBuf, s_showFires, 0);
-    drawLegend(tft, s_quakeLegendX, LEGEND_Y, s_quakeLegendW, qBuf, s_showQuakes, 1);
+    drawLegendCell(tft, 0, "FIRE",  fBuf, s_showFires,  0);
+    drawLegendCell(tft, 1, "QUAKE", qBuf, s_showQuakes, 1);
+    drawLegendCell(tft, 2, "GRID",  gBuf, s_showGrid,   2);
+    drawLegendCell(tft, 3, "STORM", sBuf, s_showStorms, 3);
+    drawLegendFrame(tft);
 }
 
 // ── Tap ─────────────────────────────────────────────────────────────────────
@@ -373,28 +589,29 @@ bool screenMapTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {
     (void)tft;
     layersLoad();
 
-    // Top bar: force both layers to re-fetch on the next draw.
+    // Top bar: force every layer to re-fetch on the next draw.
     if (y < TOPBAR_H && wifiOk) {
         firesMapForceRefresh();
         s_mqFetchedMs = 0;
         s_mqForce = true;
+        s_mgFetchedMs = 0;
+        s_msFetchedMs = 0;
         return true;
     }
 
-    // Floating legend buttons — 4 px of vertical slack for fingers.
+    // Layer bar — the whole cell is the touch target; 4 px of vertical slack
+    // for fingers.
     if (y >= LEGEND_Y - 4 && y < LEGEND_Y + LEGEND_H + 4) {
-        if (s_fireLegendW > 0 &&
-            x >= s_fireLegendX && x < s_fireLegendX + s_fireLegendW) {
-            s_showFires = !s_showFires;
-            layersSave();
-            return true;
+        if (x < 0 || x >= SCREEN_W) return false;
+        int cell = x / LEGEND_CELL;
+        switch (cell) {
+            case 0: s_showFires  = !s_showFires;  break;
+            case 1: s_showQuakes = !s_showQuakes; break;
+            case 2: s_showGrid   = !s_showGrid;   break;
+            default: s_showStorms = !s_showStorms; break;
         }
-        if (s_quakeLegendW > 0 &&
-            x >= s_quakeLegendX && x < s_quakeLegendX + s_quakeLegendW) {
-            s_showQuakes = !s_showQuakes;
-            layersSave();
-            return true;
-        }
+        layersSave();
+        return true;
     }
     return false;
 }

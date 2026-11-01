@@ -1,5 +1,42 @@
 CYD-Weather TODO
 ================
+Session: 2026-11-01 (MAP four layers — COMPLETE)
+    - [x] Recon first, as asked: RAD (EPA RadNet) was dropped after it
+      turned out there is no national feed — only 132 per-station
+      year-to-date CSVs, 0.3-0.7 MB each, no date range, no Range header,
+      no JSON; a polite sweep is ~90 MB/day and up to a day stale.
+      Replaced by STORM (NWS warnings) before any code was written.
+    - [x] GRID: Worker /gridmap reuses the existing ODIN keyless feed,
+      groups by county FIPS, drops counties under 1,000 customers
+      (?min= overrides) and resolves each FIPS to a centroid from a
+      bundled Census gazetteer table (3,222 counties, 62 KB,
+      scripts/gen_county_centroids.py). A quiet day now shows 2-3
+      markers instead of a hundred five-customer dots.
+    - [x] STORM: Worker /storms pulls the three NWS warnings only
+      (tornado / severe thunderstorm / flash flood). 255 of 273 active
+      alerts carry no polygon, so each one falls back to its SAME county
+      centroid. Re-issues and overlapping copies collapse (same severity
+      within 25 km, or a shared first SAME code), most severe first.
+    - [x] MAP: four evenly spaced touch cells in one bar under the map
+      (FIRE / QUAKE / GRID / STORM), icons matching the markers, counts
+      that show "--" only while a fetch is in flight. MAP_Y0 moved
+      15 -> 10 px under the top bar so 33 + 170 map + 14 bar = exactly
+      the content column; the basemap itself is untouched.
+    - [x] Storm markers are red hazard triangles, not rings — a ring
+      already means earthquake. Filled = tornado, outlined + core pixel =
+      severe thunderstorm, small outline = flash flood.
+    - [x] 4-bit NVS layer mask; a device upgrading from the two-layer
+      map starts with all four on (mask -1 = never saved).
+    - [x] Worker deployed (7598f6de). Both variants built; 1-USB flashed
+      and verified on the panel, MAP.png re-captured and redacted.
+
+v1.5.4 — Four Horsemen, Four Buttons
+------------------------------
+[x] MAP layers and release (2026-11-01)
+    - GRID and STORM join FIRE and QUAKE as independently toggleable
+      layers; the ocean-corner legends became one four-cell bar.
+    - Worker gained /gridmap and /storms; county centroids bundled.
+
 Session: 2026-10-31 (MAP page — COMPLETE)
     - [x] MAP at page 12; SETTINGS -> 13.  CONUS-only wildfire + M3.5+
       quake layers on a 320x170 equirectangular map (lon -125..-66, lat

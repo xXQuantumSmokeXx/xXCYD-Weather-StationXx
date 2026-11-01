@@ -58,7 +58,7 @@ static unsigned long s_schedGraceUntil     = 0;     // grace period after touch 
 static int           s_ttCount             = 0;     // triple-tap reboot: consecutive content-area taps
 static unsigned long s_ttLastMs            = 0;     // triple-tap reboot: timestamp of last counted tap
 static char          s_updateStr[24]  = "Never";
-enum RefreshBit : uint8_t {
+enum RefreshBit : uint16_t {
     REFRESH_FIRES     = 1 << 0,
     REFRESH_USGS      = 1 << 1,
     REFRESH_NEWS      = 1 << 2,
@@ -67,9 +67,11 @@ enum RefreshBit : uint8_t {
     REFRESH_OUTAGES   = 1 << 5,
     REFRESH_EWS       = 1 << 6,
     REFRESH_MAPQ      = 1 << 7,
-    REFRESH_ALL_DATA  = 0xFF
+    REFRESH_MAPGRID   = 1 << 8,
+    REFRESH_MAPSTORM  = 1 << 9,
+    REFRESH_ALL_DATA  = 0xFFFF
 };
-static uint8_t s_refreshQueue = 0;
+static uint16_t s_refreshQueue = 0;
 static bool    s_refreshAllWeather = false;
 
 // ── RGB LED ───────────────────────────────────────────────────────────────
@@ -92,7 +94,9 @@ enum FetchCmd : uint8_t {
     FETCH_SOLAR,
     FETCH_NEWS,
     FETCH_EWS,
-    FETCH_MAPQ
+    FETCH_MAPQ,
+    FETCH_MAPGRID,
+    FETCH_MAPSTORM
 };
 
 static TaskHandle_t      s_fetchTask    = nullptr;
@@ -105,6 +109,8 @@ static volatile bool     s_fetchOk      = false;
 static volatile bool s_firesDone = false, s_firesOk = false;
 static volatile bool s_usgsDone  = false, s_usgsOk  = false;
 static volatile bool s_mapQDone  = false, s_mapQOk  = false;
+static volatile bool s_mapGDone  = false, s_mapGOk  = false;
+static volatile bool s_mapSDone  = false, s_mapSOk  = false;
 static volatile bool s_solarDone = false;
 static volatile bool s_volcanoesDone = false, s_volcanoesOk = false;
 static volatile bool s_outagesDone = false, s_outagesOk = false;
@@ -176,6 +182,8 @@ static void fetchWorker(void *param) {
                 g_volcanoesPending = true;
                 g_ewsPending      = true;
                 g_mapQuakesPending = true;
+                g_mapGridPending   = true;
+                g_mapStormsPending = true;
 
                 {
                     bool ok = firesFetch(s_wifiOk);
@@ -197,6 +205,20 @@ static void fetchWorker(void *param) {
                     xSemaphoreTake(s_dataMutex, portMAX_DELAY);
                     s_mapQOk = ok;
                     s_mapQDone = true;
+                    xSemaphoreGive(s_dataMutex);
+                }
+                {
+                    bool ok = mapGridFetch(s_wifiOk);
+                    xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                    s_mapGOk = ok;
+                    s_mapGDone = true;
+                    xSemaphoreGive(s_dataMutex);
+                }
+                {
+                    bool ok = mapStormsFetch(s_wifiOk);
+                    xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                    s_mapSOk = ok;
+                    s_mapSDone = true;
                     xSemaphoreGive(s_dataMutex);
                 }
                 {
@@ -256,6 +278,22 @@ static void fetchWorker(void *param) {
                 xSemaphoreTake(s_dataMutex, portMAX_DELAY);
                 s_mapQOk = ok;
                 s_mapQDone = true;
+                xSemaphoreGive(s_dataMutex);
+                break;
+            }
+            case FETCH_MAPGRID: {
+                bool ok = mapGridFetch(s_wifiOk);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                s_mapGOk = ok;
+                s_mapGDone = true;
+                xSemaphoreGive(s_dataMutex);
+                break;
+            }
+            case FETCH_MAPSTORM: {
+                bool ok = mapStormsFetch(s_wifiOk);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                s_mapSOk = ok;
+                s_mapSDone = true;
                 xSemaphoreGive(s_dataMutex);
                 break;
             }
@@ -343,6 +381,26 @@ bool triggerMapQuakesFetch() {
     g_mapQuakesPending = true;
     s_mapQDone = false;
     s_fetchCmd = FETCH_MAPQ;
+    ledSet(false, false, true);
+    xTaskNotifyGive(s_fetchTask);
+    return true;
+}
+
+bool triggerMapGridFetch() {
+    if (!s_fetchTask || workerBusy()) return false;
+    g_mapGridPending = true;
+    s_mapGDone = false;
+    s_fetchCmd = FETCH_MAPGRID;
+    ledSet(false, false, true);
+    xTaskNotifyGive(s_fetchTask);
+    return true;
+}
+
+bool triggerMapStormsFetch() {
+    if (!s_fetchTask || workerBusy()) return false;
+    g_mapStormsPending = true;
+    s_mapSDone = false;
+    s_fetchCmd = FETCH_MAPSTORM;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
     return true;
@@ -923,6 +981,11 @@ void setup() {
         if (s_wifiOk) showSplash("Fetching map...");
         for (int i = 0; i < 60 && !s_mapQDone && s_wifiOk; i++) delay(50);
 
+        // Grid and storms ride along with the map prefetch; neither blocks
+        // anything else, so they share one splash line.
+        if (s_wifiOk) showSplash("Fetching map...");
+        for (int i = 0; i < 60 && (!s_mapGDone || !s_mapSDone) && s_wifiOk; i++) delay(50);
+
         if (s_wifiOk) showSplash("Fetching outages...");
         for (int i = 0; i < 60 && !s_outagesDone && s_wifiOk; i++) delay(50);
 
@@ -1059,6 +1122,10 @@ void loop() {
             if (triggerSolarFetch()) s_refreshQueue &= ~REFRESH_SOLAR;
         } else if (s_refreshQueue & REFRESH_MAPQ) {
             if (triggerMapQuakesFetch()) s_refreshQueue &= ~REFRESH_MAPQ;
+        } else if (s_refreshQueue & REFRESH_MAPGRID) {
+            if (triggerMapGridFetch()) s_refreshQueue &= ~REFRESH_MAPGRID;
+        } else if (s_refreshQueue & REFRESH_MAPSTORM) {
+            if (triggerMapStormsFetch()) s_refreshQueue &= ~REFRESH_MAPSTORM;
         }
     }
     // Weather fetch completion
@@ -1097,6 +1164,28 @@ void loop() {
         bool ok = s_mapQOk;
         s_mapQDone = false;
         g_mapQuakesPending = false;
+        xSemaphoreGive(s_dataMutex);
+        (void)ok;
+        if (s_screen == 12) s_needsRedraw = true;
+    }
+
+    // MAP outage fetch completion
+    if (s_mapGDone) {
+        xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        bool ok = s_mapGOk;
+        s_mapGDone = false;
+        g_mapGridPending = false;
+        xSemaphoreGive(s_dataMutex);
+        (void)ok;
+        if (s_screen == 12) s_needsRedraw = true;
+    }
+
+    // MAP storm fetch completion
+    if (s_mapSDone) {
+        xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        bool ok = s_mapSOk;
+        s_mapSDone = false;
+        g_mapStormsPending = false;
         xSemaphoreGive(s_dataMutex);
         (void)ok;
         if (s_screen == 12) s_needsRedraw = true;

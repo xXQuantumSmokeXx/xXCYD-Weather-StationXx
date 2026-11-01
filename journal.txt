@@ -1,0 +1,59 @@
+CYD-Weather journal
+====================
+
+Dated session entries, oldest first. todo.txt keeps the version checklist; this
+file keeps the reasoning that does not fit on a checklist and the traps worth
+remembering.
+
+2026-11-01 — MAP grows two layers: GRID and STORM (v1.5.4)
+
+The ask started as "add GRID and RAD, four buttons under the map". Recon killed
+RAD before any code was written, and that was the right call: EPA RadNet has no
+national feed. The only machine-readable source is one CSV per station
+(/cdx-radnet-rest/api/rest/csv/<year>/fixed/<ST>/<CITY>), 132 stations, 0.3-0.7 MB
+each for the whole year to date, and the server ignores Range headers, so the
+cheapest possible sweep is ~90 MB and a day of staleness. Recommending that
+against a federal server for a 320-pixel map was not defensible, so the layer
+became STORM and the user agreed.
+
+STORM was nearly as tricky for a different reason. NWS /alerts/active returns
+~1 MB of CAP documents, and most of them have no geometry at all — 255 of 273 on
+the day it was measured. Warnings are issued by zone, so the polygon path only
+covers a minority. The fix is the SAME geocode: a 6-digit county code that maps
+straight into the census centroid table built for GRID. Note the digit count —
+the centroid table is keyed by 5-digit GEOID, so SAME has to lose its leading
+state digit (`slice(-5)`); getting that wrong silently drops every zone alert.
+
+GRID itself was easy by comparison: ODIN already had the county rows the
+OUTAGES screen uses, and grouping by FIPS in ODSQL is one query. ODIN carries no
+coordinates and has no centroid() function, hence the bundled Census gazetteer.
+The other surprise was scale — a normal day is ~10k customers across ~150
+counties with a median of 5, so any fixed per-county floor below a thousand just
+paints noise. The threshold is a query parameter (`?min=`), default 1000.
+
+Layout: the "bar under the map" did not fit. The content column is 194 px, the
+aspect-matched map is 170, and the bar needs 14 — with MAP_Y0 at CONTENT_Y+15
+there were 10 px left over. Moving the map to +10 makes it add up exactly and
+touches nothing else, which mattered because the basemap is generated data with
+a fixed aspect ratio. Regenerating us_map_data.h was the alternative; it was not
+needed.
+
+Colour: storm was magenta first and the user asked for red plus a triangle. Both
+were right. A ring on that map already means earthquake, so the warning layer
+needed a shape of its own; red triangles read as hazard signs at 8 px.
+
+Housekeeping that will bite next time:
+- The capture build reserves a 76.8 KB sprite; always rebuild the plain release
+  afterwards, because merge_bin.py overwrites the committed .bin on every build.
+- Gallery images are redacted in place. The MAP shot was fixed by pasting the
+  already-redacted city strip from NEWS.png rather than retyping a fake name, so
+  the font and position match exactly. Keep doing that.
+- GitHub caches README images per URL: MAP.png is now linked as MAP.png?v=2.
+- Releases are manual (see RELEASING.md): build both envs, entry in todo.txt,
+  commit code + todo + both bins, annotated tag, push branch and tag, then
+  `gh release create` with both images attached.
+
+Open threads: the 1,000-customer floor has only been seen on a quiet day — the
+first busy day is the real test of whether 80 markers is the right cap. /storms
+dedupes by 25 km, which is a guess that has not yet been challenged by a real
+outbreak.
