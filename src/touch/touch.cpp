@@ -14,10 +14,27 @@ static int s_touchRotation = 2;   // 0-3, NVS-backed; default rotates 2 (180°)
 #define SWIPE_RATIO      2
 #define DEBOUNCE_MS     50
 
-static bool     s_held    = false;
-static int16_t  s_startX  = 0, s_startY = 0;
-static int16_t  s_lastX   = 0, s_lastY  = 0;
+static bool     s_rotationPaused = false;
+static bool     s_held = false;
+static uint32_t s_lastTapMs = 0;
 static uint32_t s_touchMs = 0;
+static int16_t  s_lastTapX = 0;
+static int16_t  s_lastTapY = 0;
+static int16_t  s_startX = 0;
+static int16_t  s_lastX = 0;
+static int16_t  s_startY = 0;
+static int16_t  s_lastY = 0;
+
+#define DOUBLE_TAP_THRESHOLD_MS 400
+#define DOUBLE_TAP_DISTANCE_THRESHOLD 50
+
+bool isRotationPaused() {
+    return s_rotationPaused;
+}
+
+void toggleRotationPause() {
+    s_rotationPaused = !s_rotationPaused;
+}
 
 static bool rawToScreen(int16_t *sx, int16_t *sy) {
     if (!g_ts.touched()) return false;
@@ -73,15 +90,35 @@ TouchEvent touchPoll() {
         int dx = s_lastX - s_startX;
         int dy = s_lastY - s_startY;
         int ax = abs(dx), ay = abs(dy);
+        uint32_t now = millis();
 
         if (ax > SWIPE_THRESHOLD && ax * 10 > ay * 15) {
             evt.swipe = (dx < 0) ? SwipeDir::Left : SwipeDir::Right;
+            s_lastTapMs = 0;                  // a swipe breaks any tap sequence
         } else if (ay > SWIPE_THRESHOLD && ay * 10 > ax * 15) {
             evt.swipe = (dy < 0) ? SwipeDir::Up : SwipeDir::Down;
+            s_lastTapMs = 0;
         } else if (ax < 30 && ay < 30) {
+            // Every tap is reported as Tap.  doubleTap is an extra flag, not a
+            // replacement, so triple-tap counting and screen tap handlers still
+            // receive the second tap.
             evt.tap  = TapEvent::Tap;
             evt.tapX = s_startX;
             evt.tapY = s_startY;
+
+            // Timing is release-to-release; positions use each tap's touch-down
+            // point, since the raw tx/ty are not valid on release.
+            if (s_lastTapMs != 0 &&
+                now - s_lastTapMs < DOUBLE_TAP_THRESHOLD_MS &&
+                abs(s_startX - s_lastTapX) < DOUBLE_TAP_DISTANCE_THRESHOLD &&
+                abs(s_startY - s_lastTapY) < DOUBLE_TAP_DISTANCE_THRESHOLD) {
+                evt.doubleTap = true;
+                s_lastTapMs   = 0;            // a third tap starts a fresh pair
+            } else {
+                s_lastTapMs = now;
+            }
+            s_lastTapX = s_startX;
+            s_lastTapY = s_startY;
         }
         s_held    = false;
         s_touchMs = millis();

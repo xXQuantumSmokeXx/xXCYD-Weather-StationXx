@@ -1,5 +1,23 @@
 CYD-Weather TODO
 ================
+v1.5.5 — Two Taps to Stop the World
+------------------------------
+[x] Double-tap rotation pause and touch-gesture fixes (2026-11-02)
+    - Double-tap the content area on any rotation page (NOW-MAP) to pause
+      auto-rotate; double-tap again to resume.  SETTINGS is excluded because
+      its page checkboxes own the double-tap, and on MAP the top bar and
+      layer bar keep their own taps.  The toggle is deferred past the 600 ms
+      triple-tap window, so tap-tap-tap still reboots.
+    - Fixed: the second tap was reclassified as DoubleTap and dropped by
+      main, so triple-tap reboot and the SETTINGS favorite double-tap both
+      stopped working.  Every tap is reported as Tap again; doubleTap is an
+      extra flag on the event.
+    - Fixed: double-tap compared uninitialized tx/ty on touch release;
+      presses are now compared using their touch-down points.
+    - Auto-rotate now honours the pause (isRotationPaused was never read),
+      and a stale pause is cleared when rotation is disabled.
+    - Both variants rebuilt; 1-USB image verified on the card.
+
 Session: 2026-11-01 (cloudworker change — CYD integration TBD)
     - [ ] Worker /quakes?src=emsc was added to quantum-meteor (deployed c2944595,
       committed 20b3c25). It returns the EMSC catalogue, a second seismic source

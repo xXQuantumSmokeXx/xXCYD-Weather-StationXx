@@ -57,6 +57,7 @@ static bool         s_scheduleSleeping     = false; // schedule put backlight to
 static unsigned long s_schedGraceUntil     = 0;     // grace period after touch during schedule sleep
 static int           s_ttCount             = 0;     // triple-tap reboot: consecutive content-area taps
 static unsigned long s_ttLastMs            = 0;     // triple-tap reboot: timestamp of last counted tap
+static unsigned long s_dtPendingMs         = 0;     // double-tap pause: deferred until the reboot window expires
 static char          s_updateStr[24]  = "Never";
 enum RefreshBit : uint16_t {
     REFRESH_FIRES     = 1 << 0,
@@ -1252,9 +1253,23 @@ void loop() {
         s_lastMinute = millis();
     }
 
+    // Deferred double-tap → pause / resume auto-rotation.  Waiting out the
+    // triple-tap window keeps tap-tap-tap rebooting instead of toggling.
+    if (s_dtPendingMs != 0 && millis() - s_dtPendingMs >= 600) {
+        s_dtPendingMs = 0;
+        if (screenSettingsGetAutoRotate()) {
+            bool wasPaused = isRotationPaused();
+            toggleRotationPause();
+            if (wasPaused) s_lastAutoRotate = millis();   // resume full interval
+            Serial.println(wasPaused ? "[ROTATE] resumed" : "[ROTATE] paused");
+        }
+    }
+
     // Auto-rotate through enabled pages
-    if (screenSettingsGetAutoRotate() &&
-        millis() - s_lastAutoRotate > screenSettingsGetAutoRotateMs()) {
+    if (!screenSettingsGetAutoRotate()) {
+        if (isRotationPaused()) toggleRotationPause();   // pause is meaningless with rotation off
+    } else if (!isRotationPaused() &&
+               millis() - s_lastAutoRotate > screenSettingsGetAutoRotateMs()) {
         int start = (s_screen == 13) ? 12 : s_screen;
         int next = screenSettingsGetNextRotatePage(start);
         if (next >= 0) gotoScreen(next);
@@ -1302,14 +1317,26 @@ void loop() {
     } else if (evt.tap == TapEvent::Tap) {
         int tx = evt.tapX, ty = evt.tapY;
 
+        // Content area (between the top and bottom bars).  Taps there are inert
+        // on the data screens, so content gestures can't collide with bar
+        // navigation or refresh.
+        bool contentArea = (ty >= TOPBAR_H && ty < SCREEN_H - BOTBAR_H);
+        bool contentTap  = contentArea && (s_screen >= 0 && s_screen <= 10);
+
+        // Double-tap pause is also safe on the rotation-only screens: PLANNER
+        // ignores body taps, and the MAP body is inert (its top bar and layer
+        // bar keep their own taps).  SETTINGS stays excluded — its checkboxes
+        // have their own double-tap.
+        bool pauseTap = contentArea &&
+                        ((s_screen >= 0 && s_screen <= 11) ||
+                         (s_screen == 12 && !screenMapIsControlTap(ty)));
+
         // ── Triple-tap reboot ───────────────────────────────────────────────
         // Three quick taps in the content area (between the top and bottom bars)
         // on screens 0-10 restart the firmware.  Content-area taps on those
         // screens are otherwise inert, so this can't collide with navigation
         // (bottom bar), refresh (top bar), or settings buttons (screen 13).
         {
-            bool contentTap = (ty >= TOPBAR_H && ty < SCREEN_H - BOTBAR_H) &&
-                              (s_screen >= 0 && s_screen <= 10);
             if (contentTap) {
                 unsigned long now = millis();
                 if (s_ttCount == 0 || now - s_ttLastMs > 600) s_ttCount = 1;
@@ -1326,6 +1353,15 @@ void loop() {
             } else {
                 s_ttCount = 0;   // any non-content tap breaks the sequence
             }
+        }
+
+        // ── Double-tap → pause / resume auto-rotation ───────────────────────
+        // Content-area gating (see pauseTap) so it can't fire from a settings
+        // checkbox, the MAP layer bar, or a bar tap.
+        // Deferred: a third tap within the reboot window must reboot, not
+        // toggle rotation.  The toggle happens below once that window expires.
+        if (evt.doubleTap && pauseTap && screenSettingsGetAutoRotate()) {
+            s_dtPendingMs = millis();
         }
 
         int botY = SCREEN_H - BOTBAR_H;

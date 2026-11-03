@@ -130,6 +130,7 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Weather data via Open-Meteo; no API key required
 - Refreshes at the top of each hour
 - Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, OUTAGES, NEWS, MAP)
+- **Double-tap to pause rotation** — while auto-rotate is enabled, double-tap the content area (between the top and bottom bars) on any rotation page, NOW through MAP, to pause the rotation; double-tap again to resume. SETTINGS is excluded because its page checkboxes have their own double-tap, and on MAP the top bar and layer bar keep their own taps. The toggle waits out the triple-tap window, so a third quick tap still reboots rather than toggling rotation
 - **Triple-tap reboot** — three taps in quick succession (each within 600 ms of the last) anywhere between the top and bottom bars restarts the firmware and shows "Rebooting...". Works on the data screens, NOW through NEWS; ALMANAC, MAP and SETTINGS use body taps for their own controls, so they are excluded. A screen change, a swipe or a tap in either bar breaks the sequence
 - FIRES and USGS headline text uses the active theme color
 - 14 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, AEWS, FIRES, USGS, OUTAGES, VOLCANOES, NEWS, ALMANAC, MAP, SETTINGS

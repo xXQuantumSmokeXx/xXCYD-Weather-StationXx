@@ -585,6 +585,11 @@ void screenMapDraw(TFT_eSPI &tft, bool wifiOk) {
 }
 
 // ── Tap ─────────────────────────────────────────────────────────────────────
+bool screenMapIsControlTap(int16_t y) {
+    return y < TOPBAR_H ||
+           (y >= LEGEND_Y - 4 && y < LEGEND_Y + LEGEND_H + 4);
+}
+
 bool screenMapTap(TFT_eSPI &tft, int16_t x, int16_t y, bool wifiOk) {
     (void)tft;
     layersLoad();
