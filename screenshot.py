@@ -89,6 +89,10 @@ SCREENS = {
     "D": ("map", b"D", "ScreenShots\\screen_map.bmp"),
     "d": ("map", b"D", "ScreenShots\\screen_map.bmp"),
     "map": ("map", b"D", "ScreenShots\\screen_map.bmp"),
+    "W": ("wxmap", b"W", "ScreenShots\\screen_wxmap.bmp"),
+    "w": ("wxmap", b"W", "ScreenShots\\screen_wxmap.bmp"),
+    "wxmap": ("wxmap", b"W", "ScreenShots\\screen_wxmap.bmp"),
+    "wx map": ("wxmap", b"W", "ScreenShots\\screen_wxmap.bmp"),
 }
 
 COM_RE = re.compile(r"^COM\d+$", re.IGNORECASE)
@@ -99,7 +103,7 @@ def normalize_screen(value):
         return SCREENS["current"]
     key = value.strip().lower()
     if key not in SCREENS:
-        valid = "current, now, hourly, 5-day, solar, fireteam, aews, fires, usgs, outages, volcanoes, news, almanac, map, settings"
+        valid = "current, now, hourly, 5-day, solar, fireteam, aews, fires, usgs, outages, volcanoes, news, almanac, map, wxmap, settings"
         raise ValueError(f"Unknown screen '{value}'. Valid screens: {valid}")
     return SCREENS[key]
 
@@ -155,6 +159,7 @@ def ask_interactive():
     print("  B = NEWS")
     print("  C = ALMANAC")
     print("  D = MAP")
+    print("  W = WX MAP")
     print("  A = SETTINGS")
     screen_arg = input("Screen to capture [current]: ").strip() or "current"
     screen_name, screen_cmd, default_out = normalize_screen(screen_arg)

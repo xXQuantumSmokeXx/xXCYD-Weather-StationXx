@@ -454,7 +454,7 @@ void screenMapDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     char dateStr[28]; timeGetDateLong(dateStr, sizeof(dateStr));
     drawTopbar(tft, g_location.valid ? g_location.city : "", "MAP", timeStr, wifiOk);
-    drawBottombar(tft, dateStr, 12, 14);
+    drawBottombar(tft, dateStr, 12, 15);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     layersLoad();
@@ -583,6 +583,13 @@ void screenMapDraw(TFT_eSPI &tft, bool wifiOk) {
     drawLegendCell(tft, 3, "STORM", sBuf, s_showStorms, 3);
     drawLegendFrame(tft);
 }
+
+// ── Shared with MAP 2 ───────────────────────────────────────────────────────
+void mapDrawBasemap(TFT_eSPI &tft) { drawBasemap(tft); }
+bool mapProjectIn(float lon, float lat, int &x, int &y) {
+    return projectIn(lon, lat, x, y);
+}
+void mapDrawHome(TFT_eSPI &tft, int cx, int cy) { drawHome(tft, cx, cy); }
 
 // ── Tap ─────────────────────────────────────────────────────────────────────
 bool screenMapIsControlTap(int16_t y) {

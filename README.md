@@ -1,6 +1,6 @@
 # xXCYD-Weather-StationXx
 
-CYD tactical monitoring station — real-time weather, space weather, solar day almanac, US power outage tracking, volcano activity tracking, wildfire & earthquake tracking, a CONUS situational map, breaking news, Apocalypse Early Warning System (business-jet anomaly detection), customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
+CYD tactical monitoring station — real-time weather, space weather, solar day almanac, US power outage tracking, volcano activity tracking, wildfire & earthquake tracking, CONUS situational and weather maps, breaking news, Apocalypse Early Warning System (business-jet anomaly detection), customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-xXSmokeXx-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/xXSmokeXx)
 
@@ -83,6 +83,17 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - STORM covers tornado, severe thunderstorm and flash flood **warnings** only; watches and advisories stay off the map. Re-issued and overlapping copies are collapsed in the Worker
 - GRID and STORM are summarized server-side by Quantum-Meteor (`/gridmap`, `/storms`): county FIPS is resolved to a centroid from a bundled Census table, and NWS zone-issued alerts — which carry no polygon — are placed by their SAME county code
 
+**WX MAP screen — the weather map:**
+- The second CONUS map: instead of hazards, it shows the weather itself — 24-hour rain, current temperature, wind, and smoke / US AQI — on the same basemap and four-cell bar as MAP
+- Data comes from the Quantum-Meteor Worker (`/wxmap`), which samples a 12 × 7 grid snapped to county centroids so every sample is on land — no ocean cells — and returns one compact ~1.5 KB payload; keyless, 15-minute device cache
+- TEMP prints the °F value at each point, coloured blue (freezing) → cyan → green → yellow → orange → red (95°F+)
+- RAIN prints inches only where at least 0.05" fell, in blue tones
+- WIND is a bold downwind arrow only at 10 mph+ — yellow 10–24, orange 25–39, red 40+ — so calm areas stay clean
+- SMOKE prints the US AQI only above 50: the active theme color at 51–100, then orange, red, purple and maroon as it worsens
+- All four layers can be toggled independently from the bar and can be on at once. The bar also shows the value at the sampled point nearest home, so it doubles as a local conditions strip (rain inches, °F, mph, AQI)
+- TEMP and RAIN share the upper text line; WIND and SMOKE share the lower one. State lines are drawn under the labels, and the white crosshair marks home
+- Tap the title bar to force a refresh
+
 **OUTAGES screen:**
 - US power outages — national reported total, active incidents, and the top four states by customers out
 - Two 24-hour sparklines: national and the caller's own state (30 bars, max-per-bucket so spikes survive; the current bar is white)
@@ -118,7 +129,7 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - **Scheduled Sleep & Wake Timer** — daily schedule to turn the backlight off during configured sleep hours (e.g. 10PM–7AM), every day. Toggle on with SCHED, then tap SLEEP and WAKE to cycle through preset hours. ESP32 stays running so NTP time and all data fetches continue normally. Backlight off saves display life without losing connectivity. Tap anywhere during the sleep window for a 30-second wake grace period before the schedule re-enforces. Independent of the inactivity timer — both can be active simultaneously, with the schedule acting as the daily default and the quick timers as one-off overrides.
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
 - Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
-- 13 per-page rotation checkboxes (2 rows × 7, plus one spare cell reserved for the next screen) — toggle which screens are included in auto-rotate
+- 14 per-page rotation checkboxes (2 rows × 7, all 14 cells used) — toggle which screens are included in auto-rotate
 - **Favorite screens** — double-tap any page checkbox to mark it as a favorite (amber highlight). Favorites are interspersed between regular screens during rotation (e.g. Fav, 2, Fav, 3, Fav, 4…), so your most-used screens appear twice as often. Multiple favorites cycle round-robin. Double-tap again to un-favorite; disabling a page auto-clears its favorite
 - E-Ink mode — inverts display to white-background / black-foreground, toggled from the settings screen
 - 9 theme accent colors, saved across reboots
@@ -129,11 +140,11 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Auto-detects location via IP geolocation; no config needed beyond WiFi credentials
 - Weather data via Open-Meteo; no API key required
 - Refreshes at the top of each hour
-- Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, OUTAGES, NEWS, MAP)
-- **Double-tap to pause rotation** — while auto-rotate is enabled, double-tap the content area (between the top and bottom bars) on any rotation page, NOW through MAP, to pause the rotation; double-tap again to resume. SETTINGS is excluded because its page checkboxes have their own double-tap, and on MAP the top bar and layer bar keep their own taps. The toggle waits out the triple-tap window, so a third quick tap still reboots rather than toggling rotation
-- **Triple-tap reboot** — three taps in quick succession (each within 600 ms of the last) anywhere between the top and bottom bars restarts the firmware and shows "Rebooting...". Works on the data screens, NOW through NEWS; ALMANAC, MAP and SETTINGS use body taps for their own controls, so they are excluded. A screen change, a swipe or a tap in either bar breaks the sequence
+- Tap the title bar on any screen to force an immediate data re-fetch (weather screens) or data-screen refresh (SOLAR, FIRES, USGS, OUTAGES, NEWS, MAP, WX MAP)
+- **Double-tap to pause rotation** — while auto-rotate is enabled, double-tap the content area (between the top and bottom bars) on any rotation page, NOW through WX MAP, to pause the rotation; double-tap again to resume. SETTINGS is excluded because its page checkboxes have their own double-tap, and on MAP and WX MAP the top bar and layer bar keep their own taps. The toggle waits out the triple-tap window, so a third quick tap still reboots rather than toggling rotation
+- **Triple-tap reboot** — three taps in quick succession (each within 600 ms of the last) anywhere between the top and bottom bars restarts the firmware and shows "Rebooting...". Works on the data screens, NOW through NEWS; ALMANAC, MAP, WX MAP and SETTINGS use body taps for their own controls, so they are excluded. A screen change, a swipe or a tap in either bar breaks the sequence
 - FIRES and USGS headline text uses the active theme color
-- 14 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, AEWS, FIRES, USGS, OUTAGES, VOLCANOES, NEWS, ALMANAC, MAP, SETTINGS
+- 15 screens total: NOW, HOURLY, 5-DAY, SOLAR, FIRETEAM, AEWS, FIRES, USGS, OUTAGES, VOLCANOES, NEWS, ALMANAC, MAP, WX MAP, SETTINGS
 
 ### Setup
 

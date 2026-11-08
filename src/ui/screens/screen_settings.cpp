@@ -69,14 +69,14 @@ static int s_schedX3 = 0, s_wakeW  = 0;
 #define ROT_BTN_COUNT 5
 #define ROT_BTN_W    ((SEC2_W - (ROT_BTN_COUNT - 1) * 3) / ROT_BTN_COUNT)  // 58
 
-// Page rotation — 2 rows × 7 columns.  PAGE_COUNT is the number of real
-// rotation pages (0-12, MAP last); PAGE_GRID draws one spare cell for the
-// next screen.
+// Page rotation — 2 rows × 7 columns, all 14 cells real.  PAGE_COUNT is the
+// number of rotation pages (0-13, MAP and WX MAP last); SETTINGS is screen
+// 14 and is not part of the rotation.
 #define PAGE_LABEL_Y (ROT_BTN_Y0 + ROT_BTN_H + 4)    // 131
 #define PAGE_BTN_Y0  (PAGE_LABEL_Y + 8)               // 139
 #define PAGE_BTN_H   18
 #define PAGE_GAP     2
-#define PAGE_COUNT   13
+#define PAGE_COUNT   14
 #define PAGE_GRID    14
 #define PAGE_COLS    7
 #define PAGE_ROWS    2
@@ -165,44 +165,53 @@ static void autoRotLoad() {
 }
 
 // ── Page rotation mask ────────────────────────────────────────────────────────
-// v4 layout (13 pages): NOW=0,HOURLY=1,5DAY=2,SOLAR=3,FIRETEAM=4,AEWS=5,
-//   FIRES=6,USGS=7,OUTAGES=8,VOLCANOES=9,NEWS=10,PLANNER=11,MAP=12
-// Migration from v2 (11 pages: 0-4 unchanged, 5-10 shift right by 1, AEWS at 5).
-static uint16_t s_pageMask  = 0x1FFF;
+// v5 layout (14 pages): NOW=0,HOURLY=1,5DAY=2,SOLAR=3,FIRETEAM=4,AEWS=5,
+//   FIRES=6,USGS=7,OUTAGES=8,VOLCANOES=9,NEWS=10,PLANNER=11,MAP=12,WXMAP=13
+// Migration: v4 keeps its bits and gets WX MAP (bit 13) turned on by default;
+// older layouts go through the same v2→v4 path as before.
+static uint16_t s_pageMask  = 0x3FFF;
 static bool     s_pageLoaded = false;
 
 static void pageMaskLoad() {
     if (s_pageLoaded) return;
-    int v4 = nvsGetInt("page_mask_v4", -1);
-    if (v4 >= 0) {
-        s_pageMask = (uint16_t)v4;
+    int v5 = nvsGetInt("page_mask_v5", -1);
+    if (v5 >= 0) {
+        s_pageMask = (uint16_t)v5;
     } else {
-        int v3 = nvsGetInt("page_mask_v3", -1);
-        if (v3 >= 0) {
-            s_pageMask = (uint16_t)v3;
+        uint16_t mask;
+        int v4 = nvsGetInt("page_mask_v4", -1);
+        if (v4 >= 0) {
+            mask = (uint16_t)v4;
         } else {
-            // Migrate from v2 or from the original single-byte page_mask
-            int v2 = nvsGetInt("page_mask_v2", -1);
-            uint16_t old;
-            if (v2 >= 0) {
-                old = (uint16_t)v2;
+            int v3 = nvsGetInt("page_mask_v3", -1);
+            if (v3 >= 0) {
+                mask = (uint16_t)v3;
             } else {
-                uint16_t pm = (uint16_t)nvsGetInt("page_mask", 0x3FF);
-                old = (pm & 0x000F) | 0x0010 | ((pm & 0x03F0) << 1);
+                // Migrate from v2 or from the original single-byte page_mask
+                int v2 = nvsGetInt("page_mask_v2", -1);
+                uint16_t old;
+                if (v2 >= 0) {
+                    old = (uint16_t)v2;
+                } else {
+                    uint16_t pm = (uint16_t)nvsGetInt("page_mask", 0x3FF);
+                    old = (pm & 0x000F) | 0x0010 | ((pm & 0x03F0) << 1);
+                }
+                // Bits 0-4 unchanged, bit 5 (AEWS) = ON, old bits 5-10 → new bits 6-11
+                mask = (old & 0x1F) | (1u << 5) | ((old & 0x7E0u) << 1);
             }
-            // Bits 0-4 unchanged, bit 5 (AEWS) = ON, old bits 5-10 → new bits 6-11
-            s_pageMask = (old & 0x1F) | (1u << 5) | ((old & 0x7E0u) << 1);
+            mask |= (1u << 12);   // MAP defaults ON
         }
-        s_pageMask |= (1u << 12);   // MAP defaults ON
-        if (s_pageMask == 0) s_pageMask = 0x1FFF;
-        nvsPutInt("page_mask_v4", s_pageMask);
+        mask |= (1u << 13);       // WX MAP (new) defaults ON
+        if (mask == 0) mask = 0x3FFF;
+        s_pageMask = mask;
+        nvsPutInt("page_mask_v5", s_pageMask);
     }
-    if (s_pageMask == 0) s_pageMask = 0x1FFF;
+    if (s_pageMask == 0) s_pageMask = 0x3FFF;
     s_pageLoaded = true;
 }
 
 static void pageMaskSave() {
-    nvsPutInt("page_mask_v4", s_pageMask);
+    nvsPutInt("page_mask_v5", s_pageMask);
 }
 
 // ── Favorite mask ────────────────────────────────────────────────────────────
@@ -211,20 +220,25 @@ static bool     s_favLoaded = false;
 
 static void favMaskLoad() {
     if (s_favLoaded) return;
-    int v3 = nvsGetInt("fav_mask_v3", -1);
-    if (v3 >= 0) {
-        s_favMask = (uint16_t)v3;
+    int v4 = nvsGetInt("fav_mask_v4", -1);
+    if (v4 >= 0) {
+        s_favMask = (uint16_t)v4;
     } else {
-        // Migrate from v2 fav_mask — bits 0-4 unchanged, old bits 5-10 → new 6-11
-        uint16_t old = (uint16_t)nvsGetInt("fav_mask", 0x0000);
-        s_favMask = (old & 0x1F) | ((old & 0x7E0u) << 1);
-        nvsPutInt("fav_mask_v3", s_favMask);
+        int v3 = nvsGetInt("fav_mask_v3", -1);
+        if (v3 >= 0) {
+            s_favMask = (uint16_t)v3;
+        } else {
+            // Migrate from v2 fav_mask — bits 0-4 unchanged, old bits 5-10 → new 6-11
+            uint16_t old = (uint16_t)nvsGetInt("fav_mask", 0x0000);
+            s_favMask = (old & 0x1F) | ((old & 0x7E0u) << 1);
+        }
+        nvsPutInt("fav_mask_v4", s_favMask);
     }
     s_favLoaded = true;
 }
 
 static void favMaskSave() {
-    nvsPutInt("fav_mask_v3", s_favMask);
+    nvsPutInt("fav_mask_v4", s_favMask);
 }
 
 // ── Double-tap state for favorite toggle ─────────────────────────────────────
@@ -297,7 +311,7 @@ int screenSettingsGetNextRotatePage(int current) {
 void screenSettingsDraw(TFT_eSPI &tft, bool wifiOk) {
     char timeStr[10]; timeGetShort(timeStr);
     drawTopbar(tft, g_location.valid ? g_location.city : "", "SETTINGS", timeStr, wifiOk);
-    drawBottombar(tft, "", 13, 14);
+    drawBottombar(tft, "", 14, 15);
     tft.fillRect(0, CONTENT_Y, SCREEN_W, CONTENT_H, COL_BG);
 
     slpCacheLoad();

@@ -32,6 +32,7 @@
 #include "ui/screens/screen_ews.h"
 #include "ui/screens/screen_planner.h"
 #include "ui/screens/screen_map.h"
+#include "ui/screens/screen_map2.h"
 #include "modules/screenshot.h"
 
 static TFT_eSPI tft;
@@ -97,7 +98,8 @@ enum FetchCmd : uint8_t {
     FETCH_EWS,
     FETCH_MAPQ,
     FETCH_MAPGRID,
-    FETCH_MAPSTORM
+    FETCH_MAPSTORM,
+    FETCH_WXMAP
 };
 
 static TaskHandle_t      s_fetchTask    = nullptr;
@@ -112,6 +114,7 @@ static volatile bool s_usgsDone  = false, s_usgsOk  = false;
 static volatile bool s_mapQDone  = false, s_mapQOk  = false;
 static volatile bool s_mapGDone  = false, s_mapGOk  = false;
 static volatile bool s_mapSDone  = false, s_mapSOk  = false;
+static volatile bool s_wxMapDone = false, s_wxMapOk = false;
 static volatile bool s_solarDone = false;
 static volatile bool s_volcanoesDone = false, s_volcanoesOk = false;
 static volatile bool s_outagesDone = false, s_outagesOk = false;
@@ -185,6 +188,7 @@ static void fetchWorker(void *param) {
                 g_mapQuakesPending = true;
                 g_mapGridPending   = true;
                 g_mapStormsPending = true;
+                g_wxMapPending     = true;
 
                 {
                     bool ok = firesFetch(s_wifiOk);
@@ -256,6 +260,13 @@ static void fetchWorker(void *param) {
                     s_ewsDone = true;
                     xSemaphoreGive(s_dataMutex);
                 }
+                {
+                    bool ok = wxMapFetch(s_wifiOk);
+                    xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                    s_wxMapOk = ok;
+                    s_wxMapDone = true;
+                    xSemaphoreGive(s_dataMutex);
+                }
                 break;
 
             case FETCH_FIRES: {
@@ -295,6 +306,14 @@ static void fetchWorker(void *param) {
                 xSemaphoreTake(s_dataMutex, portMAX_DELAY);
                 s_mapSOk = ok;
                 s_mapSDone = true;
+                xSemaphoreGive(s_dataMutex);
+                break;
+            }
+            case FETCH_WXMAP: {
+                bool ok = wxMapFetch(s_wifiOk);
+                xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+                s_wxMapOk = ok;
+                s_wxMapDone = true;
                 xSemaphoreGive(s_dataMutex);
                 break;
             }
@@ -402,6 +421,16 @@ bool triggerMapStormsFetch() {
     g_mapStormsPending = true;
     s_mapSDone = false;
     s_fetchCmd = FETCH_MAPSTORM;
+    ledSet(false, false, true);
+    xTaskNotifyGive(s_fetchTask);
+    return true;
+}
+
+bool triggerWxMapFetch() {
+    if (!s_fetchTask || workerBusy()) return false;
+    g_wxMapPending = true;
+    s_wxMapDone = false;
+    s_fetchCmd = FETCH_WXMAP;
     ledSet(false, false, true);
     xTaskNotifyGive(s_fetchTask);
     return true;
@@ -585,10 +614,10 @@ static void ensureLocation() {
     }
 }
 
-// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fireteam, 5=AEWS, 6=Fires, 7=USGS, 8=Outages, 9=Volcanoes, 10=News, 11=Planner, 12=Map, 13=Settings
+// Screens: 0=Now, 1=Hourly, 2=5-Day, 3=Solar, 4=Fireteam, 5=AEWS, 6=Fires, 7=USGS, 8=Outages, 9=Volcanoes, 10=News, 11=Planner, 12=Map, 13=WX Map, 14=Settings
 static void gotoScreen(int n) {
-    // Wrap around: 13→0 forward, 0→13 backward
-    s_screen         = (n % 14 + 14) % 14;
+    // Wrap around: 14→0 forward, 0→14 backward
+    s_screen         = (n % 15 + 15) % 15;
     s_lastAutoRotate = millis();
     s_needsRedraw    = true;
     s_ttCount        = 0;   // a screen change breaks any triple-tap sequence
@@ -609,7 +638,8 @@ static void redrawTo(TFT_eSPI &target) {
         case 10: screenNewsDraw(target, s_wifiOk);    break;
         case 11: screenPlannerDraw(target, s_wifiOk);  break;
         case 12: screenMapDraw(target, s_wifiOk);      break;
-        case 13: screenSettingsDraw(target, s_wifiOk); break;
+        case 13: screenMap2Draw(target, s_wifiOk);     break;
+        case 14: screenSettingsDraw(target, s_wifiOk); break;
     }
 }
 
@@ -1001,6 +1031,9 @@ void setup() {
 
         if (s_wifiOk) showSplash("Fetching EWS...");
         for (int i = 0; i < 60 && !s_ewsDone && s_wifiOk; i++) delay(50);
+
+        if (s_wifiOk) showSplash("Fetching weather map...");
+        for (int i = 0; i < 80 && !s_wxMapDone && s_wifiOk; i++) delay(50);
     }
 
     ledSet(false, false, false);
@@ -1192,6 +1225,17 @@ void loop() {
         if (s_screen == 12) s_needsRedraw = true;
     }
 
+    // WX MAP fetch completion
+    if (s_wxMapDone) {
+        xSemaphoreTake(s_dataMutex, portMAX_DELAY);
+        bool ok = s_wxMapOk;
+        s_wxMapDone = false;
+        g_wxMapPending = false;
+        xSemaphoreGive(s_dataMutex);
+        (void)ok;
+        if (s_screen == 13) s_needsRedraw = true;
+    }
+
     // Meteors fetch completion
     if (s_outagesDone) {
         xSemaphoreTake(s_dataMutex, portMAX_DELAY);
@@ -1248,7 +1292,7 @@ void loop() {
     // full redraws (up to an hour on a page nobody navigates away from).
     if (millis() - s_lastMinute > 60000) {
         char timeStr[10]; timeGetShort(timeStr);
-        static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","AEWS","FIRES","USGS","OUTAGES","VOLCANOES","NEWS","ALMANAC","MAP","SETTINGS"};
+        static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","AEWS","FIRES","USGS","OUTAGES","VOLCANOES","NEWS","ALMANAC","MAP","WX MAP","SETTINGS"};
         drawTopbarTime(tft, timeStr, labels[s_screen]);
         s_lastMinute = millis();
     }
@@ -1270,7 +1314,7 @@ void loop() {
         if (isRotationPaused()) toggleRotationPause();   // pause is meaningless with rotation off
     } else if (!isRotationPaused() &&
                millis() - s_lastAutoRotate > screenSettingsGetAutoRotateMs()) {
-        int start = (s_screen == 13) ? 12 : s_screen;
+        int start = (s_screen == 14) ? 13 : s_screen;
         int next = screenSettingsGetNextRotatePage(start);
         if (next >= 0) gotoScreen(next);
     }
@@ -1329,7 +1373,8 @@ void loop() {
         // have their own double-tap.
         bool pauseTap = contentArea &&
                         ((s_screen >= 0 && s_screen <= 11) ||
-                         (s_screen == 12 && !screenMapIsControlTap(ty)));
+                         (s_screen == 12 && !screenMapIsControlTap(ty)) ||
+                         (s_screen == 13 && !screenMap2IsControlTap(ty)));
 
         // ── Triple-tap reboot ───────────────────────────────────────────────
         // Three quick taps in the content area (between the top and bottom bars)
@@ -1415,6 +1460,8 @@ void loop() {
         } else if (s_screen == 12) {
             if (screenMapTap(tft, tx, ty, s_wifiOk)) s_needsRedraw = true;
         } else if (s_screen == 13) {
+            if (screenMap2Tap(tft, tx, ty, s_wifiOk)) s_needsRedraw = true;
+        } else if (s_screen == 14) {
             bool changed = screenSettingsTap(tft, tx, ty);
             if (changed) s_needsRedraw = true;
             if (screenSettingsRefreshTapped()) {
@@ -1533,11 +1580,15 @@ void loop() {
             redraw();
         } else if (cmd == 'A' || cmd == 'a') {
             if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
-            gotoScreen(13);
+            gotoScreen(14);
             redraw();
         } else if (cmd == 'D' || cmd == 'd') {
             if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
             gotoScreen(12);                     // Map
+            redraw();
+        } else if (cmd == 'W' || cmd == 'w') {
+            if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
+            gotoScreen(13);                     // WX Map
             redraw();
         } else if (cmd == 'B' || cmd == 'b') {
             if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }

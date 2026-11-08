@@ -8,7 +8,7 @@
  * Deploy: npx wrangler deploy
  */
 
-import { countyCentroid } from "./county_centroids.js";
+import { countyCentroid, COUNTY_CENTROID_BLOB } from "./county_centroids.js";
 
 // ── EWS R2 dashboard URL ──────────────────────────────────────────────────
 const EWS_R2 = "https://pub-49bb6a6f314c47be9b481c25e5f6ca9e.r2.dev/dashboard.json";
@@ -57,6 +57,11 @@ export default {
       return await serveStorms();
     }
 
+    // GET /wxmap — CONUS rain / temperature / wind / AQI grid for MAP 2
+    if (url.pathname === "/wxmap") {
+      return await serveWxMap();
+    }
+
     // GET /news — headline list (feed fetched server-side, trimmed to ~10)
     if (url.pathname === "/news") {
       return await serveNews();
@@ -86,7 +91,7 @@ export default {
 
     // GET / — simple status
     return new Response(
-      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes", "/outbreaks", "/grid", "/gridmap", "/storms", "/news", "/solar", "/quakes", "/fire", "/geo"] }),
+      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes", "/outbreaks", "/grid", "/gridmap", "/storms", "/wxmap", "/news", "/solar", "/quakes", "/fire", "/geo"] }),
       { headers: { "Content-Type": "application/json" } }
     );
   },
@@ -1655,6 +1660,150 @@ async function serveStorms() {
     const stale = await cache.match(STALE_KEY);
     if (stale) return stale;
     return json(502, { items: [], error: e.message });
+  }
+}
+
+// ── /wxmap — CONUS weather field for MAP 2 ────────────────────────────────
+// A 12×7 grid over the same bbox the device map uses (lon -125..-66,
+// lat 24.5..49.5).  Each cell is snapped to the nearest county centroid so
+// every sample lands on the CONUS and nothing is sampled out over the ocean;
+// cells with no centroid within 150 km are dropped.  One payload carries
+// 24 h rain (hundredths of an inch), current temperature (°F), wind (mph +
+// direction) and US AQI.  Open-Meteo accepts comma-separated coordinate
+// lists; 40 points per request keeps each URL short.
+const WX_W = 12;
+const WX_H = 7;
+const WX_LON0 = -125.0;
+const WX_LAT0 = 49.5;
+const WX_DLON = 59.0 / WX_W;
+const WX_DLAT = 25.0 / WX_H;
+const WX_CHUNK = 40;
+const WX_LAND_KM = 150;
+const WX_FORECAST = "https://api.open-meteo.com/v1/forecast";
+const WX_AIR = "https://air-quality-api.open-meteo.com/v1/air-quality";
+
+let _wxPoints = null;
+
+function wxPoints() {
+  if (_wxPoints) return _wxPoints;
+
+  const land = [];
+  for (const row of COUNTY_CENTROID_BLOB.split(";")) {
+    const a = row.indexOf(",");
+    const b = row.indexOf(",", a + 1);
+    if (a < 0 || b < 0) continue;
+    land.push([+row.slice(a + 1, b), +row.slice(b + 1)]);   // [lat, lon]
+  }
+
+  const used = new Set();
+  const pts = [];
+  for (let r = 0; r < WX_H; r++) {
+    for (let c = 0; c < WX_W; c++) {
+      const la = WX_LAT0 - (r + 0.5) * WX_DLAT;
+      const lo = WX_LON0 + (c + 0.5) * WX_DLON;
+      const cosLat = Math.cos(la * Math.PI / 180);
+      let best = Infinity, bi = -1;
+      for (let i = 0; i < land.length; i++) {
+        const dy = (land[i][0] - la) * 111;
+        const dx = (land[i][1] - lo) * 111 * cosLat;
+        const d = dx * dx + dy * dy;
+        if (d < best) { best = d; bi = i; }
+      }
+      // Keep one point per cell, and only if the nearest land is close
+      // enough that the cell is not really ocean.
+      if (bi < 0 || best > WX_LAND_KM * WX_LAND_KM || used.has(bi)) continue;
+      used.add(bi);
+      pts.push({ la: land[bi][0], lo: land[bi][1] });
+    }
+  }
+
+  _wxPoints = pts;
+  return pts;
+}
+
+async function wxJson(url) {
+  const resp = await fetch(url, { headers: { "User-Agent": "Quantum-Meteor/1.0" } });
+  if (!resp.ok) throw new Error(`open-meteo ${resp.status}`);
+  const doc = await resp.json();
+  return Array.isArray(doc) ? doc : [doc];
+}
+
+async function serveWxMap() {
+  const cache = caches.default;
+  const CACHE_KEY = "https://qsmoke-cache/wxmap-v2";
+  const STALE_KEY = "https://qsmoke-cache/wxmap-v2-stale";
+
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
+  try {
+    const pts = wxPoints();
+    const chunks = [];
+    for (let i = 0; i < pts.length; i += WX_CHUNK) {
+      chunks.push(pts.slice(i, i + WX_CHUNK));
+    }
+
+    const parts = await Promise.all(chunks.map(async (chunk) => {
+      const lat = chunk.map((p) => p.la.toFixed(3)).join(",");
+      const lon = chunk.map((p) => p.lo.toFixed(3)).join(",");
+      const fUrl = `${WX_FORECAST}?latitude=${lat}&longitude=${lon}` +
+        "&current=temperature_2m,wind_speed_10m,wind_direction_10m" +
+        "&hourly=precipitation&past_hours=24&forecast_hours=1" +
+        "&temperature_unit=fahrenheit&wind_speed_unit=mph" +
+        "&precipitation_unit=inch&timezone=UTC";
+      const aUrl = `${WX_AIR}?latitude=${lat}&longitude=${lon}` +
+        "&current=us_aqi&timezone=UTC";
+
+      const [forecast, air] = await Promise.all([wxJson(fUrl), wxJson(aUrl)]);
+      const t = [], ws = [], wd = [], aq = [], r = [];
+      for (let j = 0; j < chunk.length; j++) {
+        const cur = (forecast[j] && forecast[j].current) || {};
+        const hourly = (forecast[j] && forecast[j].hourly) || {};
+        let rain = 0;
+        for (const v of hourly.precipitation || []) {
+          if (Number.isFinite(v)) rain += v;
+        }
+        const a = air[j] && air[j].current && air[j].current.us_aqi;
+        t.push(Number.isFinite(cur.temperature_2m) ? Math.round(cur.temperature_2m) : -999);
+        ws.push(Number.isFinite(cur.wind_speed_10m) ? Math.round(cur.wind_speed_10m) : -1);
+        wd.push(Number.isFinite(cur.wind_direction_10m)
+          ? Math.round(cur.wind_direction_10m) % 360 : -1);
+        aq.push(Number.isFinite(a) ? Math.round(a) : -1);
+        r.push(Math.max(0, Math.round(rain * 100)));
+      }
+      return { t, ws, wd, aq, r };
+    }));
+
+    const t = [], ws = [], wd = [], aq = [], r = [];
+    for (const p of parts) {
+      t.push(...p.t); ws.push(...p.ws); wd.push(...p.wd);
+      aq.push(...p.aq); r.push(...p.r);
+    }
+
+    // Per-point coordinates: the cells are snapped to county centroids, so
+    // the device cannot reconstruct positions from a grid.
+    const la = [], lo = [];
+    for (const p of pts) { la.push(p.la); lo.push(p.lo); }
+
+    const payload = {
+      updated: new Date().toISOString(),
+      n: pts.length,
+      la, lo, t, ws, wd, aq, r,
+    };
+    const out = json(200, payload);
+    out.headers.set("Cache-Control", "s-maxage=600");    // 10 min
+    await cache.put(CACHE_KEY, out.clone());
+
+    const stale = json(200, { ...payload, stale: true });
+    stale.headers.set("Cache-Control", "s-maxage=21600");
+    await cache.put(STALE_KEY, stale);
+    return out;
+  } catch (e) {
+    console.log(`wxmap: ${e.message}`);
+    const stale = await cache.match(STALE_KEY);
+    if (stale) return stale;
+    return json(502, { error: e.message, n: 0, la: [], lo: [],
+                       t: [], ws: [], wd: [], aq: [], r: [] });
   }
 }
 

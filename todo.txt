@@ -1,5 +1,67 @@
 CYD-Weather TODO
 ================
+───── Next To Do ────────────────────────────────────────────────────────────
+[ ] 1. Battery — stop doing work while the backlight is off (added 2026-11-08)
+    - When the sleep timer / schedule blanks the backlight
+      (main.cpp:1429-1493), the loop keeps polling touch at 50 Hz, redrawing
+      the top-bar clock every minute (main.cpp:1249), auto-rotating pages with
+      full-screen repaints (main.cpp:1268), and firing stale-data fetches.
+      None of it is visible, so all of it is wasted energy.
+    - Gate the minute tick, auto-rotate and redraw on !s_backlightOff.  On
+      wake, force s_needsRedraw so the clock is fresh — today it can lag until
+      the next minute tick.  If fetches stop while asleep, the first draw on
+      wake still triggers the per-screen stale() fetch as usual.
+    - Optional: TFT_DISPOFF / TFT_DISPON around the backlight-off window.  The
+      panel stays powered but saves ~10-20 mA; GRAM is retained and no
+      re-init is needed, so this is the safe panel-sleep step.
+
+[ ] 2. Battery — deep-sleep the scheduled sleep window (added 2026-11-08)
+    - The overnight schedule (e.g. 10PM-7AM) currently saves only the
+      ~25-30 mA backlight.  CPU + WiFi + panel still burn ~150-190 mA for
+      nine hours (~1.4-1.7 Ah, most of a 2 Ah pack) to show nothing.
+    - At the sleep hour: TFT_DISPOFF, backlight 0, hold GPIO21 low, then
+      esp_deep_sleep_start() with ext0 touch wake on GPIO36 (already used by
+      PWR OFF at screen_settings.cpp:581) plus a timer wake at the configured
+      wake hour.
+    - Wake means a full reboot (~15-25 s with WiFi + NTP + the 10-endpoint
+      FETCH_BOOT_BG prefetch).  Add an RTC-memory "woke from sleep" flag so a
+      sleep-wake skips prefetch and fetches weather only, keeping it short.
+    - Verify the backlight stays dark during deep sleep (hold the pin); the
+      current PWR OFF path does not explicitly kill the backlight or panel
+      before esp_deep_sleep_start().
+    - The same mechanism can serve the 5-minute inactivity timer; it is not
+      worth it at 15 s / 30 s because the boot cost dominates.
+
+[ ] 3. Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
+    - Drop "CYD" for future ports (larger screens, other boards, T-Deck). Both
+      names hardware-agnostic, one-word, honest.
+    - Do it at v2.0 with the directory/URL change; no page slot.
+
+v1.5.6 — Second Front
+------------------------------
+[x] MAP 2 — weather conditions (2026-11-08)
+    - New WX MAP page at slot 13 (SETTINGS moves to 14), sharing the MAP
+      basemap and projection.  Four independently toggled layers: 24 h rain,
+      temperature, wind and smoke/AQI.
+    - Worker /wxmap snaps a 12x7 grid to county centroids (150 km max; 58
+      land points, no ocean cells) and returns one ~1.5 KB payload with
+      per-point coordinates plus rain (hundredths of an inch), °F, wind
+      (mph + direction) and US AQI.  10 min Worker cache / 15 min device
+      cache, prefetched at boot.
+    - TEMP prints °F digits (blue → red); RAIN prints inches only >= 0.05";
+      WIND is a bold 3 px arrow at 10 mph+ (yellow 10-24, orange 25-39, red
+      40+); SMOKE prints AQI only above 50 (theme color 51-100, then orange,
+      red, purple and maroon).  All four can be on at once; the bar shows the
+      nearest-home value and toggles each layer.
+    - Page mask/favorites bumped to page_mask_v5 / fav_mask_v4; the 2x7 grid
+      is full at 14 pages and WX MAP defaults ON for v4 upgrades.
+    - Worker /wxmap deployed (e2fe2ae4).  Both variants built; 1-USB image
+      tested on the panel through the density and colour passes.
+    - PHASE 2 (next): replace the 24 h rain layer with live radar + 60 min
+      nowcast (RainViewer tiles or an IEM/NOAA WMS render decoded in the
+      Worker).  TEMP/WIND/SMOKE stay as-is.  Lightning stays deferred — the
+      Blitzortung stream needs a Durable Object for data radar already shows.
+
 v1.5.5 — Two Taps to Stop the World
 ------------------------------
 [x] Double-tap rotation pause and touch-gesture fixes (2026-11-02)
@@ -174,36 +236,19 @@ title is thematic (may differ from the entry title here). Draft → publish via
 attaching both .bin. File is tracked lowercase — `git add todo.txt`, not TODO.txt.
 
 ───── 2026-10-29 — future list pruned ───────────────────────────────────────
-Two candidates. The rest sit under Not planned with a reason. Constraints:
+Two candidates at the time. The rest sit under Not planned with a reason.
+(Battery items 1-2 were added 2026-11-08.) Constraints:
 the SETTINGS grid caps at 16 pages (12 today → 14 at 2×7 → 16 at 2×8, no third
 row), and the Worker is shared with MayDay — /outbreaks, /cme, /fireballs,
 /ews and /volcanoes are Nova/portal contracts, not CYD-only.
 
-Sequence: Phase 0 FIRES stamp → Lightning (Worker-only prototype first; slots
-13-16 stay open) → rename at v2.0, no page slot. Water, ORBIT and ICE were
-dropped 2026-10-29.
+Sequence: Phase 0 FIRES stamp → rename at v2.0, no page slot.  Lightning was
+deferred 2026-11-08 (WX MAP took the page); Water, ORBIT and ICE were dropped
+2026-10-29.
 
 Phase 0: an empty FIRES result sets s_fetchedMs = 0 while s_fetchedOnce stays
 true, so stale() never clears and the draw loop re-fetches on every free tick
 (the v1.5.0 backoff only covers !s_fetchedOnce); tap-refresh has the same shape.
-
-───── Future Ideas ──────────────────────────────────────────────────────────
-[ ] 1. Lightning — Blitzortung.org (RESEARCH DONE)
-    - Community network, ~100 strikes/min, free non-commercial w/ attribution.
-    - WebSocket wss://ws1.blitzortung.org/ (mirrors ws2/ws7/ws8); handshake
-      {"a":111}; frames are LZW-compressed strings (dict starts at 256); strike
-      = lat/lon/time/pol/region/e.
-    - Worker: Durable Object holding a persistent socket + 30-min rolling
-      buffer. Reference fltman/lightings/server/blitzortung.js.
-    - ESP32 payload: {"strikes":47,"closest":3.2,"direction":"SW","minutes":5}
-    - Alternative: Xweather/Vaisala REST, 15K free calls/mo.
-    - Needs a Worker-only prototype for a week before firmware; slots 13-16
-      are open.
-
-[ ] 2. Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
-    - Drop "CYD" for future ports (larger screens, other boards, T-Deck). Both
-      names hardware-agnostic, one-word, honest.
-    - Do it at v2.0 with the directory/URL change; no page slot.
 
 ───── Not planned / folded (kept so they don't resurface) ───────────────────
 [-] Water / Hydrology (HYDRO + TIDES) — dropped 2026-10-29. Sources and the
@@ -229,6 +274,12 @@ true, so stale() never clears and the draw loop re-fetches on every free tick
     aviationweather.gov METAR/TAF (keyless).
 [-] Aviation — ADS-B Traffic Density — OpenSky anonymous is rate-limited and
     low value here; ADS-B Exchange is keyed.
+[-] Lightning page — deferred 2026-11-08.  Blitzortung needs a Worker Durable
+    Object with a persistent WebSocket and a 30-min buffer; radar (WX MAP phase
+    2) covers the same "where are the storms" question.  If it returns, make it
+    a WX MAP layer, not a page.  Reference: ws1.blitzortung.org, handshake
+    {"a":111}, LZW-compressed frames (dict starts at 256); alternative
+    Xweather/Vaisala REST, 15K free calls/mo.
 
 ───── Completed ─────────────────────────────────────────────────────────────
 
