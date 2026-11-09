@@ -63,8 +63,9 @@ export default {
     }
 
     // GET /news — headline list (feed fetched server-side, trimmed to ~10)
+    //   ?crew=1 — richer, multi-outlet digest for the MayDay crew brains
     if (url.pathname === "/news") {
-      return await serveNews();
+      return await serveNews(url);
     }
 
     // GET /solar — Kp history, solar wind, x-ray class, flares and CME in one
@@ -1046,7 +1047,11 @@ const NEWS_SOURCES = [
   "https://feeds.npr.org/1001/rss.xml",
 ];
 
-async function serveNews() {
+async function serveNews(url) {
+  // The crew digest is a separate shape on the same route: the screen keeps its
+  // minimal {title, when} payload, and the brains ask for this one explicitly.
+  if (url && url.searchParams.get("crew") === "1") return await serveCrewNews();
+
   const cache = caches.default;
   const CACHE_KEY = "https://qsmoke-cache/news-v2";
   const STALE_KEY = "https://qsmoke-cache/news-v2-stale";
@@ -1114,13 +1119,163 @@ function mdFromDate(s) {
 }
 
 function cleanXmlText(s) {
-  return String(s)
+  // Decode entities BEFORE stripping tags. Guardian (and others) escape their
+  // HTML as &lt;p&gt;: strip-first left literal tags behind, because the decode
+  // then reintroduced them (seen in the crew digest on 2026-11-09).
+  const text = String(s)
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
+  return text
+    // A space, not "": adjacent paragraphs would otherwise fuse ("laws<p>It").
+    .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// ── /news?crew=1 — headline digest for Six and Nova ───────────────────────
+// The screen path above returns the minimal {title, when} shape it can draw.
+// The crew brains want source, a real timestamp and a link, and they want a
+// merge of several outlets rather than the first feed that answers. Same rule
+// as every other crew feed: source and freshness travel with the payload,
+// article bodies are never included, and a dead source is reported rather than
+// silently dropped. AP has no stable public RSS, so it is not in this list.
+const CREW_NEWS_SOURCES = [
+  { url: "https://feeds.bbci.co.uk/news/world/rss.xml", source: "BBC" },
+  { url: "https://feeds.npr.org/1001/rss.xml", source: "NPR" },
+  { url: "https://www.theguardian.com/world/rss", source: "Guardian" },
+  { url: "https://www.aljazeera.com/xml/rss/all.xml", source: "Al Jazeera" },
+  { url: "https://rss.dw.com/rdf/rss-en-world", source: "DW" },
+];
+
+async function serveCrewNews() {
+  const cache = caches.default;
+  // v3: v1 held un-stripped escaped HTML; v2 fused words where tags were removed.
+  const CACHE_KEY = "https://qsmoke-cache/news-crew-v3";
+  const STALE_KEY = "https://qsmoke-cache/news-crew-v3-stale";
+
+  const fresh = await cache.match(CACHE_KEY);
+  if (fresh) return fresh;
+
+  const fetchedAt = new Date().toISOString();
+  const results = await Promise.allSettled(
+    CREW_NEWS_SOURCES.map(async ({ url, source }) => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const resp = await fetch(url, {
+          headers: {
+            "User-Agent": "Quantum-Meteor/1.0",
+            "Accept-Encoding": "identity",
+          },
+          signal: ctrl.signal,
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return parseCrewItems(await resp.text(), source);
+      } finally {
+        clearTimeout(timer);
+      }
+    })
+  );
+
+  const items = [];
+  const failed = [];
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") items.push(...r.value);
+    else failed.push(`${CREW_NEWS_SOURCES[i].source}: ${r.reason && r.reason.message}`);
+  });
+
+  // Newest first. A story carried by more than one outlet is kept once, under
+  // the first outlet that reported it.
+  const seen = new Set();
+  const deduped = items
+    .filter((it) => {
+      const key = it.title.toLowerCase().replace(/\s+/g, " ").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => (Date.parse(b.published) || 0) - (Date.parse(a.published) || 0));
+
+  // Balance the digest: at most two per outlet on the first pass, then fill any
+  // remaining slots from the leftovers. One busy feed (Guardian) must not crowd
+  // the others out, and a day with only two live feeds still fills the list.
+  const capped = [];
+  const rest = [];
+  const perSource = new Map();
+  for (const it of deduped) {
+    const n = perSource.get(it.source) || 0;
+    if (n < 2) {
+      capped.push(it);
+      perSource.set(it.source, n + 1);
+    } else {
+      rest.push(it);
+    }
+  }
+  const merged = capped.concat(rest).slice(0, 8);
+
+  if (merged.length) {
+    const out = json(200, {
+      items: merged,
+      count: merged.length,
+      fetched_at: fetchedAt,
+      sources: CREW_NEWS_SOURCES.map((s) => s.source),
+      failed,
+    });
+    out.headers.set("Cache-Control", "s-maxage=300");
+    await cache.put(CACHE_KEY, out.clone());
+    const stale = out.clone();
+    stale.headers.set("Cache-Control", "s-maxage=3600");
+    await cache.put(STALE_KEY, stale);
+    return out;
+  }
+
+  const stale = await cache.match(STALE_KEY);
+  if (stale) return stale;
+  return json(502, {
+    items: [],
+    count: 0,
+    fetched_at: fetchedAt,
+    error: failed.join("; ") || "feeds unreachable",
+  });
+}
+
+// Atom <entry> and RSS/RDF <item>, with the fields the crew renderer needs.
+function parseCrewItems(xml, source) {
+  const out = [];
+  const blocks = xml.match(/<(entry|item)\b[\s\S]*?<\/\1>/g) || [];
+  for (const block of blocks) {
+    const t = block.match(/<title[^>]*>([\s\S]*?)<\/title>/);
+    if (!t) continue;
+    const title = cleanXmlText(t[1]);
+    if (!title) continue;
+
+    const d = block.match(/<(updated|published|pubDate|dc:date)[^>]*>([\s\S]*?)<\/\1>/);
+    const ts = d ? Date.parse(cleanXmlText(d[2])) : NaN;
+
+    // Atom carries <link href="..."/>, RSS carries <link>...</link>.
+    let url = "";
+    const href = block.match(/<link[^>]*\bhref=["']([^"']+)["']/);
+    if (href) url = href[1];
+    else {
+      const plain = block.match(/<link[^>]*>([\s\S]*?)<\/link>/);
+      if (plain) url = cleanXmlText(plain[1]);
+    }
+
+    const s = block.match(/<(description|summary|content)[^>]*>([\s\S]*?)<\/\1>/);
+    const summary = s ? cleanXmlText(s[2]).slice(0, 200) : "";
+
+    out.push({
+      title,
+      source,
+      published: isNaN(ts) ? "" : new Date(ts).toISOString(),
+      url,
+      summary,
+    });
+  }
+  return out;
 }
 
 // ── /solar — one snapshot for the SOLAR screen ────────────────────────────
