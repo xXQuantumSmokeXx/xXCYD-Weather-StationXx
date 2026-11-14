@@ -3,6 +3,7 @@
 #include "../config/nvs_config.h"
 #include "../ui/theme.h"
 #include <Arduino.h>
+#include <driver/gpio.h>
 
 #define BATT_PIN 34   // GPIO34 — voltage divider (100k/100k) to LiPo
 
@@ -69,6 +70,21 @@ void brightnessRestore() {
 
 void brightnessOff() {
     applyBri(0);
+}
+
+// Deep sleep stops the LEDC peripheral, which can let the backlight pin float
+// or resume at its last duty.  Detach the PWM channel, drive the pin to the
+// off level and hold it for the duration of deep sleep (released on wake).
+void brightnessShutdownForSleep() {
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+    ledcDetach(TFT_BL);
+#else
+    ledcDetachPin(TFT_BL);
+#endif
+    pinMode(TFT_BL, OUTPUT);
+    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON ? LOW : HIGH);
+    gpio_hold_en((gpio_num_t)TFT_BL);
+    gpio_deep_sleep_hold_en();
 }
 
 int batteryPct() {

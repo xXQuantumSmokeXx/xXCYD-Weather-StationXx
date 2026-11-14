@@ -1,6 +1,6 @@
 # xXCYD-Weather-StationXx
 
-CYD tactical monitoring station — real-time weather, space weather, solar day almanac, US power outage tracking, volcano activity tracking, wildfire & earthquake tracking, CONUS situational and weather maps, breaking news, Apocalypse Early Warning System (business-jet anomaly detection), customizable display profiles, and Somnus intelligent power management — instant deep-sleep with a single tap to wake.
+CYD tactical monitoring station — real-time weather, space weather, solar day almanac, US power outage tracking, volcano activity tracking, wildfire & earthquake tracking, CONUS situational and weather maps, breaking news, Apocalypse Early Warning System (business-jet anomaly detection), customizable display profiles, and Somnus intelligent power management — overnight scheduled deep sleep with timer or tap-to-wake, plus panel-off sleep on inactivity.
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-xXSmokeXx-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/xXSmokeXx)
 
@@ -125,8 +125,8 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Falls back to OpenWeatherMap sunrise/sunset times when available
 
 **SETTINGS screen:**
-- **Sleep Timer** — backlight auto-off after inactivity (OFF / 15s / 30s / 1m / 5m). Tap or swipe to wake
-- **Scheduled Sleep & Wake Timer** — daily schedule to turn the backlight off during configured sleep hours (e.g. 10PM–7AM), every day. Toggle on with SCHED, then tap SLEEP and WAKE to cycle through preset hours. ESP32 stays running so NTP time and all data fetches continue normally. Backlight off saves display life without losing connectivity. Tap anywhere during the sleep window for a 30-second wake grace period before the schedule re-enforces. Independent of the inactivity timer — both can be active simultaneously, with the schedule acting as the daily default and the quick timers as one-off overrides.
+- **Sleep Timer** — panel and backlight auto-off after inactivity (OFF / 15s / 30s / 1m / 5m). While dark the device stops redrawing, auto-rotation and scheduled fetches; tap or swipe to wake and the screen redraws immediately
+- **Scheduled Sleep & Wake Timer** — daily schedule to deep-sleep through configured sleep hours (e.g. 10PM–7AM), every day. Toggle on with SCHED, then tap SLEEP and WAKE to cycle through preset hours. At the sleep hour the ESP32 holds the backlight off and enters ultra-low-power deep sleep, waking on a timer at the configured WAKE hour or early on a touch. A scheduled wake skips the ten-endpoint boot prefetch, fetches weather immediately, and gives you a minute of grace before the schedule re-enforces. Independent of the inactivity timer — when no schedule is set, the quick timer blanks the backlight while the ESP32 stays connected
 - 6-step brightness — AUTO (LDR light sensor), DIM, LOW, MED, HIGH, MAX; saved across reboots
 - Screen auto-rotate interval (off / 5s / 10s / 30s / 1m)
 - 14 per-page rotation checkboxes (2 rows × 7, all 14 cells used) — toggle which screens are included in auto-rotate
@@ -134,7 +134,7 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - E-Ink mode — inverts display to white-background / black-foreground, toggled from the settings screen
 - 9 theme accent colors, saved across reboots
 - **Auto Reboot Toggle** — tap AUTO RST to enable/disable the 5-hour periodic ESP.restart() that prevents heap fragmentation. Theme-color border when ON, dim when OFF. Defaults to ON — toggle OFF for long-running uptime testing.
-- Power Off — two-tap confirmation ("PWR OFF" → "SURE?") engages **Somnus Deep-Sleep Recovery**: ESP32 enters ultra-low-power deep sleep with EXT0 touch-IRQ wake on GPIO 36. A single screen tap reanimates the device instantly — no hardware reset required
+- Power Off — two-tap confirmation ("PWR OFF" → "SURE?") engages **Somnus Deep-Sleep Recovery**: the panel is blanked and the backlight pin held off, then the ESP32 enters ultra-low-power deep sleep with EXT0 touch-IRQ wake on GPIO 36. A single screen tap reanimates the device — no hardware reset required
 
 **General:**
 - Auto-detects location via IP geolocation; no config needed beyond WiFi credentials

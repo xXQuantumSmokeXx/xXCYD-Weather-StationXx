@@ -1,41 +1,40 @@
 CYD-Weather TODO
 ================
 ───── Next To Do ────────────────────────────────────────────────────────────
-[ ] 1. Battery — stop doing work while the backlight is off (added 2026-11-08)
-    - When the sleep timer / schedule blanks the backlight
-      (main.cpp:1429-1493), the loop keeps polling touch at 50 Hz, redrawing
-      the top-bar clock every minute (main.cpp:1249), auto-rotating pages with
-      full-screen repaints (main.cpp:1268), and firing stale-data fetches.
-      None of it is visible, so all of it is wasted energy.
-    - Gate the minute tick, auto-rotate and redraw on !s_backlightOff.  On
-      wake, force s_needsRedraw so the clock is fresh — today it can lag until
-      the next minute tick.  If fetches stop while asleep, the first draw on
-      wake still triggers the per-screen stale() fetch as usual.
-    - Optional: TFT_DISPOFF / TFT_DISPON around the backlight-off window.  The
-      panel stays powered but saves ~10-20 mA; GRAM is retained and no
-      re-init is needed, so this is the safe panel-sleep step.
-
-[ ] 2. Battery — deep-sleep the scheduled sleep window (added 2026-11-08)
-    - The overnight schedule (e.g. 10PM-7AM) currently saves only the
-      ~25-30 mA backlight.  CPU + WiFi + panel still burn ~150-190 mA for
-      nine hours (~1.4-1.7 Ah, most of a 2 Ah pack) to show nothing.
-    - At the sleep hour: TFT_DISPOFF, backlight 0, hold GPIO21 low, then
-      esp_deep_sleep_start() with ext0 touch wake on GPIO36 (already used by
-      PWR OFF at screen_settings.cpp:581) plus a timer wake at the configured
-      wake hour.
-    - Wake means a full reboot (~15-25 s with WiFi + NTP + the 10-endpoint
-      FETCH_BOOT_BG prefetch).  Add an RTC-memory "woke from sleep" flag so a
-      sleep-wake skips prefetch and fetches weather only, keeping it short.
-    - Verify the backlight stays dark during deep sleep (hold the pin); the
-      current PWR OFF path does not explicitly kill the backlight or panel
-      before esp_deep_sleep_start().
-    - The same mechanism can serve the 5-minute inactivity timer; it is not
-      worth it at 15 s / 30 s because the boot cost dominates.
-
-[ ] 3. Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
+[ ] 1. Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
     - Drop "CYD" for future ports (larger screens, other boards, T-Deck). Both
       names hardware-agnostic, one-word, honest.
     - Do it at v2.0 with the directory/URL change; no page slot.
+
+v1.5.7 — Lights Out
+------------------------------
+[x] Battery pass and MAP counts (2026-11-14)
+    - [x] Battery 1 — work stops while the panel is blanked.  The minute tick,
+      auto-rotate, weather/NTP scheduler, refresh queue and full redraws are
+      gated on !s_backlightOff; the loop drops to 20 Hz touch polling.
+      backlightSleep()/backlightWake() centralise TFT_DISPOFF/DISPON plus PWM,
+      and wake sets s_needsRedraw so the clock is fresh.  Panel sleep saves its
+      extra ~10-20 mA and GRAM is retained, so no re-init is needed.  The
+      5-hour restart stays ungated on purpose: deferring it past a long dark
+      spell would make the first touch after that spell reboot instead of
+      showing a page.
+    - [x] Battery 2 — the schedule now deep-sleeps instead of idling.  At the
+      sleep hour, after 30 s idle and a 60 s post-boot grace, it blanks the
+      panel, detaches LEDC, holds GPIO21 low through sleep
+      (brightnessShutdownForSleep) and calls esp_deep_sleep_start() with a
+      timer wake at WAKE plus ext0 touch wake on GPIO36.  An RTC_DATA_ATTR
+      "scheduled sleep" flag makes setup() skip FETCH_BOOT_BG, trigger a
+      weather fetch and show "Waking up...".  A touch wake still gets the
+      one-minute grace; mktime computes the delay across midnight/DST, floored
+      at 60 s.
+    - [x] PWR OFF now blanks the panel and holds the backlight off as well; its
+      touch wake is unchanged and still does the full prefetch.
+    - [x] MAP legend counts now report the marks that survived declutter rather
+      than the projected totals.  Same-layer GRID collisions are nudged to the
+      nearest free pixel instead of being dropped, so adjacent counties (the
+      two NY counties 5.4 px apart on 2026-11-14) both show: GRID 4/4.  QUAKE
+      reads 7 when 9 events collapse onto duplicate pixels.
+    - Both variants built clean; images attached to the release.
 
 v1.5.6 — Second Front
 ------------------------------
@@ -246,9 +245,9 @@ Sequence: Phase 0 FIRES stamp → rename at v2.0, no page slot.  Lightning was
 deferred 2026-11-08 (WX MAP took the page); Water, ORBIT and ICE were dropped
 2026-10-29.
 
-Phase 0: an empty FIRES result sets s_fetchedMs = 0 while s_fetchedOnce stays
-true, so stale() never clears and the draw loop re-fetches on every free tick
-(the v1.5.0 backoff only covers !s_fetchedOnce); tap-refresh has the same shape.
+Phase 0 — DONE (screen_fires.cpp): an empty result now stamps s_fetchedMs =
+millis() at the end of the fetch, so stale() backs off for the cache window
+instead of re-fetching on every redraw.  Kept here as a closed item.
 
 ───── Not planned / folded (kept so they don't resurface) ───────────────────
 [-] Water / Hydrology (HYDRO + TIDES) — dropped 2026-10-29. Sources and the

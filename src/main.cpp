@@ -3,6 +3,8 @@
 #include <WiFi.h>
 #include <math.h>
 #include <time.h>
+#include <esp_sleep.h>
+#include <driver/gpio.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
@@ -60,6 +62,56 @@ static int           s_ttCount             = 0;     // triple-tap reboot: consec
 static unsigned long s_ttLastMs            = 0;     // triple-tap reboot: timestamp of last counted tap
 static unsigned long s_dtPendingMs         = 0;     // double-tap pause: deferred until the reboot window expires
 static char          s_updateStr[24]  = "Never";
+
+// Persists across deep sleep.  1 means the last shutdown was the scheduled
+// sleep window, so setup() can skip the ten-endpoint boot prefetch and let
+// the active screen fetch only what it needs.  A PWR OFF leaves it at 0.
+RTC_DATA_ATTR static uint8_t s_rtcSlept = 0;
+
+// ── Panel / backlight sleep ───────────────────────────────────────────────
+// The sleep timer used to blank only the PWM.  Blanking the panel too saves
+// its ~10-20 mA and keeps GRAM intact, so a wake needs no full re-init.
+static void backlightSleep() {
+    if (s_backlightOff) return;
+    s_backlightOff = true;
+    tft.writecommand(TFT_DISPOFF);
+    brightnessOff();
+}
+
+static void backlightWake() {
+    if (!s_backlightOff) return;
+    s_backlightOff = false;
+    tft.writecommand(TFT_DISPON);
+    brightnessRestore();
+    delay(5);                 // display-on settle before the next redraw
+    s_needsRedraw = true;     // the clock may have advanced while dark
+}
+
+// Sleep until the schedule's wake hour instead of idling with WiFi, the panel
+// and the CPU awake for the whole window.  Deep sleep draws a few microamps;
+// the old backlight-only sleep still burned ~150-190 mA for hours.
+static void enterScheduledSleep(int wakeHr) {
+    time_t now = time(nullptr);
+    struct tm tmv;
+    localtime_r(&now, &tmv);
+    tmv.tm_hour = wakeHr;
+    tmv.tm_min  = 0;
+    tmv.tm_sec  = 0;
+    time_t target = mktime(&tmv);
+    if (target <= now) target += 86400;
+    uint64_t secs = (uint64_t)(target - now);
+    if (secs < 60) secs = 60;   // never sleep/wake-loop on clock granularity
+
+    Serial.printf("[SLEEP] scheduled deep sleep %llu s (wake %02d:00)\n",
+                  (unsigned long long)secs, wakeHr);
+    Serial.flush();
+    tft.writecommand(TFT_DISPOFF);
+    brightnessShutdownForSleep();   // BL held low for the whole deep sleep
+    s_rtcSlept = 1;
+    esp_sleep_enable_timer_wakeup(secs * 1000000ULL);
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_36, 0);   // touch wakes it early
+    esp_deep_sleep_start();                          // does not return
+}
 enum RefreshBit : uint16_t {
     REFRESH_FIRES     = 1 << 0,
     REFRESH_USGS      = 1 << 1,
@@ -934,6 +986,14 @@ static void touchCalibrate() {
 void setup() {
     Serial.begin(115200);
 
+    // A scheduled deep sleep sets s_rtcSlept before calling
+    // esp_deep_sleep_start().  PWR OFF never sets it, so that path still gets
+    // the normal boot prefetch when touched awake.
+    esp_sleep_wakeup_cause_t wakeCause = esp_sleep_get_wakeup_cause();
+    bool wokeFromScheduledSleep = (s_rtcSlept == 1) &&
+                                  wakeCause != ESP_SLEEP_WAKEUP_UNDEFINED;
+    s_rtcSlept = 0;
+
     pinMode(LED_R, OUTPUT); pinMode(LED_G, OUTPUT); pinMode(LED_B, OUTPUT);
     ledSet(false, false, false);
 
@@ -960,7 +1020,7 @@ void setup() {
     applyRotation();   // re-apply in case calibration changed it
     touchCalibrate();
 
-    showSplash("Starting up...");
+    showSplash(wokeFromScheduledSleep ? "Waking up..." : "Starting up...");
     ledSet(false, true, false);
 
     connectWifi();
@@ -995,8 +1055,22 @@ void setup() {
     // Launch async fetch worker on Core 0
     xTaskCreatePinnedToCore(fetchWorker, "fetch", 24576, nullptr, 1, &s_fetchTask, 0);
 
+    // A scheduled wake has no weather in RAM (statics reset across deep sleep)
+    // and the NOW screen only asks for a refresh once it has a timestamp, so
+    // kick the first fetch here instead of waiting for the hour scheduler.
+    if (s_wifiOk && wokeFromScheduledSleep) {
+        s_lastWeatherAttempt = millis();
+        triggerFetch(false);
+    }
+
     // Kick off background fetches — data screens + weather (worker task = TLS works)
-    if (s_wifiOk) {
+    // A scheduled wake skips the ten-endpoint prefetch: the active screen's
+    // stale() check fetches weather on its first draw, keeping the boot short.
+    if (wokeFromScheduledSleep) {
+        Serial.printf("[SLEEP] woke from scheduled sleep (cause %d), prefetch skipped\n",
+                      (int)wakeCause);
+    }
+    if (s_wifiOk && !wokeFromScheduledSleep) {
         s_fetchCmd = FETCH_BOOT_BG;
         xTaskNotifyGive(s_fetchTask);
 
@@ -1038,6 +1112,10 @@ void setup() {
 
     ledSet(false, false, false);
     s_lastTouchMs = millis();      // prevent immediate sleep timer trigger
+    // Give every boot a minute inside the schedule window before the device can
+    // deep-sleep again — otherwise a manual boot at 10:30 PM would vanish
+    // before the user could navigate, and a touch wake would do the same.
+    s_schedGraceUntil = millis() + 60000UL;
     s_needsRedraw = true;
     Serial.println("READY");
 }
@@ -1097,6 +1175,8 @@ void loop() {
     // 5-hour periodic restart — prevents heap fragmentation from
     // JsonDocument reallocs accumulating over long uptimes.
     // Only restarts when the Core 0 worker is idle (no fetch in flight).
+    // Left ungated on the backlight: deferring it past a long dark spell would
+    // make the first touch after that spell reboot instead of showing a page.
     if (millis() > 18000000UL && !workerBusy() && screenSettingsGetAutoReboot()) {  // 5 h
         Serial.println("[RESTART] 5-hour periodic restart");
         Serial.flush();
@@ -1108,7 +1188,7 @@ void loop() {
     // are now on-demand via per-screen stale() checks — no hour-change or
     // watchdog bulk-fetch bursts.  The main loop dispatches one queued fetch
     // per iteration when the Core 0 worker is free.
-    if (s_wifiOk && timeIsValid()) {
+    if (s_wifiOk && timeIsValid() && !s_backlightOff) {
         time_t now = time(nullptr);
         int curHour = localtime(&now)->tm_hour;
 
@@ -1139,7 +1219,7 @@ void loop() {
         }
     }
 
-    if (s_wifiOk && !workerBusy() && s_refreshQueue) {
+    if (s_wifiOk && !workerBusy() && s_refreshQueue && !s_backlightOff) {
         if (s_refreshQueue & REFRESH_FIRES) {
             if (triggerFiresFetch()) s_refreshQueue &= ~REFRESH_FIRES;
         } else if (s_refreshQueue & REFRESH_USGS) {
@@ -1290,7 +1370,7 @@ void loop() {
     // CONTENT_Y, so no page needs excluding.  SOLAR, FIRES, USGS and OUTAGES
     // used to be skipped here, which left their top-bar clock frozen between
     // full redraws (up to an hour on a page nobody navigates away from).
-    if (millis() - s_lastMinute > 60000) {
+    if (!s_backlightOff && millis() - s_lastMinute > 60000) {
         char timeStr[10]; timeGetShort(timeStr);
         static const char* labels[] = {"NOW","HOURLY","5-DAY","SOLAR","FIRETEAM","AEWS","FIRES","USGS","OUTAGES","VOLCANOES","NEWS","ALMANAC","MAP","WX MAP","SETTINGS"};
         drawTopbarTime(tft, timeStr, labels[s_screen]);
@@ -1312,7 +1392,7 @@ void loop() {
     // Auto-rotate through enabled pages
     if (!screenSettingsGetAutoRotate()) {
         if (isRotationPaused()) toggleRotationPause();   // pause is meaningless with rotation off
-    } else if (!isRotationPaused() &&
+    } else if (!s_backlightOff && !isRotationPaused() &&
                millis() - s_lastAutoRotate > screenSettingsGetAutoRotateMs()) {
         int start = (s_screen == 14) ? 13 : s_screen;
         int next = screenSettingsGetNextRotatePage(start);
@@ -1476,8 +1556,7 @@ void loop() {
     if (evt.swipe != SwipeDir::None || evt.tap != TapEvent::None) {
         s_lastTouchMs = millis();
         if (s_backlightOff) {
-            s_backlightOff = false;
-            brightnessRestore();
+            backlightWake();
             if (s_scheduleSleeping) {
                 s_schedGraceUntil = millis() + 30000;  // 30s grace before re-sleep
             }
@@ -1487,26 +1566,21 @@ void loop() {
     int slpSecs = screenSettingsGetSleepTimerSecs();
     if (slpSecs > 0 && !g_invert && !s_backlightOff) {
         if (millis() - s_lastTouchMs >= (unsigned long)slpSecs * 1000UL) {
-            s_backlightOff = true;
-            brightnessOff();
+            backlightSleep();
         }
     }
 
     // ── Schedule-based sleep ──────────────────────────────────────────────────
-    // Shuts off backlight during configured daily sleep window (e.g. 10PM–7AM).
-    // Independent of the inactivity timer above — touch grants a 30 s grace
-    // period before the schedule re-enforces.
+    // Deep-sleeps through the configured daily window (e.g. 10PM–7AM) instead
+    // of idling with WiFi, the panel and the CPU awake.  The window is enforced
+    // only after 30 s without a touch, so the screen stays usable overnight.
     {
         bool schedEnabled = screenSettingsGetScheduleEnabled();
 
         // Schedule was disabled while sleeping → wake up now
         if (!schedEnabled && s_scheduleSleeping) {
             s_scheduleSleeping = false;
-            if (s_backlightOff) {
-                s_backlightOff = false;
-                brightnessRestore();
-                s_needsRedraw = true;
-            }
+            if (s_backlightOff) backlightWake();
         }
 
         if (schedEnabled && !g_invert && timeIsValid()) {
@@ -1524,17 +1598,13 @@ void loop() {
                 inWindow = (curHour >= sleepHr || curHour < wakeHr);
             }
 
-            if (inWindow && !s_backlightOff && millis() > s_schedGraceUntil) {
+            bool idleEnough = millis() - s_lastTouchMs >= 30000UL;
+            if (inWindow && idleEnough && millis() > s_schedGraceUntil) {
                 s_scheduleSleeping = true;
-                s_backlightOff = true;
-                brightnessOff();
+                enterScheduledSleep(wakeHr);   // deep sleep; does not return
             } else if (!inWindow && s_scheduleSleeping) {
                 s_scheduleSleeping = false;
-                if (s_backlightOff) {
-                    s_backlightOff = false;
-                    brightnessRestore();
-                    s_needsRedraw = true;
-                }
+                if (s_backlightOff) backlightWake();
             }
         }
     }
@@ -1575,27 +1645,27 @@ void loop() {
         }
         if (cmd >= '0' && cmd <= '9') {
             int n = cmd - '0';
-            if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
+            backlightWake();
             gotoScreen(n);
             redraw();
         } else if (cmd == 'A' || cmd == 'a') {
-            if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
+            backlightWake();
             gotoScreen(14);
             redraw();
         } else if (cmd == 'D' || cmd == 'd') {
-            if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
+            backlightWake();
             gotoScreen(12);                     // Map
             redraw();
         } else if (cmd == 'W' || cmd == 'w') {
-            if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
+            backlightWake();
             gotoScreen(13);                     // WX Map
             redraw();
         } else if (cmd == 'B' || cmd == 'b') {
-            if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
+            backlightWake();
             gotoScreen(10);                     // News
             redraw();
         } else if (cmd == 'C' || cmd == 'c') {
-            if (s_backlightOff) { s_backlightOff = false; brightnessRestore(); }
+            backlightWake();
             gotoScreen(11);                     // Almanac (planner)
             redraw();
         } else if (cmd == 'X' || cmd == 'x') {
@@ -1633,7 +1703,7 @@ void loop() {
         if (cmd == 'S' || cmd == 's') {
             // Force backlight on and redraw so GRAM is fresh for capture
             bool blWasOff = s_backlightOff;
-            if (blWasOff) { s_backlightOff = false; brightnessRestore(); }
+            backlightWake();
 
             // Capture diagnostics: which path ran, and whether the preallocated
             // sprite is present. Printed before RGB332: so the capture script's
@@ -1665,11 +1735,14 @@ void loop() {
             }
 
             // Restore backlight if it was off before capture
-            if (blWasOff) { s_backlightOff = true; brightnessOff(); }
+            if (blWasOff) backlightSleep();
         }
     }
 
-    // Skip redraw while worker writes data globals on Core 0
-    if (s_needsRedraw && !workerBusy()) redraw();
-    delay(20);
+    // Skip redraw while worker writes data globals on Core 0, and while the
+    // panel is blanked — backlightWake() queues a fresh frame.
+    if (!s_backlightOff && s_needsRedraw && !workerBusy()) redraw();
+    // Touch polling has to keep running to see the wake tap, but 20 Hz is
+    // plenty while there is nothing on screen to respond to.
+    delay(s_backlightOff ? 50 : 20);
 }

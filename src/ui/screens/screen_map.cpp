@@ -264,6 +264,32 @@ static void place(int x, int y) {
     if (s_mn < MAX_MARKS) { s_mx[s_mn] = x; s_my[s_mn] = y; s_mn++; }
 }
 
+// Two adjacent counties with outages can land only 5-6 px apart on a 320 px
+// CONUS map.  The plain 9 px rule silently dropped the second one, so the
+// GRID cell said 4 while three bolts were drawn.  Try the exact point first,
+// then the nearest free offset around it — the mark stays visible and the
+// legend count stays honest instead of hiding a real outage.
+static bool placeWithNudge(int &x, int &y, int minD) {
+    if (canPlace(x, y, minD)) { place(x, y); return true; }
+    static const int8_t kDir[8][2] = {
+        {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+        {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
+    };
+    for (int step = minD; step <= minD + 6; step += 2) {
+        for (int i = 0; i < 8; i++) {
+            int nx = x + kDir[i][0] * step;
+            int ny = y + kDir[i][1] * step;
+            if (nx < MAP_X0 || nx >= MAP_X0 + MAP_W ||
+                ny < MAP_Y0 || ny >= MAP_Y0 + MAP_H) continue;
+            if (!canPlace(nx, ny, minD)) continue;
+            x = nx; y = ny;
+            place(x, y);
+            return true;
+        }
+    }
+    return false;
+}
+
 // ── Layer bar ───────────────────────────────────────────────────────────────
 // Borderless black cells: the text always stays theme-colored; the icon is
 // semantic when the layer is on and dim when it is off.  kind: 0 fire,
@@ -520,12 +546,16 @@ void screenMapDraw(TFT_eSPI &tft, bool wifiOk) {
     sortDesc(sMarks, nStorm);
 
     // ── Marks, most acute layer first so it wins the declutter ring ───────
+    // The legend must describe what is actually on the map, so count the
+    // marks the declutter pass accepted rather than the projected totals.
     s_mn = 0;
+    int drawnFire = 0, drawnQuake = 0, drawnGrid = 0, drawnStorm = 0;
     if (s_showStorms) {
         for (int i = 0; i < nStorm; i++) {
             if (!canPlace(sMarks[i].x, sMarks[i].y, 12)) continue;
             drawStorm(tft, sMarks[i].x, sMarks[i].y, sMarks[i].sev);
             place(sMarks[i].x, sMarks[i].y);
+            drawnStorm++;
         }
     }
     if (s_showQuakes) {
@@ -533,13 +563,15 @@ void screenMapDraw(TFT_eSPI &tft, bool wifiOk) {
             if (!canPlace(qMarks[i].x, qMarks[i].y, 11)) continue;
             drawQuake(tft, qMarks[i].x, qMarks[i].y, qMarks[i].sev / 10.0f);
             place(qMarks[i].x, qMarks[i].y);
+            drawnQuake++;
         }
     }
     if (s_showGrid) {
         for (int i = 0; i < nGrid; i++) {
-            if (!canPlace(gMarks[i].x, gMarks[i].y, 9)) continue;
-            drawOutage(tft, gMarks[i].x, gMarks[i].y, gMarks[i].sev);
-            place(gMarks[i].x, gMarks[i].y);
+            int gx = gMarks[i].x, gy = gMarks[i].y;
+            if (!placeWithNudge(gx, gy, 9)) continue;
+            drawOutage(tft, gx, gy, gMarks[i].sev);
+            drawnGrid++;
         }
     }
     if (s_showFires) {
@@ -547,6 +579,7 @@ void screenMapDraw(TFT_eSPI &tft, bool wifiOk) {
             if (!canPlace(fMarks[i].x, fMarks[i].y, 7)) continue;
             drawFlame(tft, fMarks[i].x, fMarks[i].y, MAP_COL_FIRE);
             place(fMarks[i].x, fMarks[i].y);
+            drawnFire++;
         }
     }
 
@@ -567,15 +600,23 @@ void screenMapDraw(TFT_eSPI &tft, bool wifiOk) {
     }
 
     // ── Layer bar ─────────────────────────────────────────────────────────
+    // When a layer is on, show how many of its marks survived declutter (what
+    // the eye can count).  When it is off, show the available total so the
+    // cell still says how much the layer holds.
+    int fireShown  = s_showFires  ? drawnFire  : nFire;
+    int quakeShown = s_showQuakes ? drawnQuake : nQuake;
+    int gridShown  = s_showGrid   ? drawnGrid  : nGrid;
+    int stormShown = s_showStorms ? drawnStorm : nStorm;
+
     char fBuf[8], qBuf[8], gBuf[8], sBuf[8];
-    if (nFire  == 0 && g_firesPending)      snprintf(fBuf, sizeof(fBuf), "--");
-    else                                    snprintf(fBuf, sizeof(fBuf), "%d", nFire);
-    if (nQuake == 0 && g_mapQuakesPending)  snprintf(qBuf, sizeof(qBuf), "--");
-    else                                    snprintf(qBuf, sizeof(qBuf), "%d", nQuake);
-    if (nGrid  == 0 && g_mapGridPending)    snprintf(gBuf, sizeof(gBuf), "--");
-    else                                    snprintf(gBuf, sizeof(gBuf), "%d", nGrid);
-    if (nStorm == 0 && g_mapStormsPending)  snprintf(sBuf, sizeof(sBuf), "--");
-    else                                    snprintf(sBuf, sizeof(sBuf), "%d", nStorm);
+    if (fireShown  == 0 && g_firesPending)      snprintf(fBuf, sizeof(fBuf), "--");
+    else                                        snprintf(fBuf, sizeof(fBuf), "%d", fireShown);
+    if (quakeShown == 0 && g_mapQuakesPending)  snprintf(qBuf, sizeof(qBuf), "--");
+    else                                        snprintf(qBuf, sizeof(qBuf), "%d", quakeShown);
+    if (gridShown  == 0 && g_mapGridPending)    snprintf(gBuf, sizeof(gBuf), "--");
+    else                                        snprintf(gBuf, sizeof(gBuf), "%d", gridShown);
+    if (stormShown == 0 && g_mapStormsPending)  snprintf(sBuf, sizeof(sBuf), "--");
+    else                                        snprintf(sBuf, sizeof(sBuf), "%d", stormShown);
 
     drawLegendCell(tft, 0, "FIRE",  fBuf, s_showFires,  0);
     drawLegendCell(tft, 1, "QUAKE", qBuf, s_showQuakes, 1);
