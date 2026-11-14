@@ -1,7 +1,15 @@
 CYD-Weather TODO
 ================
 ───── Next To Do ────────────────────────────────────────────────────────────
-[ ] 1. Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
+[ ] 1. Lightning — WX MAP layer (promoted 2026-11-14)
+    - Blitzortung needs a Worker Durable Object with a persistent WebSocket and
+      a 30-min buffer.  If it returns, make it a WX MAP layer, not a page.
+    - Reference: ws1.blitzortung.org, handshake {"a":111}, LZW-compressed frames
+      (dict starts at 256); alternative Xweather/Vaisala REST, 15K free calls/mo.
+    - Open: the WX MAP bar is four cells (RAIN/TEMP/WIND/SMOKE); a fifth layer
+      needs a layout decision or a replacement.
+
+[ ] 2. Project rename — CYD-Weather-Station → Sentinel (leaning) or TerraSentinel
     - Drop "CYD" for future ports (larger screens, other boards, T-Deck). Both
       names hardware-agnostic, one-word, honest.
     - Do it at v2.0 with the directory/URL change; no page slot.
@@ -56,10 +64,6 @@ v1.5.6 — Second Front
       is full at 14 pages and WX MAP defaults ON for v4 upgrades.
     - Worker /wxmap deployed (e2fe2ae4).  Both variants built; 1-USB image
       tested on the panel through the density and colour passes.
-    - PHASE 2 (next): replace the 24 h rain layer with live radar + 60 min
-      nowcast (RainViewer tiles or an IEM/NOAA WMS render decoded in the
-      Worker).  TEMP/WIND/SMOKE stay as-is.  Lightning stays deferred — the
-      Blitzortung stream needs a Durable Object for data radar already shows.
 
 v1.5.5 — Two Taps to Stop the World
 ------------------------------
@@ -78,24 +82,6 @@ v1.5.5 — Two Taps to Stop the World
     - Auto-rotate now honours the pause (isRotationPaused was never read),
       and a stale pause is cleared when rotation is disabled.
     - Both variants rebuilt; 1-USB image verified on the card.
-
-Session: 2026-11-01 (cloudworker change — CYD integration TBD)
-    - [ ] Worker /quakes?src=emsc was added to quantum-meteor (deployed c2944595,
-      committed 20b3c25). It returns the EMSC catalogue, a second seismic source
-      beside USGS. Same compact item shape as /quakes (m, p, w, la, lo) plus
-      t (full ISO time) and src:"emsc".
-    - [ ] NOTHING ON THE DEVICE IS BROKEN: the default /quakes is byte-identical and
-      still USGS, and the existing JSON parser ignores fields it does not know. No
-      rebuild is required unless the screen is changed.
-    - [ ] Decide whether the CYD should surface it: leave the QUAKE layer USGS-only,
-      or fetch both and show an agreement / "EMSC only" cue per event. If tried, the
-      extra fields make the two sources distinguishable without a second payload shape.
-    - [ ] Integration detail: the MAP's QUAKE layer is CONUS-only and uses ?us=1; the
-      EMSC path has no us=1 filter and returns the global catalogue, so a device trial
-      would filter by la/lo bounds on the device (or add a us=1 equivalent to the
-      worker's EMSC path). min= and days= are supported on both.
-    - [ ] Cosmetic, optional: the worker's "/" status list still names only /quakes;
-      add "?src=emsc" there if the endpoint list should advertise the variant.
 
 Session: 2026-11-01 (MAP four layers — COMPLETE)
     - [x] Recon first, as asked: RAD (EPA RadNet) was dropped after it
@@ -229,21 +215,22 @@ Session: 2026-10-29 (v1.5.2 Time Check)
       and OUTAGES used to freeze until the next full redraw.
     - Both variants rebuilt for v1.5.2.
 
-Release how-to: version = git tag + this file (no code constant). GitHub release
-title is thematic (may differ from the entry title here). Draft → publish via
-`gh release create vX.Y.Z --draft …` then `gh release edit vX.Y.Z --draft=false`,
-attaching both .bin. File is tracked lowercase — `git add todo.txt`, not TODO.txt.
+Release how-to: version = git tag + this file (no code constant).  The tag's
+first line is the release title and the rest is the notes.  Manual process:
+commit code + todo.txt + both .bin, tag with `git tag -a vX.Y.Z -F <msg>`,
+push master and the tag, then `gh release create vX.Y.Z --title … --notes-file
+… <both .bin>`.  File is tracked lowercase — `git add todo.txt`, not TODO.txt.
 
 ───── 2026-10-29 — future list pruned ───────────────────────────────────────
-Two candidates at the time. The rest sit under Not planned with a reason.
-(Battery items 1-2 were added 2026-11-08.) Constraints:
-the SETTINGS grid caps at 16 pages (12 today → 14 at 2×7 → 16 at 2×8, no third
-row), and the Worker is shared with MayDay — /outbreaks, /cme, /fireballs,
-/ews and /volcanoes are Nova/portal contracts, not CYD-only.
+Open candidates now sit in Next To Do; the rest are under Not planned with a
+reason.  Constraints: the SETTINGS grid caps at 16 pages (14 today → 16 at
+2×8, no third row), and the Worker is shared with MayDay — /outbreaks, /cme,
+/fireballs, /ews and /volcanoes are Nova/portal contracts, not CYD-only.
 
-Sequence: Phase 0 FIRES stamp → rename at v2.0, no page slot.  Lightning was
-deferred 2026-11-08 (WX MAP took the page); Water, ORBIT and ICE were dropped
-2026-10-29.
+Sequence: Phase 0 FIRES stamp DONE → rename at v2.0, no page slot.  Lightning
+was promoted back to Next To Do 2026-11-14 as a WX MAP layer; radar/nowcast
+(former WX MAP phase 2) and the EMSC second-source work were dropped the same
+day.  Water, ORBIT and ICE were dropped 2026-10-29.
 
 Phase 0 — DONE (screen_fires.cpp): an empty result now stamps s_fetchedMs =
 millis() at the end of the fetch, so stale() backs off for the cache window
@@ -273,12 +260,6 @@ instead of re-fetching on every redraw.  Kept here as a closed item.
     aviationweather.gov METAR/TAF (keyless).
 [-] Aviation — ADS-B Traffic Density — OpenSky anonymous is rate-limited and
     low value here; ADS-B Exchange is keyed.
-[-] Lightning page — deferred 2026-11-08.  Blitzortung needs a Worker Durable
-    Object with a persistent WebSocket and a 30-min buffer; radar (WX MAP phase
-    2) covers the same "where are the storms" question.  If it returns, make it
-    a WX MAP layer, not a page.  Reference: ws1.blitzortung.org, handshake
-    {"a":111}, LZW-compressed frames (dict starts at 256); alternative
-    Xweather/Vaisala REST, 15K free calls/mo.
 
 ───── Completed ─────────────────────────────────────────────────────────────
 
