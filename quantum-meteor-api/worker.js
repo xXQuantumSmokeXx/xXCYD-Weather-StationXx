@@ -1,7 +1,6 @@
 /**
  * Quantum-Meteor API — Cloudflare Worker
  * Serves lightweight JSON for ESP32 CYD-Weather:
- *   /fireballs — scraped IMO fireball events
  *   /ews       — EWS (Apocalypse Early Warning System) summary
  *   /cme       — latest CME speed & time from NASA DONKI (~100 bytes vs 55 KB)
  *   /volcanoes — active volcanoes (USGS HANS elevated + WVAR weekly + GDACS VAAs)
@@ -17,9 +16,16 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // GET /fireballs — latest fireball events
+    // GET /fireballs — RETIRED 2026-11-14. IMO's fireball log has been offline
+    // since ~2026-07 and its replacement viewer is terms-restricted, so there is
+    // no same-semantics source. An explicit 410 keeps a forgotten consumer from
+    // reading the catch-all status payload as success. Remove after one cycle.
     if (url.pathname === "/fireballs") {
-      return await serveFireballs(url);
+      return json(410, {
+        error: "retired",
+        retired_at: "2026-11-14",
+        reason: "IMO fireball log offline since ~2026-07; no same-semantics source",
+      });
     }
 
     // GET /ews — EWS summary (no live aircraft — ~300 bytes)
@@ -92,7 +98,7 @@ export default {
 
     // GET / — simple status
     return new Response(
-      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/fireballs", "/ews", "/cme", "/volcanoes", "/outbreaks", "/grid", "/gridmap", "/storms", "/wxmap", "/news", "/solar", "/quakes", "/fire", "/geo"] }),
+      JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/ews", "/cme", "/volcanoes", "/outbreaks", "/grid", "/gridmap", "/storms", "/wxmap", "/news", "/solar", "/quakes", "/fire", "/geo"] }),
       { headers: { "Content-Type": "application/json" } }
     );
   },
@@ -397,93 +403,6 @@ function riskLine(value, max = 240) {
   const level = /\b(very low|very high|low|moderate|high|elevated|risk of)\b/i;
   const out = (sentences.find(s => level.test(s)) || sentences[0]).trim();
   return out.length > max ? out.slice(0, max - 1).trimEnd() + "…" : out;
-}
-
-async function serveFireballs(url) {
-  const cache = caches.default;
-  const CACHE_KEY = "https://qsmoke-cache/fireballs";
-  const STALE_KEY = "https://qsmoke-cache/fireballs-stale";
-
-  const fresh = await cache.match(CACHE_KEY);
-  if (fresh) return fresh;
-
-  try {
-    const limit = parseInt(url.searchParams.get("limit")) || 50;
-    const html = await fetchIMO();
-    const events = parseFireballs(html, limit);
-    // Empty parse usually means the page structure changed — throw so the
-    // cache isn't poisoned and stale data is served instead.
-    if (!events.length) throw new Error("No events parsed — upstream structure may have changed");
-
-    const out = json(200, { count: events.length, events });
-    out.headers.set("Cache-Control", "s-maxage=900");       // 15 min — matches device cache window
-    await cache.put(CACHE_KEY, out.clone());
-
-    const stale = out.clone();
-    stale.headers.set("Cache-Control", "s-maxage=21600");   // 6 h
-    await cache.put(STALE_KEY, stale);
-    return out;
-  } catch (e) {
-    const stale = await cache.match(STALE_KEY);
-    if (stale) return stale;
-    return json(500, { error: e.message });
-  }
-}
-
-async function fetchIMO() {
-  const resp = await fetch(
-    "https://fireball.imo.net/members/imo_view/browse_events",
-    { headers: { "User-Agent": "Quantum-Meteor/1.0", "Accept-Encoding": "identity" } }
-  );
-  if (!resp.ok) throw new Error(`IMO returned ${resp.status}`);
-  return await resp.text();
-}
-
-function parseFireballs(html, limit) {
-  const tbody = html.match(/<tbody>(.*?)<\/tbody>/s);
-  if (!tbody) throw new Error("No table found");
-
-  const rows = [...tbody[1].matchAll(/<tr>(.*?)<\/tr>/gs)];
-  const events = [];
-
-  for (const row of rows) {
-    if (events.length >= limit) break;
-
-    // Extract <td> contents
-    const tds = [...row[1].matchAll(/<td[^>]*>(.*?)<\/td>/gs)];
-    if (tds.length < 6) continue;
-
-    const cells = tds.map(td =>
-      td[1]
-        .replace(/<[^>]+>/g, " ")      // strip nested tags
-        .replace(/&nbsp;/g, " ")       // decode &nbsp;
-        .replace(/&amp;/g, "&")        // decode &amp;
-        .replace(/\s+/g, " ")          // collapse whitespace
-        .trim()
-    );
-
-    // cells[0]=event, [1]=reports, [2]=UT date, [3]=local, [4]=country, [5]=state,
-    // cells[6]=D.Sound, [7]=C.Sound, [8]=Frag, [9]=trajectory (optional)
-    const evtMatch = cells[0]?.match(/Event (\d+)-(\d+)/);
-    if (!evtMatch) continue; // skip month headers
-
-    // Parse sound/frag — "2 yes 5 no" or "7 no"
-    const hasYes = (s) => /\byes\b/i.test(s || "");
-
-    events.push({
-      id: evtMatch[1],
-      year: evtMatch[2],
-      reports: parseInt(cells[1]) || 0,
-      date_utc: (cells[2] || "").substring(0, 10),
-      country: cells[4] || "",
-      state: cells[5]?.split(",")[0]?.trim() || "",
-      d_sound: hasYes(cells[6]),
-      c_sound: hasYes(cells[7]),
-      frag: hasYes(cells[8]),
-    });
-  }
-
-  return events;
 }
 
 // ── /volcanoes — active volcanoes worldwide ────────────────────────────────

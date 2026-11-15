@@ -14,6 +14,26 @@ CYD-Weather TODO
       names hardware-agnostic, one-word, honest.
     - Do it at v2.0 with the directory/URL change; no page slot.
 
+Worker — /fireballs retired (2026-11-14)
+----------------------------------------
+[x] /fireballs retired; the route now returns 410 Gone.
+    - IMO's browse_events has been 503 since ~2026-07 and its report link now
+      opens the AMS-built viewer, whose terms forbid reuse in another
+      application. No same-semantics source exists. NASA CNEOS was re-checked:
+      it is sensor-detected bolides (energy/lat/lon/alt/vel), not IMO witness
+      reports, and had 0 events in the 30 days to 2026-11-14.
+    - Removed serveFireballs / fetchIMO / parseFireballs and the status-list
+      entry. A 410 tombstone stays for one cycle so a forgotten consumer does
+      not read the catch-all status payload as success; remove it after.
+    - Consumers updated in D:\MayDayVR\MayDay-AI: the portal and MCP
+      allowlists, intel_ondemand.py WORKER_PATHS/TRIGGERS/render, the trigger
+      test (fireballs must not fire), and replaced fireballs-1 with a
+      fireballs-retired no-fetch case.
+      COMMANDER_CONSOLE.md no longer lists it. MaydaySentinel's unused helper,
+      TTL and contract notes were cleaned up too.
+    - Local wrangler check: /fireballs -> 410; / no longer lists it. No device
+      change, so no firmware release.
+
 v1.5.7 — Lights Out
 ------------------------------
 [x] Battery pass and MAP counts (2026-11-14)
@@ -225,7 +245,8 @@ push master and the tag, then `gh release create vX.Y.Z --title … --notes-file
 Open candidates now sit in Next To Do; the rest are under Not planned with a
 reason.  Constraints: the SETTINGS grid caps at 16 pages (14 today → 16 at
 2×8, no third row), and the Worker is shared with MayDay — /outbreaks, /cme,
-/fireballs, /ews and /volcanoes are Nova/portal contracts, not CYD-only.
+/ews and /volcanoes are Nova/portal contracts, not CYD-only. /fireballs was
+retired on 2026-11-14 (see the Worker entry above).
 
 Sequence: Phase 0 FIRES stamp DONE → rename at v2.0, no page slot.  Lightning
 was promoted back to Next To Do 2026-11-14 as a WX MAP layer; radar/nowcast
