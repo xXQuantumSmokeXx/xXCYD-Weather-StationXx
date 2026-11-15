@@ -16,18 +16,6 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // GET /fireballs — RETIRED 2026-11-14. IMO's fireball log has been offline
-    // since ~2026-07 and its replacement viewer is terms-restricted, so there is
-    // no same-semantics source. An explicit 410 keeps a forgotten consumer from
-    // reading the catch-all status payload as success. Remove after one cycle.
-    if (url.pathname === "/fireballs") {
-      return json(410, {
-        error: "retired",
-        retired_at: "2026-11-14",
-        reason: "IMO fireball log offline since ~2026-07; no same-semantics source",
-      });
-    }
-
     // GET /ews — EWS summary (no live aircraft — ~300 bytes)
     if (url.pathname === "/ews") {
       return await serveEws();
@@ -96,7 +84,12 @@ export default {
       return await serveGeo(request);
     }
 
-    // GET / — simple status
+    // GET / — simple status. Anything else is a 404: the Worker has no
+    // fallback data endpoint, and a 200 status payload for an unknown path
+    // reads as success to a forgotten client.
+    if (url.pathname !== "/") {
+      return json(404, { error: "not found" });
+    }
     return new Response(
       JSON.stringify({ service: "Quantum-Meteor API", status: "online", endpoints: ["/ews", "/cme", "/volcanoes", "/outbreaks", "/grid", "/gridmap", "/storms", "/wxmap", "/news", "/solar", "/quakes", "/fire", "/geo"] }),
       { headers: { "Content-Type": "application/json" } }

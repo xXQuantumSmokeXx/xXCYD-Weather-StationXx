@@ -16,22 +16,22 @@ CYD-Weather TODO
 
 Worker — /fireballs retired (2026-11-14)
 ----------------------------------------
-[x] /fireballs retired; the route now returns 410 Gone.
+[x] /fireballs retired; the route is gone.
     - IMO's browse_events has been 503 since ~2026-07 and its report link now
       opens the AMS-built viewer, whose terms forbid reuse in another
       application. No same-semantics source exists. NASA CNEOS was re-checked:
       it is sensor-detected bolides (energy/lat/lon/alt/vel), not IMO witness
       reports, and had 0 events in the 30 days to 2026-11-14.
     - Removed serveFireballs / fetchIMO / parseFireballs and the status-list
-      entry. A 410 tombstone stays for one cycle so a forgotten consumer does
-      not read the catch-all status payload as success; remove it after.
+      entry. Unknown paths now return 404 instead of the catch-all status
+      payload, so a forgotten consumer cannot read a 200 as success.
     - Consumers updated in D:\MayDayVR\MayDay-AI: the portal and MCP
       allowlists, intel_ondemand.py WORKER_PATHS/TRIGGERS/render, the trigger
       test (fireballs must not fire), and replaced fireballs-1 with a
       fireballs-retired no-fetch case.
       COMMANDER_CONSOLE.md no longer lists it. MaydaySentinel's unused helper,
       TTL and contract notes were cleaned up too.
-    - Local wrangler check: /fireballs -> 410; / no longer lists it. No device
+    - Local wrangler check: /fireballs -> 404; / no longer lists it. No device
       change, so no firmware release.
 
 v1.5.7 — Lights Out
