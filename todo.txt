@@ -54,6 +54,16 @@ Worker — /cme source moved (2026-11-17)
     - Deployed cea20104; commits 613f648, 5156e52. No device change — the CYD
       reads cme/cmeTime from /solar, and that payload shape is unchanged.
 
+Worker — crew news digest (2026-11-17)
+--------------------------------------
+[x] ?crew=1 returns 12 items instead of 8.
+    - The five feeds already carry plenty (118 items measured: BBC 25,
+      Guardian 45, Al Jazeera 25, DW 13, NPR 10); the 8-item cap was the limit.
+    - Cache key bumped to news-crew-v4 so the old 8-item payload is not served.
+    - The plain /news used by the CYD is untouched: still 10 {title, when}
+      items, verified live after the deploy. No device change, no firmware
+      release.
+
 v1.5.7 — Lights Out
 ------------------------------
 [x] Battery pass and MAP counts (2026-11-14)
