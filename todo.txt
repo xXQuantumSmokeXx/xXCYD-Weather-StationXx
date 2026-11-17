@@ -34,6 +34,26 @@ Worker — /fireballs retired (2026-11-14)
     - Local wrangler check: /fireballs -> 404; / no longer lists it. No device
       change, so no firmware release.
 
+Worker — /cme source moved (2026-11-17)
+---------------------------------------
+[x] /cme no longer depends on a Cloudflare-blocked host.
+    - ccmc.gsfc.nasa.gov began hanging from Workers egress; HTTP and HTTPS
+      both abort at the 8 s timeout. kauai.ccmc.gsfc.nasa.gov has been dead
+      for months. Every cold miss burned 16 s and returned 500.
+    - Primary is now api.nasa.gov/DONKI/CME. It needs api_key=DEMO_KEY, which
+      is public but 10 requests/hour per egress IP; the dead sources are gone.
+    - /cme and /solar share one cached fetch: 1 h fresh, 24 h stale, plus a
+      7-day last-good in KV (cme:last:v1). /solar used to call DONKI on its own
+      5-minute loop and would have spent the whole budget.
+    - A KV hit refills the fresh slot for 2 minutes, so a failing upstream is
+      retried soon instead of going dark for the hour. Cache writes are
+      non-fatal; a storage error cannot 500 the route.
+    - Why the KV copy: the wall probes every 60 min and the fresh cache lived
+      exactly 60 min, so the probe kept landing on cold misses; a 429 there
+      read as CME DOWN until the next probe.
+    - Deployed cea20104; commits 613f648, 5156e52. No device change — the CYD
+      reads cme/cmeTime from /solar, and that payload shape is unchanged.
+
 v1.5.7 — Lights Out
 ------------------------------
 [x] Battery pass and MAP counts (2026-11-14)

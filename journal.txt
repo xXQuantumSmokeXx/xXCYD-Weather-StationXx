@@ -57,3 +57,36 @@ Open threads: the 1,000-customer floor has only been seen on a quiet day — the
 first busy day is the real test of whether 80 markers is the right cap. /storms
 dedupes by 25 km, which is a guess that has not yet been challenged by a real
 outbreak.
+
+2026-11-17 — /cme moves off CCMC, and what the edge can reach
+
+The wall started showing CME DOWN, and the CYD had been quietly reading
+0/"NONE" for the same reason. The Worker tail said it in two lines: both DONKI
+fetches aborted at the 8 s timeout, and the fallback host had been dead for
+months. ccmc.gsfc.nasa.gov answers in under a second from home but hangs from
+Cloudflare's egress, on HTTP and HTTPS alike — a blackhole, not a slow server,
+which is why the abort fired instead of a status. A throwaway preview worker
+settled it: api.nasa.gov/DONKI/CME returned the same 39 KB payload in 426 ms,
+kauai refused the connection, CCMC timed out.
+
+The fix is api.nasa.gov as the only source. The catch is that it wants a key,
+and DEMO_KEY is the only public one — 10 requests/hour per egress IP. /solar
+used to call DONKI itself on a 5-minute loop, so left alone it would have eaten
+the whole budget before /cme got a turn. Both now go through one cached fetch:
+1 h fresh, 24 h stale, and a 7-day last-good copy in KV (cme:last:v1), which is
+what a cold colo serves when the upstream refuses.
+
+The second trap was an interval coincidence: the wall probes every 60 minutes
+and the fresh cache lived exactly 60 minutes, so the hourly probe kept landing
+on a cold miss. A 429 there was a 500, and SENTINEL LINK stayed DOWN for the
+whole hour. That is why the KV copy exists, and why a KV hit refills the fresh
+slot for only 2 minutes — retry soon, but never dark.
+
+Verified from the edge: /cme 200 in ~0.1-0.9 s, 12/12 sequential, and a preview
+with an invalid key still returned 200 from KV in 312 ms. The CYD needs no
+firmware change: it reads cme/cmeTime from /solar and that shape did not move,
+so it picks the fix up on its next 15-minute refresh.
+
+Open threads: DEMO_KEY is shared with other Cloudflare tenants, so the KV copy
+is the real availability floor; if it ever expires during a long NASA outage
+the route goes back to 500. Revisit if NASA offers a keyless DONKI host again.
