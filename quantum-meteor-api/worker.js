@@ -1084,8 +1084,8 @@ const CREW_NEWS_SOURCES = [
 async function serveCrewNews() {
   const cache = caches.default;
   // v3: v1 held un-stripped escaped HTML; v2 fused words where tags were removed.
-  const CACHE_KEY = "https://qsmoke-cache/news-crew-v3";
-  const STALE_KEY = "https://qsmoke-cache/news-crew-v3-stale";
+  const CACHE_KEY = "https://qsmoke-cache/news-crew-v4";
+  const STALE_KEY = "https://qsmoke-cache/news-crew-v4-stale";
 
   const fresh = await cache.match(CACHE_KEY);
   if (fresh) return fresh;
@@ -1145,7 +1145,7 @@ async function serveCrewNews() {
       rest.push(it);
     }
   }
-  const merged = capped.concat(rest).slice(0, 8);
+  const merged = capped.concat(rest).slice(0, 12);
 
   if (merged.length) {
     const out = json(200, {
