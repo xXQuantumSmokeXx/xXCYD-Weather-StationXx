@@ -1346,8 +1346,8 @@ async function serveQuakes(url) {
   const days = Math.min(30, Math.max(1, parseInt(url.searchParams.get("days"), 10) || 7));
   // Constants are compile-time, so the cache key only needs the parameters.
   const CACHE_KEY = us
-    ? `https://qsmoke-cache/quakes-us-v1-${minMag}-${days}`
-    : "https://qsmoke-cache/quakes-v2";
+    ? `https://qsmoke-cache/quakes-us-v2-${minMag}-${days}`
+    : "https://qsmoke-cache/quakes-v3";
   const fresh = await cache.match(CACHE_KEY);
   if (fresh) return fresh;
 
@@ -1381,12 +1381,18 @@ async function serveQuakes(url) {
       if (us && !isConusPlace(place)) continue;
       const lat = parseFloat(f[1]);
       const lon = parseFloat(f[2]);
+      // Origin time (ISO) and USGS event id — the client needs both to tell a
+      // genuinely new event from a magnitude revision of an old one. `t` is
+      // epoch ms, matching /fire.
+      const t = Date.parse(f[0]);
       items.push({
         m: mag,
         p: place,
         w: mdFromDate(f[0]),
         la: isNaN(lat) ? null : Math.round(lat * 100) / 100,
         lo: isNaN(lon) ? null : Math.round(lon * 100) / 100,
+        id: f[11] || null,
+        t: isNaN(t) ? null : t,
       });
     }
   }
@@ -1407,7 +1413,7 @@ async function serveEmsc(url) {
   const cache = caches.default;
   const minMag = Math.min(9, Math.max(0, parseFloat(url.searchParams.get("min")) || 4.5));
   const days = Math.min(30, Math.max(1, parseInt(url.searchParams.get("days"), 10) || 7));
-  const CACHE_KEY = `https://qsmoke-cache/emsc-v1-${minMag}-${days}`;
+  const CACHE_KEY = `https://qsmoke-cache/emsc-v2-${minMag}-${days}`;
   const fresh = await cache.match(CACHE_KEY);
   if (fresh) return fresh;
 
@@ -1425,13 +1431,15 @@ async function serveEmsc(url) {
     const items = (data.features || []).map((f) => {
       const p = f.properties || {};
       const mag = parseFloat(p.mag);
+      const t = Date.parse(p.time || "");
       return {
         m: isNaN(mag) ? null : mag,
         p: p.flynn_region || "Unknown region",
         w: mdFromDate(p.time || ""),
         la: typeof p.lat === "number" ? Math.round(p.lat * 100) / 100 : null,
         lo: typeof p.lon === "number" ? Math.round(p.lon * 100) / 100 : null,
-        t: p.time || null,
+        id: p.unid || null,
+        t: isNaN(t) ? null : t,
         src: "emsc",
       };
     }).filter((i) => i.m !== null);
