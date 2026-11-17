@@ -23,7 +23,7 @@ export default {
 
     // GET /cme — latest CME from NASA DONKI (~100 bytes vs 55 KB direct)
     if (url.pathname === "/cme") {
-      return await serveCme();
+      return await serveCme(env);
     }
 
     // GET /volcanoes — new volcanic activity worldwide
@@ -64,7 +64,7 @@ export default {
 
     // GET /solar — Kp history, solar wind, x-ray class, flares and CME in one
     if (url.pathname === "/solar") {
-      return await serveSolar();
+      return await serveSolar(env);
     }
 
     // GET /quakes — USGS list as compact JSON (global, or ?us=1 for the MAP)
@@ -148,12 +148,13 @@ async function serveEws() {
 //
 // api.nasa.gov needs api_key=DEMO_KEY, which is public but rate-limited per
 // egress IP (the edge currently reports 10/hour). Every caller therefore
-// shares ONE cached fetch — fresh for 1 h, stale for 24 h — through
-// getCmeData(). That also stops /solar's 5-minute loop from spending its own
-// call (it used to hit DONKI directly on every refresh). A 429 or any fetch
-// error falls back to the stale copy rather than returning 500.
-async function serveCme() {
-  const data = await getCmeData();
+// shares ONE cached fetch — fresh for 1 h, stale for 24 h, last-good in KV
+// for 7 days — through getCmeData(). That also stops /solar's 5-minute loop
+// from spending its own call (it used to hit DONKI directly on every
+// refresh). A 429 or any fetch error falls back to stale/KV, never a 500
+// once the endpoint has answered at least once.
+async function serveCme(env) {
+  const data = await getCmeData(env);
   if (!data) return json(500, { error: "DONKI unreachable" });
 
   const out = json(200, data);
@@ -163,34 +164,87 @@ async function serveCme() {
 
 const CME_FRESH_KEY = "https://qsmoke-cache/cme-data-v3";
 const CME_STALE_KEY = "https://qsmoke-cache/cme-data-v3-stale";
+const CME_KV_KEY = "cme:last:v1";
 
 // Shared by /cme and /solar. Returns { startTime, speed } or null.
-async function getCmeData() {
+//
+// The fresh entry lives 1 h, which is exactly the wall's probe interval, so
+// a cache miss lands on the probe. The shared DEMO_KEY can answer 429 there,
+// and the per-colo cache is empty on a cold colo — so the last good value is
+// also kept in KV (7 days) and served instead of a 500. When KV answers, the
+// fresh slot is filled for 2 minutes so we back off a failing upstream
+// without going dark for the whole hour.
+async function getCmeData(env) {
   const cache = caches.default;
 
-  const fresh = await cache.match(CME_FRESH_KEY);
-  if (fresh) return await fresh.json();
+  const fresh = await readCmeCache(cache, CME_FRESH_KEY);
+  if (fresh) return fresh;
 
   const result = await tryDonkiPrimary();
 
   if (result) {
     const body = JSON.stringify(result);
-    const type = { "Content-Type": "application/json" };
-    await cache.put(
-      CME_FRESH_KEY,
-      new Response(body, { headers: { ...type, "Cache-Control": "s-maxage=3600" } })
-    );
-    await cache.put(
-      CME_STALE_KEY,
-      new Response(body, { headers: { ...type, "Cache-Control": "s-maxage=86400" } })
-    );
+    await putCmeCache(cache, CME_FRESH_KEY, body, 3600);
+    await putCmeCache(cache, CME_STALE_KEY, body, 86400);
+    await putCmeKv(env, body);
     return result;
   }
 
-  const stale = await cache.match(CME_STALE_KEY);
-  if (stale) return await stale.json();
+  const stale = await readCmeCache(cache, CME_STALE_KEY);
+  if (stale) return stale;
+
+  const fromKv = await readCmeKv(env);
+  if (fromKv) {
+    await putCmeCache(cache, CME_FRESH_KEY, JSON.stringify(fromKv), 120);
+    return fromKv;
+  }
 
   return null;
+}
+
+async function readCmeCache(cache, key) {
+  try {
+    const hit = await cache.match(key);
+    return hit ? await hit.json() : null;
+  } catch (e) {
+    console.log(`cme cache get: ${e.message}`);
+    return null;
+  }
+}
+
+async function putCmeCache(cache, key, body, seconds) {
+  try {
+    await cache.put(
+      key,
+      new Response(body, {
+        headers: { "Content-Type": "application/json", "Cache-Control": `s-maxage=${seconds}` },
+      })
+    );
+  } catch (e) {
+    console.log(`cme cache put: ${e.message}`);
+  }
+}
+
+async function putCmeKv(env, body) {
+  if (!env || !env.GRID_HISTORY) return;
+  try {
+    await env.GRID_HISTORY.put(CME_KV_KEY, body, { expirationTtl: 604800 });
+  } catch (e) {
+    console.log(`cme kv put: ${e.message}`);
+  }
+}
+
+async function readCmeKv(env) {
+  if (!env || !env.GRID_HISTORY) return null;
+  try {
+    const raw = await env.GRID_HISTORY.get(CME_KV_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch (e) {
+    console.log(`cme kv read: ${e.message}`);
+    return null;
+  }
 }
 
 // DONKI CME catalogue. ccmc.gsfc.nasa.gov serves the same JSON shape but is
@@ -1189,7 +1243,7 @@ function mmddhhmm(iso) {
   return `${iso.substr(5, 5)} ${iso.substr(11, 5)}`;
 }
 
-async function serveSolar() {
+async function serveSolar(env) {
   const cache = caches.default;
   const CACHE_KEY = "https://qsmoke-cache/solar-v1";
   const fresh = await cache.match(CACHE_KEY);
@@ -1246,7 +1300,7 @@ async function serveSolar() {
   // CME comes from the shared DONKI cache (getCmeData), so this 5-minute loop
   // does not spend its own api.nasa.gov call on the shared rate limit.
   let cme = 0, cmeTime = "NONE";
-  const donki = await getCmeData();
+  const donki = await getCmeData(env);
   if (donki) {
     cme = donki.speed > 0 ? donki.speed : 0;
     cmeTime = donki.startTime ? mmddhhmm(donki.startTime) : "NONE";
