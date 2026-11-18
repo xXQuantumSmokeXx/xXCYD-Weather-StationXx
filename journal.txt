@@ -90,3 +90,42 @@ so it picks the fix up on its next 15-minute refresh.
 Open threads: DEMO_KEY is shared with other Cloudflare tenants, so the KV copy
 is the real availability floor; if it ever expires during a long NASA outage
 the route goes back to 500. Revisit if NASA offers a keyless DONKI host again.
+
+2026-11-18 — The Oregon quake the map could not see
+
+MaydaySentinel showed M4.2 off the coast of Oregon in the QUAKES panel and
+nothing on the MAP. The panel reads the global /quakes list; the map reads
+/quakes?us=1, so the first instinct was a client bug. It was not. The CONUS feed
+rejected that event twice, and both gates were in the Worker.
+
+The first is the upstream query: us=1 asked USGS for minlongitude=-125, and the
+event is at -128.04, so it was never fetched. The second only bites if the first
+is widened: isConusPlace matches ", Oregon" / ", OR" in the place string, and
+"off the coast of Oregon" has neither. Offshore events have no comma-state by
+construction, which is exactly the shape the border-sliver filter was built to
+drop.
+
+The fix widens the bbox to lat 22..52, lon -130..-64 (limit 100 -> 200) and adds
+isConusOffshore: a phrase test ("off the coast of" / "offshore") accepted only
+inside the widened box, with an explicit reject list for foreign coasts —
+Mexico, Canada, Baja, Alaska, Hawaii, Cuba, Bahamas, Bermuda, Puerto Rico. The
+reject list is the trap worth remembering: "off the coast of Baja California"
+reads like a US phrase and tests true on the regex, so the coordinate box alone
+does not separate it. Land events still go through isConusPlace untouched, so
+widening the bbox drags in Canadian and Mexican land events that the existing
+filter already handles; no second land filter was needed.
+
+One more consequence: the query is cached by URL, so the key moved
+quakes-us-v2 -> quakes-us-v3 or the old five-minute payload survives the deploy.
+
+Verified from the edge: /quakes?us=1 returns five items, the M4.2 first, plus a
+M3.5 and M4.5 also off Oregon on 11/12; CORS is still `*`; the M4.2-adjacent
+"35 km ENE of Miguel Ahumada, Mexico" in the widened box is still dropped.
+MaydaySentinel got only a label change ("CONUS + US offshore").
+
+Open threads: the offshore phrase list is a guess. "in the Gulf of Mexico" and
+"Gulf of Alaska" do not match it — the latter is rightly foreign, the former is
+arguably US water, and neither has been seen in the feed yet. Revisit if a US
+Gulf event ever goes missing. The wall also still clips points outside the SVG
+on narrow/tall stages, so an offshore point can be in the feed and not drawn;
+at wall sizes it lands in the ocean margin, which is acceptable, not fixed.

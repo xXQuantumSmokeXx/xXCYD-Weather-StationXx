@@ -1330,6 +1330,9 @@ async function serveSolar(env) {
 // Default: global M3.5+ (the USGS screen).  ?us=1 returns CONUS events over
 // ?days=30 for the MAP page, with lat/lon on every item and a state-name /
 // abbreviation filter so border slivers of Canada/Mexico don't appear.
+// Offshore US events ("off the coast of Oregon") have no comma-state place,
+// so they pass a coordinate test instead — the query bbox is widened past
+// -125 to reach them, and isConusPlace still keeps foreign land out.
 // CSV is 7.6 KB for 36 events; GeoJSON was 28 KB.
 const CONUS_STATES = [
   "Alabama", "Arizona", "Arkansas", "California", "Colorado", "Connecticut",
@@ -1358,6 +1361,15 @@ function isConusPlace(place) {
          CONUS_ABBR.some((s) => place.includes(`, ${s}`));
 }
 
+// US offshore events carry a phrase, not a comma-state ("off the coast of
+// Oregon", "offshore of Northern California"). The bbox query already
+// bounds them; this keeps the explicitly foreign coasts out of the MAP.
+function isConusOffshore(place, lat, lon) {
+  if (!/off the coast of|offshore/i.test(place)) return false;
+  if (/Mexico|Canada|Baja|Alaska|Hawaii|Cuba|Bahamas|Bermuda|Puerto Rico/i.test(place)) return false;
+  return lon >= -130 && lon <= -64 && lat >= 22 && lat <= 52;
+}
+
 async function serveQuakes(url) {
   const cache = caches.default;
   const us = url.searchParams.get("us") === "1";
@@ -1365,7 +1377,7 @@ async function serveQuakes(url) {
   const days = Math.min(30, Math.max(1, parseInt(url.searchParams.get("days"), 10) || 7));
   // Constants are compile-time, so the cache key only needs the parameters.
   const CACHE_KEY = us
-    ? `https://qsmoke-cache/quakes-us-v2-${minMag}-${days}`
+    ? `https://qsmoke-cache/quakes-us-v3-${minMag}-${days}`
     : "https://qsmoke-cache/quakes-v3";
   const fresh = await cache.match(CACHE_KEY);
   if (fresh) return fresh;
@@ -1376,9 +1388,9 @@ async function serveQuakes(url) {
       .toISOString().slice(0, 19);
     query =
       "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv" +
-      `&starttime=${start}&minlatitude=24.4&maxlatitude=49.6` +
-      `&minlongitude=-125&maxlongitude=-66&minmagnitude=${minMag}` +
-      `&limit=100&orderby=time`;
+      `&starttime=${start}&minlatitude=22&maxlatitude=52` +
+      `&minlongitude=-130&maxlongitude=-64&minmagnitude=${minMag}` +
+      `&limit=200&orderby=time`;
   } else {
     query =
       "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv" +
@@ -1397,9 +1409,9 @@ async function serveQuakes(url) {
       const mag = parseFloat(f[4]);
       if (isNaN(mag)) continue;
       const place = f[13];
-      if (us && !isConusPlace(place)) continue;
       const lat = parseFloat(f[1]);
       const lon = parseFloat(f[2]);
+      if (us && !isConusPlace(place) && !isConusOffshore(place, lat, lon)) continue;
       // Origin time (ISO) and USGS event id — the client needs both to tell a
       // genuinely new event from a magnitude revision of an old one. `t` is
       // epoch ms, matching /fire.
