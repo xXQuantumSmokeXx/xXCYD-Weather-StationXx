@@ -190,13 +190,16 @@ async function getCmeData(env) {
     return result;
   }
 
+  // Both fallbacks are marked stale and keep their original fetched_at, so a caller can
+  // say how old the reading is instead of stamping it with its own fetch time.
   const stale = await readCmeCache(cache, CME_STALE_KEY);
-  if (stale) return stale;
+  if (stale) return { ...stale, stale: true };
 
   const fromKv = await readCmeKv(env);
   if (fromKv) {
-    await putCmeCache(cache, CME_FRESH_KEY, JSON.stringify(fromKv), 120);
-    return fromKv;
+    const marked = { ...fromKv, stale: true };
+    await putCmeCache(cache, CME_FRESH_KEY, JSON.stringify(marked), 120);
+    return marked;
   }
 
   return null;
@@ -277,7 +280,10 @@ async function tryDonkiPrimary() {
         if (a.speed != null) { speed = a.speed; break; }
       }
     }
-    return { startTime, speed };
+    // fetched_at travels with the reading (2026-11-18). The fresh/stale/KV chain below
+    // can serve a value up to 7 days old, and without this the crew's block could only
+    // stamp when the PORTAL fetched it - a stale reading would look freshly served.
+    return { startTime, speed, fetched_at: new Date().toISOString() };
   } catch (e) {
     console.log(`DONKI: ${e.message}`);
     return null;
@@ -1735,7 +1741,10 @@ async function serveStorms() {
           kmBetween([p.la, p.lo], pt) < STORM_DEDUPE_KM));
       if (dup) continue;
 
+      // areaDesc added 2026-11-18 for the MayDay crew lane: the map only needs a point,
+      // but a spoken warning needs a place, and coordinates alone cannot be said aloud.
       picked.push({ la: pt[0], lo: pt[1], s: sev, same: same[0] || "",
+                    a: String(props.areaDesc || "").replace(/\s+/g, " ").trim().slice(0, 120),
                     end: props.ends || props.expires || "" });
     }
 
@@ -1745,7 +1754,7 @@ async function serveStorms() {
     const items = picked.slice(0, STORM_MAX)
       .map((p) => ({ la: Math.round(p.la * 100) / 100,
                      lo: Math.round(p.lo * 100) / 100,
-                     s: p.s }));
+                     s: p.s, a: p.a }));
 
     const payload = {
       updated: new Date().toISOString(),
