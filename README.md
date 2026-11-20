@@ -128,7 +128,6 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - **Tap to wake** — the screen wakes on a single tap whenever it is dark from the inactivity Sleep Timer or from the Scheduled Sleep window
 - Inactivity sleep (Sleep Timer) blanks the panel and backlight and keeps the ESP32 connected, so the wake is instant
 - Scheduled sleep (SCHED) deep-sleeps the ESP32 through the window, with a timer wake at WAKE and a touch wake on GPIO 36 (EXT0). A tap wakes the device early; it then gets a one-minute grace before the schedule can put it back to sleep
-- Power Off (below) uses the same touch wake
 
 **SETTINGS screen:**
 - **Sleep Timer** — panel and backlight auto-off after inactivity (OFF / 15s / 30s / 1m / 5m). While dark the device stops redrawing, auto-rotation and scheduled fetches; tap or swipe to wake and the screen redraws immediately
@@ -140,7 +139,7 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - E-Ink mode — inverts display to white-background / black-foreground, toggled from the settings screen
 - 9 theme accent colors, saved across reboots
 - **Auto Reboot Toggle** — tap AUTO RST to enable/disable the 5-hour periodic ESP.restart() that prevents heap fragmentation. Theme-color border when ON, dim when OFF. Defaults to ON — toggle OFF for long-running uptime testing.
-- Power Off — two-tap confirmation ("PWR OFF" → "SURE?") engages **Somnus Deep-Sleep Recovery**: the panel is blanked and the backlight pin held off, then the ESP32 enters ultra-low-power deep sleep with EXT0 touch-IRQ wake on GPIO 36. A single screen tap reanimates the device — no hardware reset required
+- Power Off — two-tap confirmation ("PWR OFF" → "SURE?") engages **Somnus Deep-Sleep Recovery**: the panel is blanked and the backlight pin held off, then the ESP32 enters ultra-low-power deep sleep and stays off. Touch does not wake it; power-cycle the device to turn it back on
 
 **General:**
 - Auto-detects location via IP geolocation; no config needed beyond WiFi credentials
