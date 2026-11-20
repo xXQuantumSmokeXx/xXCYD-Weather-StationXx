@@ -1,6 +1,6 @@
 # xXCYD-Weather-StationXx
 
-CYD tactical monitoring station — real-time weather, space weather, solar day almanac, US power outage tracking, volcano activity tracking, wildfire & earthquake tracking, CONUS situational and weather maps, breaking news, Apocalypse Early Warning System (business-jet anomaly detection), customizable display profiles, and Somnus intelligent power management — overnight scheduled deep sleep with timer or tap-to-wake, plus panel-off sleep on inactivity.
+CYD tactical monitoring station — real-time weather, space weather, solar day almanac, US power outage tracking, volcano activity tracking, wildfire & earthquake tracking, CONUS situational and weather maps, breaking news, Apocalypse Early Warning System (business-jet anomaly detection), customizable display profiles, and Somnus intelligent power management — overnight scheduled deep sleep with timer or tap-to-wake, plus optional panel-off sleep on inactivity (Settings → Sleep Timer, off by default).
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-xXSmokeXx-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/xXSmokeXx)
 
