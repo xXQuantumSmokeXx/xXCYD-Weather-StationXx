@@ -124,6 +124,12 @@ CYD tactical monitoring station — real-time weather, space weather, solar day 
 - Daylight duration hero line at top (e.g. "10h 23m of daylight")
 - Falls back to OpenWeatherMap sunrise/sunset times when available
 
+**Somnus Intelligent Power Management:**
+- **Tap to wake** — the screen wakes on a single tap whenever it is dark from the inactivity Sleep Timer or from the Scheduled Sleep window
+- Inactivity sleep (Sleep Timer) blanks the panel and backlight and keeps the ESP32 connected, so the wake is instant
+- Scheduled sleep (SCHED) deep-sleeps the ESP32 through the window, with a timer wake at WAKE and a touch wake on GPIO 36 (EXT0). A tap wakes the device early; it then gets a one-minute grace before the schedule can put it back to sleep
+- Power Off (below) uses the same touch wake
+
 **SETTINGS screen:**
 - **Sleep Timer** — panel and backlight auto-off after inactivity (OFF / 15s / 30s / 1m / 5m). While dark the device stops redrawing, auto-rotation and scheduled fetches; tap or swipe to wake and the screen redraws immediately
 - **Scheduled Sleep & Wake Timer** — daily schedule to deep-sleep through configured sleep hours (e.g. 10PM–7AM), every day. Toggle on with SCHED, then tap SLEEP and WAKE to cycle through preset hours. At the sleep hour the ESP32 holds the backlight off and enters ultra-low-power deep sleep, waking on a timer at the configured WAKE hour or early on a touch. A scheduled wake skips the ten-endpoint boot prefetch, fetches weather immediately, and gives you a minute of grace before the schedule re-enforces. Independent of the inactivity timer — when no schedule is set, the quick timer blanks the backlight while the ESP32 stays connected

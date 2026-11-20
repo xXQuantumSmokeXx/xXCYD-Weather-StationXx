@@ -64,6 +64,19 @@ Worker — crew news digest (2026-11-17)
       items, verified live after the deploy. No device change, no firmware
       release.
 
+v1.5.8 — Wake Up Call
+------------------------------
+[x] Tap-to-wake actually wakes (2026-11-20)
+    - [x] Backlight hold released on wake.  brightnessShutdownForSleep() latches
+      GPIO21 low through deep sleep with gpio_hold_en + gpio_deep_sleep_hold_en,
+      and nothing released it.  The device booted and ran with a dark screen
+      after every scheduled or PWR OFF touch wake.  setup() now calls
+      gpio_hold_dis(TFT_BL) and gpio_deep_sleep_hold_dis() first.  Confirmed on
+      hardware.
+    - [x] README: Somnus Intelligent Power Management section covers tap to
+      wake for the inactivity timer, scheduled sleep and PWR OFF.
+    - Both variants built clean; images attached to the release.
+
 v1.5.7 — Lights Out
 ------------------------------
 [x] Battery pass and MAP counts (2026-11-14)

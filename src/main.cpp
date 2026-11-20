@@ -986,6 +986,13 @@ static void touchCalibrate() {
 void setup() {
     Serial.begin(115200);
 
+    // brightnessShutdownForSleep() latches the backlight pin low through deep
+    // sleep (gpio_hold_en + gpio_deep_sleep_hold_en).  On ESP32 that hold
+    // survives the wake until it is released, so without this the screen stays
+    // dark after a touch wake even though the device boots and runs.
+    gpio_hold_dis((gpio_num_t)TFT_BL);
+    gpio_deep_sleep_hold_dis();
+
     // A scheduled deep sleep sets s_rtcSlept before calling
     // esp_deep_sleep_start().  PWR OFF never sets it, so that path still gets
     // the normal boot prefetch when touched awake.
